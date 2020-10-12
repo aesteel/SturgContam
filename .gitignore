@@ -37,3 +37,9 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+
+
+## AES custom additions ##
+# folders that do not need to be version controlled
+/wordDocs
