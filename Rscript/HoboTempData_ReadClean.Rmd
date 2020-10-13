@@ -1,0 +1,95 @@
+---
+title: "HoboTempData_ReadClean"
+author: "Sarah Baird"
+date: "10/13/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+library(tidyverse)
+```
+
+## R Markdown
+
+### Read in hobo data output, multiple loggers
+```{r cars}
+bath1 <- read.csv("rawData/HoboBath1_WS2020.csv")  
+bath2 <- read.csv("rawData/HoboBath2_WS2020.csv")
+cup <- read.csv("rawData/HoboCup_WS2020.csv")
+dish <- read.csv("rawData/HoboDish_WS2020.csv")
+air <- read.csv("rawData/HoboAir_WS2020.csv")
+
+loggers = list(bath1, bath2, cup, dish, air)
+ names(loggers) = c("bath1", "bath2", "cup", "dish", "air")
+ 
+```
+
+### Clean and combine
+```{r clean data}
+# reduce range of times to the period of the experiment
+timesubset.func = function(x) {x$datetime = as.character(x$datetime)
+                           x$datetime = as.POSIXct(strptime(x$datetime,format='%m/%d/%Y %H:%M'))
+                           #return(x)
+                           x2 = x[x$datetime<as.POSIXct("2020-06-06 08:00:00") & 
+                                    x$datetime>as.POSIXct("2020-05-31 12:30:00"), ]
+                                return(x2)
+}
+
+loggers2 = lapply(loggers, timesubset.func)
+
+alltemp = do.call("rbind", loggers2)
+```
+
+
+## Summarize
+```{r summarize, echo=FALSE, messages=FALSE}
+alltemp_sum <- alltemp %>% 
+  group_by(location) %>% 
+  summarize(mean_temp = mean(temp_c), 
+            median_temp = median(temp_c),
+            min_temp = min(temp_c),
+            max_temp = max(temp_c),
+            sd_temp = sd(temp_c)) %>% 
+  data.frame()
+
+knitr::kable(alltemp_sum, col.names = gsub("[.]", " ", names(alltemp_sum)))
+
+```
+  
+   
+## Plot
+```{r plots, echo=FALSE}
+
+# all loggers
+ggplot(alltemp, aes(x = datetime, y = temp_c, group=location, color=location))+
+  geom_line()+
+  scale_x_datetime(date_breaks = "1 day",
+                   date_labels = "%m/%d") + 
+  ylab("Temp C")+
+  xlab("Time")+
+  theme_bw()
+
+# only water-loggers
+ggplot(alltemp[alltemp$location!="air",], 
+       aes(x = datetime, y = temp_c, group=location, color=location))+
+  geom_line()+
+  scale_x_datetime(date_breaks = "1 day",
+                   date_labels = "%m/%d") + 
+  ylab("Temp C") +
+  xlab("Time") +
+  theme_bw()
+
+# means
+ggplot(alltemp_sum, aes(x = location, y = mean_temp, color=location))+
+  geom_point(size = 3)+
+  geom_errorbar(aes(ymin=(mean_temp - sd_temp), 
+                  ymax=(mean_temp + sd_temp),
+                  width=0.5)) +
+  xlab("Date") + ylab("Temperature (C)")+
+  theme_bw()
+
+
+```
