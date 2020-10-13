@@ -1,0 +1,119 @@
+---
+title: "CTM_Analysis"
+author: "Sarah Baird"
+date: "10/13/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+library(tidyverse)
+
+```
+
+## R Markdown
+
+### Read in data file
+```{r read data}
+CTM_WS20bif15C = read.csv("rawData/CTM_WS2020_bif15C.csv")
+
+```
+
+```{r clean data, echo=FALSE}
+#shorten name: 
+  ctm_dat <- CTM_WS20bif15C
+
+# remove stock trial of larval fish
+  ctm_dat2 <- ctm_dat[!(ctm_dat$dosage_name == "STOCK"), ] 
+
+# format dates
+ctm_dat2$date = as.Date(ctm_dat2$date, format="%m/%d/%y") 
+ctm_dat2$acclimtemp = as.factor(ctm_dat2$acclimtemp)
+ctm_dat2$dosage_ng.l = as.factor(ctm_dat2$dosage_ng.l)
+
+ctm_dat2$dosage_name <- factor(ctm_dat2$dosage_name, 
+                              levels = c("Control","Low",
+                                         "Med_Low", "High_Med",
+                                         "Highish", "Lethal")) #"STOCK", 
+
+```
+
+```{r summarize data, echo=FALSE, message=FALSE}
+ctm_sum <- ctm_dat2 %>% 
+  group_by(dosage_ng.l, stage) %>% 
+  summarize(mean_ctm = mean(ctm_c, na.rm=T),
+            sd_ctm = sd(ctm_c, na.rm=T),
+            mean_mass = mean(mass_g, na.rm=T),
+            sd_mass = sd(mass_g, na.rm=T),
+            mean_tl = mean(tl_mm, na.rm=T),
+            sd_tl = sd(tl_mm, na.rm=T),
+            nreps = n()) %>% 
+  data.frame()
+
+```
+  
+## Quick Visualization Plots
+```{r basic plots, echo=FALSE}
+
+# All Points
+ggplot(ctm_dat2, aes(x = dosage_ng.l, y=ctm_c, color = stage))+
+  geom_point(size=3, position = position_dodge(width = 0.1), alpha=0.3)+
+  geom_boxplot(data = ctm_dat2[ctm_dat2$stage=="juvenile",], color="salmon", fill=NA) + 
+  geom_boxplot(data = ctm_dat2[ctm_dat2$stage=="larvae",], color="steelblue3", fill=NA) + 
+  scale_color_manual(values=c("salmon","steelblue3"), name="Life Stage") +
+  ggtitle("White Sturgeon")+
+  xlab("Nominal Concentration (ng/L)") + ylab(expression("Critical Thermal Maxium " ( degree*C)) )+
+  theme_bw() + theme(legend.position=c(0.17,0.2), legend.box.background=element_rect(color="grey60"))
+
+# Summary plot by dosage - integer
+ggplot(ctm_sum, aes(x = dosage_ng.l, y = mean_ctm, color = dosage_ng.l, shape = stage))+
+  geom_point(size=4.0, position = position_dodge(width = 0.1))+ 
+  geom_errorbar(aes(ymin=(mean_ctm - sd_ctm), 
+                    ymax=(mean_ctm + sd_ctm),
+                    width=0.5))+
+  xlab("Bifenthrin Dosage (ng/l)") + ylab("CTM (?C)")+
+  theme_bw()
+
+# summary growth plot 
+ggplot(ctm_sum, aes(x = dosage_ng.l, y = mean_mass, color = stage))+
+  geom_point(size=4, position = position_dodge(width = 0.1))+ 
+  geom_errorbar(aes(ymin=(mean_mass - sd_mass), 
+                    ymax=(mean_mass + sd_mass),
+                    width=0.5))+
+  xlab("Bifenthrin Dosage") + ylab("Mean Mass (g)")+
+  theme_bw()
+
+```
+
+## Simple stats
+```{r simple ctm stats, fig.height=3, fig.width=3}
+
+# with all data
+larvae_dat <- ctm_dat2[ctm_dat2$stage=="larvae", ]
+juv_dat <- ctm_dat2[ctm_dat2$stage=="juvenile", ]
+
+  
+  lar_anova <- aov(ctm_c ~ dosage_ng.l, data = larvae_dat)
+  summary(lar_anova)
+  
+  juv_anova <- aov(ctm_c ~ dosage_ng.l, data = juv_dat)
+  summary(juv_anova)
+
+
+# remove highest dosages from larval df and repeat
+larvae_dat2 <- larvae_dat[!(larvae_dat$dosage_ng.l == "1000" ),]
+larvae_dat2 <- larvae_dat2[!(larvae_dat2$dosage_ng.l == "2000" ),]
+
+  lar_anova2 <- aov(ctm_c ~ dosage_ng.l, data = larvae_dat2)
+  summary(lar_anova2)
+
+
+# ah ah eeeh eeeh tukey tukey!
+tukey_lar <- TukeyHSD(lar_anova2)
+ plot(tukey_lar)
+ 
+tukey_juv <- TukeyHSD(juv_anova)
+ plot(tukey_juv)
+```

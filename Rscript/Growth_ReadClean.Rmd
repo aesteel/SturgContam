@@ -1,0 +1,53 @@
+---
+title: "Growth_ReadClean"
+author: "Anna Steel"
+date: "10/13/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+
+# set wd to the location of the project, not the script file
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+```
+
+
+## R Markdown
+
+### Read in various datasheets from different entries 
+```{r read data}
+GrowGS20_bif15C <- read.csv("rawData/GrowthMeasurements_GSComb.csv") 
+   # if this breaks, try "../rawData/[etc]"
+
+GrowWS20_bif15C <- read.csv("rawData/GrowthMeasurements_WSComb.csv")
+
+```
+
+### Covert into tidy data
+```{r clean data}
+Grow2020 = rbind(GrowGS20_bif15C, GrowWS20_bif15C)
+
+```
+
+### Plot 
+```{r basic plots, echo=FALSE}
+
+plotdat = Grow2020[Grow2020$dph<100,]
+
+ggplot(data = plotdat, aes(x=dph, y=mass_g, group=spp, color=spp)) + geom_point() +
+  facet_wrap(~nomconclab, scales="free_y") + 
+  #geom_smooth(method = "loess") +
+  theme_bw()
+
+ggplot(data = plotdat, aes(x=nomconclab, y=mass_g, group=spp, color=spp)) + geom_point() +
+  facet_wrap(~dph) + 
+  theme_bw()
+
+```
+
+### save to intermediate data for next step of analysis
+```{r save}
+write.csv(Grow2020, "intermedData/Growth_GSWS_202001013.csv")
+```

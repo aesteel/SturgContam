@@ -1,0 +1,74 @@
+---
+title: "ExposureMort"
+author: "Anna Steel"
+date: "10/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+library(tidyverse)
+
+```
+
+## R Markdown
+
+### Read in wide tabular mortality datasheet 
+```{r read data}
+mortGS20bif15C = read.csv("rawData/MortLog_PilotGS.csv")
+#read.csv("/Users/Anna/Google Drive/2020 GS Multiple Stressors/2020Expts/Expt Docs - Range Test 2020 GS/MortLog_PilotGS.csv")
+mortWS20bif15C = read.csv("rawData/MortLog_PilotWS.csv")
+  #read.csv("/Users/Anna/Google Drive/2020 GS Multiple Stressors/2020Expts/Expt Docs - Range Test 2020 WS/MortLog_PilotWS.csv")
+
+```
+
+### Covert wide data into tidy data
+```{r clean data}
+
+TurnData = function(x,ncolmetadat) { 
+     xNday = x[,c(1:ncolmetadat,grep(pattern="Nday", x=names(x))) ]
+     xMort = x[,c(1,grep(pattern="Mort", x=names(x))) ]
+     xExpt = x[,c(1,grep(pattern="Expt", x=names(x))) ]
+
+      xnl = pivot_longer(data=xNday, cols = (ncolmetadat+1):ncol(xNday),
+                         names_to="Day", values_to="NfishRem")
+      xml = pivot_longer(data=xMort, cols = 2:ncol(xMort), names_to="Day",
+                         values_to="Nmort")
+      xel = pivot_longer(data=xExpt, cols = 2:ncol(xExpt), names_to="Day",
+                         values_to="Nexptloss")
+
+    xl = cbind(xnl, xml[,3], xel[,3])
+    return(xl)
+}
+
+mortGS20bif15C_l = TurnData(mortGS20bif15C, ncolmetadat = 8)
+
+mortWS20bif15C_l = TurnData(mortWS20bif15C, ncolmetadat = 8)
+
+```
+
+### Plot mort by treatment-time
+```{r basic plots, echo=FALSE}
+
+mort2020 = rbind(mortGS20bif15C_l,mortWS20bif15C_l)
+
+  mort2020$dishID = factor(mort2020$dishID)
+  mort2020$Day = factor(mort2020$Day)
+  mort2020$spp = factor(mort2020$spp)
+
+ggplot(mort2020, aes(x=Day, y=Nmort)) + geom_point() + 
+  facet_grid(spp~treatment, scales="free") + theme_bw() + 
+  geom_smooth(method="lm")
+
+ggplot(mort2020, aes(x=Day, y=NfishRem)) + geom_point() + 
+  facet_grid(spp~treatment, scales="free") + theme_bw() + 
+  geom_smooth(method="lm")
+       
+```
+
+### save to intermediate data for next step of analysis
+```{r save}
+write.csv(mort2020, "intermedData/trash.csv") #ExposureMorts_GSWS_20201012.csv", row.names=F)
+```
