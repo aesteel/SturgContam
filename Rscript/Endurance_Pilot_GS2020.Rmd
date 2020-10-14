@@ -1,0 +1,95 @@
+---
+title: "Endurance_GS2020_PilotData"
+author: "Anna Steel"
+date: "10/14/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+library(tidyverse)
+library(chron)
+library(car)
+
+```
+
+## R Markdown
+
+### Read data
+```{r read data, echo=FALSE}
+endat = read.csv("rawdata/EnduranceData_PILOT_GS2020.csv")
+```
+
+### Clean data
+```{r clean, echo=FALSE}
+
+endat$trialtime2 = paste0("0", endat$trialtime)
+ endat$trialtime2[endat$trialtime2=="0na"] <- NA
+ 
+#endat$nomconc = factor(endat$nomconc)
+ 
+endat$trialtime2 = chron::times(as.character(endat$trialtime2))
+ endat$seconds = hours(endat$trialtime2)*60*60 + minutes(endat$trialtime2)*60 + seconds(endat$trialtime2)
+
+endat2 = endat[endat$assayID==2,]
+endat2$seconds[is.na(endat2$trialtime2)] <- 13800
+
+```
+
+### Plot
+```{r, plot data, echo=FALSE}
+
+# treatment vs time, drop non-fatigue fish
+ggplot(data = endat[!is.na(endat$nomconc) & endat$assayID==2,], 
+       aes(x=factor(nomconc), y=seconds, 
+           group=factor(nomconc), fill=factor(nomconc))) + 
+  geom_boxplot() + 
+  scale_fill_manual(values=c("white","green","yellow","red","pink","skyblue"))
+
+# treatment vs time, drop non-fatigue fish, points
+endat.nona = endat[!is.na(endat$nomconc) & !is.na(endat$seconds),]
+
+ggplot(data = endat.nona[!is.na(endat.nona$nomconc) & endat.nona$assayID==2,], 
+       aes(x=nomconc, 
+           y=seconds)) + #, group=factor(nomconc), fill=nomconc)) + 
+   geom_point() + geom_smooth(method="loess") #+
+  #scale_fill_manual(values=c("white","green","yellow","red","pink","skyblue"))
+
+# treatment vs time, include non-fatigue fish with time = assay time (13,800 seconds)
+endat2.nona = endat2[!is.na(endat2$nomconc) & !is.na(endat2$seconds),]
+ggplot(data = endat2.nona[!is.na(endat2.nona$nomconc) & endat2.nona$assayID==2,], 
+       aes(x=factor(nomconc), y=seconds, 
+           group=factor(nomconc), fill=factor(nomconc))) + 
+  geom_boxplot() + 
+  scale_fill_manual(values=c("white","green","yellow","red","pink","skyblue"))
+
+ggplot(data = endat2.nona[!is.na(endat2.nona$nomconc) & endat2.nona$assayID==2,], 
+       aes(x=nomconc, y=seconds))+   geom_point() + geom_smooth(method="loess") 
+
+# size vs time, scatter plot
+ggplot(data=endat[!is.na(endat$seconds) & endat$assayID==2,],
+       aes(x=TLcm, y=seconds, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_point(pch=21, size=3) + 
+  scale_fill_manual(values=c("white","green","yellow","red","pink","skyblue"))
+
+```
+
+### Stats Models
+```{r stats}
+
+# model, excluding the longest swimming fish
+mod1 = lm(seconds~nomconc + TLcm, data=endat, na.action="na.omit") 
+   summary(mod1)
+    #plot(mod1)
+   car::Anova(mod1)
+# No statistical differences between treatment groups with Anova type II
+ 
+# model including the longest swimming fish as swimming the length of the trial 
+ mod2 = lm(seconds~nomconc + TLcm, data=endat2, na.action="na.omit") 
+   summary(mod2)
+    #plot(mod2)
+   car::Anova(mod2)
+
+```

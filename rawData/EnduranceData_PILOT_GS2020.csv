@@ -1,0 +1,43 @@
+spp,pesticide,year,hatchdate,trialdate,dph,assayID,maxvel_mps,watertempC,fishID,trialtime,color,nomconc,TLcm,Massg,Notes
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,1,0:39:54,blue,1000,9.9,5.5,
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,2,0:42:48,none,,,,lost track of fish and order
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,3,0:43:48,none,,,,lost track of fish and order
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,4,0:43:40,red,500,9.8,4.9,initially missed but retroactively determined
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,5,0:43:03,pink,2000,9.7,4.7,
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,6,0:44:27,none,,,,lost track of fish and order
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,7,0:44:39,blue,1000,9.6,4.4,initially missed but retroactively determined
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,8,0:44:51,pink,2000,10.5,6.4,
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,9,0:45:02,none,,,,lost track of fish and order
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,10,0:45:13,none,,,,lost track of fish and order
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,11,0:04:20,red,500,10.4,5.6,
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,12,0:43:13,purple,0,10,5.7,
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,13,0:55:13,blue,1000,11.6,10.1,
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,14,0:55:23,purple,0,9.4,4.7,impinged at front of slanted screen; unsure how long it was impinged
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,15,0:58:47,none,,10.4,5.9,
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,16,na,none,,11.4,7.7,"swam until ended trial at 1:22:00, mostly in top cornder at screen"
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,na,na,none,,10.5,6.3,one of the ones initially missed
+GS,bif,2020,3/16/20,5/20/20,65,1,0.40,na,na,na,none,,10.1,5.6,one of the ones initially missed
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,1,0:35:05,purple,0,9.7,5.1,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,2,0:42:41,purple,0,9.5,4.6,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,3,0:43:00,red,500,9.7,6,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,4,0:43:10,green,5,9.9,6.2,mistaken for yellow initally; less compliant fish
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,5,0:45:06,green,5,10.6,6.3,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,6,0:50:30,green,5,11.3,7.9,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,7,0:56:12,yellow,100,10.5,6.8,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,8,1:08:43,blue,1000,11.7,8.5,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,9,1:12:36,pink,2000,11.3,7.4,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,10,1:12:58,pink,2000,11.3,6.5,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,11,1:13:36,yellow,100,10.2,5.4,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,12,1:25:07,yellow,100,11.7,8.7,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,13,1:37:40,blue,1000,9.7,5.3,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,14,1:52:03,yellow,100,11,6.6,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,15,2:01:45,pink,2000,10.3,5.2,"mild dorsal scute deformity, one of several observed"
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,16,2:07:10,blue,1000,11.5,7.9,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,17,2:39:40,red,500,10.2,5.7,
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,18,na,green,5,10.8,6,swam until ended trial at 3:50:00
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,19,na,purple,0,11,6.7,swam until ended trial at 3:50:00
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,20,na,red,500,11,5.8,swam until ended trial at 3:50:00
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,21,na,purple,0,11.8,7.8,swam until ended trial at 3:50:00
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,22,na,pink,2000,11.6,7.7,swam until ended trial at 3:50:00
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,23,na,blue,1000,10,4.8,swam until ended trial at 3:50:00
+GS,bif,2020,3/16/20,5/22/20,67,2,0.35,19.4,24,na,red,500,10.5,5.8,swam until ended trial at 3:50:00
