@@ -1,0 +1,55 @@
+---
+title: "LgDish_ObsData"
+author: "Anna Steel"
+date: "6/7/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+
+```
+
+## These data were collected to determine the extent of impact of the pesticide exposure doses.  
+  
+Each day of the experiment (beginning on day 3) three observers estimated the proportion of fish in each large exposure dish that were demonstrating signs of altered behavior.  
+"Altered Behavior" was considered a binary condition (altered or not), rather than estimating the degree of the effect. Generally, affected fish were less mobile and when they did move they had difficulty remaining upright, moved erratically, and/or convulsed into a 'C' shape. 
+  
+Data is plotted here by dosage (based on chem analysis, not nominal concentration), with a successive plots showing the change in proportion of fish affected with longer exposures.  
+
+```{r read data, echo=FALSE}
+obs <- read.csv("rawdata/Exposure_LrgDish_BehavScores.csv")
+
+chemanalysis <- read.csv("rawdata/ChemAnalysis_Bifenthrin_20200725_Summary.csv")
+```
+
+```{r clean data, echo=FALSE}
+obs.long = data.frame(pivot_longer(data=obs, cols = SB:TS, names_to="observer", values_to = "Percent", ))
+
+obs.long = merge(obs.long, chemanalysis[,c("spp","nomconc","calcConc")], by=c("spp","nomconc"), all.x=T)
+```
+
+```{r plots, echo=FALSE, fig.width=5, fig.height=2}
+## with color
+ggplot(data = obs.long, aes(x=calcConc, y= Percent, fill=factor(nomconc))) + 
+  geom_point(pch=21, size=2) + #, show.legend = F) + 
+  ylab("Proportion Affected") + 
+  xlab("Measured Bifenthrin Concentration (ng/L)") + 
+  scale_fill_manual("Bifenthron\nConc.", values = c("white","green3","yellow","red","lightpink","lightblue"))+
+  facet_grid(spp~TrialDay) +
+  theme_bw()
+
+## without color
+ggplot(data = obs.long, aes(x=calcConc, y= Percent)) + 
+  geom_point(pch=21, size=2, fill="grey60") + #, show.legend = F) + 
+  ylab("Proportion Affected") + 
+  xlab("MEasured Bifenthrin Concentration (ng/L)") + 
+ facet_grid(.~TrialDay) +
+  theme_bw() 
+```
+
