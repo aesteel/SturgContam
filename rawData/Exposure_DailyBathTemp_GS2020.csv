@@ -1,0 +1,11 @@
+spp,contaminant,year,targettemp,date,time,bath1tempC,bath2tempC,reservoir,notes
+GS,bif,2020,15,3/19/20,9:45,14.9,16.4,14.2,
+GS,bif,2020,15,3/19/20,11:15,15.5,15.5,14.2,"after adjustment in both baths,not reservoir"
+GS,bif,2020,15,3/19/20,15:15,16.4,16.3,15.3,dishes ~ 16.2 in both baths
+GS,bif,2020,15,3/19/20,15:20,15.7,15.7,15.3,"after adjustment in both baths,not reservoir"
+GS,bif,2020,15,3/20/20,9:23,14,14.6,14.4,
+GS,bif,2020,15,3/21/20,9:13,14,14.1,14,
+GS,bif,2020,15,3/21/20,11:07,14.4,14.5,14.5,
+GS,bif,2020,15,3/21/20,12:22,14.9,15.1,14.6,outside temp 62F
+GS,bif,2020,15,3/22/20,9:00,14.3,14.4,14.2,
+GS,bif,2020,15,3/23/20,9:00,14.4,14.5,14.2,
