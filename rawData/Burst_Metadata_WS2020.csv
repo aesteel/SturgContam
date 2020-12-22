@@ -1,0 +1,31 @@
+raspPI_filestart,spp,trialdate,hatchdate,dph,staff,contaminant,treattemp,nomconc,concname,rep,trialIID,accstart,trialstart,trailend,tunneltemp,tlmm,massg,burst,startside,burstTo,stalledAt,burstQual,stimQual,nFalseStart,Notes
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,1,L,5,13,okay,okay,0,
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,2,R,14,18,okay,okay,0,back to R
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,3,R,4,18,poor,poor,1,
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,4,L,24,25,good,good,0,"awesome burst, up down, along bottom (laser side)"
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,5,R,21,21,good,good,0,jumped into narrow slot
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,6,L,2,10,poor,okay,0,back to L
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,7,L,24,24,okay,poor,0,burst not at start
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,8,R,19,19,good,good,0,"1st burst up in chamber, then through tunnel"
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,9,L,24,25,good,good,1,
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,10,R,13,21,good,good,0,
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,11,L,22,24,good,good,0,
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,12,R,21,21,good,okay,0,burst up then out of chamber
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,13,L,7,25,good,okay,0,
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,14,R,20,20,good,good,0,
+WSContam_005ngR1_T09,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,1,T09,10:03,10:09,10:28,18.1,66.19,1.2627,15,L,24,25,good,good,0,
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,1,L,10,25,good,good,0,
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,2,R,0,16,poor,poor,0,
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,3,L,2,10,poor,good,2,
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,4,R,24,25,good,good,0,
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,5,L,6,20,okay,good,3,strange freeze at surface ~ 3/4 way through
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,6,R,16,23,good,good,0,
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,7,L,0,6,poor,good,0,back to L
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,8,L,18,18,good,good,0,
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,9,R,18,19,good,good,1,
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,10,L,10,17,good,good,0,
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,11,R,7,13,poor,okay,0,"bak to R; seems very fatigued, tail red/bleeding on fin top lobe"
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,12,R,6,15,okay,good,0,zig zag burst
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,13,L,0,13,poor,good,2,swimming up in chamber
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,14,R,9,16,okay,okay,0,
+WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,15,L,8,9,okay,poor,1,laser zero broken early by experimenter
