@@ -1,5 +1,5 @@
 ---
-title: "Exposure Ethovision Analysis"
+title: "Exposure Ethovision Analysis - Data Cleaning"
 author: "Anna Steel"
 date: "2/24/2021"
 output: html_document
@@ -12,11 +12,14 @@ library(tidyverse)
 library(readtext) # need this because the ethovision output .txt files have unusual encoding as UTF-16
 library(lme4)
 library(rethinking)
+library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
 
+knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
 ```
 
 ```{r utility functions}
 # calculate hypotenuse of triangle created by two xy locations
+
 distmov = function(x1,x2,y1,y2) { dm = sqrt((x1-x2)^2 + (y1-y2)^2); return(dm)}
 
 # calculate number steps between detections; use summarized dataset (5 pos/sec)
@@ -29,11 +32,14 @@ nstep = function(t2,t1, interv=0.2) {
 
 
 ```
-## Analysis for 2020 GS/WS Exposures
+
+
+## Prep Data for 2020 GS/WS Exposures
   
 Raw data is after manual data editing in ethovision, primarily for GS trials before addition of the white curtain.  
   
-For nearly all instances where there is missing data for fish it is because the fish was still. The ethovision program either lost the fish and didn't record any locations, or the program recorded a moving reflection while the fish was still. These later instances were removed via manual editing, along with other reflection recordings when the track jumped from the fish to the reflection and back again.   
+For nearly all instances where there is missing data for fish it is because the fish was still. The ethovision program either lost the fish and didn't record any locations, or the program recorded a moving reflection while the fish was still. These later instances were removed via manual editing, along with other reflection recordings when the track jumped from the fish to the reflection and back again.  
+
 Within the code I will create a second dataset where the missing data are replaced with DistanceMoved=0 to evaluate the % of time a fish was moving. In other places I will use the data with NA for missing data points, and compare this with an interpolation process between the previous and subsequent known points (ideally the fish is near the same location at those two timepoints)
 
 The data used here were tracked with the filter "MDM2 02 7,5 mm" in ethovision projects named "Exposure_GS_Pilot" and "Exposure_WS_Pilot".
@@ -115,10 +121,16 @@ summarize(group_by(WSdata, Trial, Replicate, ExposureHrs, Treatment), max(TrialT
 
 ```
 
-#### summarize the data into larger time-chunks to facilitate analysis and visualization (the large dataset doesn't move particularly fast...). Recorded with 30 positions per second, summarized those to 5 positions per second (each trial thus created 6000 positions over 20 minutes, if all data were collected).  
+#### summarize the data into larger time-chunks to facilitate analysis and visualization (the large dataset doesn't move particularly fast...). Recorded with 30 positions per second, summarized those to 5 positions per second (each trial thus created 6000 positions over 20 minutes, if all data were collected).    
+
+#### Also add datacolumn for distanced moved where NA is replaced with 0 
 
 ```{r cut data}
 GSdatasub = GSdata[,c("index","Trial","Arena","Replicate","ExposureHrs","Treatment","Spp","Contaminant","TrialTime_s","Xcent_mm","Ycent_mm","DistMoved_mm","Vel_mms","Meander_degmin","TurnAngle_deg","InZoneB","InZoneC"),]
+
+GSdatasub$DistMoved_mm.NA0 = GSdatasub$DistMoved_mm
+ GSdatasub$DistMoved_mm.NA0[is.na(GSdatasub$DistMoved_mm)] <- 0
+
 
 GSdatasub$cut = cut_width(GSdatasub$TrialTime_s, 0.2, boundary=0, labels=F)
 
@@ -128,6 +140,7 @@ GSdatasum = GSdatasub %>%
             Xcent = mean(Xcent_mm, na.rm=T),
             Ycent = mean(Ycent_mm, na.rm=T),
             MnDistMoved = mean(DistMoved_mm, na.rm=T),
+            MnDistMoved.NA0 = mean(DistMoved_mm.NA0, na.rm=T),
             SumDistMoved = sum(DistMoved_mm, na.rm=T),
             MnVel = mean(Vel_mms, na.rm=T),
             Meander = mean(Meander_degmin, na.rm=T),
@@ -140,6 +153,8 @@ GSdatasum = GSdatasub %>%
 
 
 WSdatasub = WSdata[,c("index","Trial","Arena","Replicate","ExposureHrs","Treatment","Spp","Contaminant","TrialTime_s","Xcent_mm","Ycent_mm","DistMoved_mm","Vel_mms","Meander_degmin","TurnAngle_deg","InZoneB","InZoneC"),]#,"ActivPerc","ActivState"),] # active removed because it's defined as the % of pixels moving in a dish at each time step. But with GS most of the movement was refletions not fish,so this isn't a useful netric this year. 
+WSdatasub$DistMoved_mm.NA0 = WSdatasub$DistMoved_mm
+ WSdatasub$DistMoved_mm.NA0[is.na(WSdatasub$DistMoved_mm)] <- 0
 
 WSdatasub$cut = cut_width(WSdatasub$TrialTime_s, 0.2, boundary=0, labels=F)
 
@@ -149,6 +164,7 @@ WSdatasum = WSdatasub %>%
             Xcent = mean(Xcent_mm, na.rm=T),
             Ycent = mean(Ycent_mm, na.rm=T),
             MnDistMoved = mean(DistMoved_mm, na.rm=T),
+            MnDistMoved.NA0 = mean(DistMoved_mm.NA0, na.rm=T),
             SumDistMoved = sum(DistMoved_mm, na.rm=T),
             MnVel = mean(Vel_mms, na.rm=T),
             Meander = mean(Meander_degmin, na.rm=T),
@@ -176,84 +192,15 @@ DataSum = DataSum[!(DataSum$Spp=="WS" & DataSum$Trial==5),]
  
 # reduce range of data to analyze; 3min of acclimation, 12 min of trial (180 - 900 s, should have 3600 data points per fish per trial)
  
-DataSumcut = DataSum[DataSum$TrialTime>(3*60) & DataSum$TrialTime<(15*60),]
+DataSumcut15 = DataSum[DataSum$TrialTime<(15*60),]
 
 # even smaller dataset to plot only the exposure hours that are comparable among the two species
-DataSum2496nom = DataSumcut[DataSumcut$ExposureHrs %in% c(24,96),]
+DataSum2496nom = DataSumcut15[DataSumcut15$ExposureHrs %in% c(24,96),]
 
 # add unique line id to this reduced dataset
 DataSum2496nom$lineID = 1:nrow(DataSum2496nom)
 
 ```
-
-#### interpolate missing datapoints - testing testing
-```{r interpolate attempt1}
-# about 6% of the timepoints in the reduced dataset are missing data at the MnDistMoved column (41,006 out of 669,600 total) because of removed data points in filtering
-# of those the vast majority are GS (40173 of 41006) because of the poorer recording conditions
-
-# here I remove all rows without X and Y centroids, and use my own function to calculate distance moved between the summarized centroids. I can't use this abbreviated dataset 
-
-DataSum2496nom_dist = DataSum2496nom %>%
-  group_by(uniqueID) %>%
-  subset(!is.na(MnDistMoved)) %>%
-  mutate(SumDistMoved.Abbrev = distmov(x1=lag(Xcent), x2=Xcent, y1=lag(Ycent), y2=Ycent) ) %>%
-  ungroup() %>%
-  data.frame()
-           
-# merge it back into the interpolated data 
-DS = merge(DataSum2496nom, DataSum2496nom_dist[, c("lineID","SumDistMoved.Abbrev")], by="lineID", all.x=T)
-
-
-
-# look at point differences when use these two methods; does it vary by species, treatment, or time?
-ggplot(DS, aes(x=factor(Treatment), y=(SumDistMoved - SumDistMoved.Abbrev) ) ) + 
-         geom_point() + geom_hline(yintercept=0, col="steelblue3") + 
-         facet_grid(ExposureHrs~Spp) + 
-         ylab("Difference in Distance Moved\nCalculated at 30fps vs 4fps centroids") + 
-         theme_bw()
-# removed 41,192 rows without data
-
-# A negative number indicates that the distance calculated from 5fps centroids is greater than the distance calculated from 30fps. This makes sense because if there is a missing point between two detections, the distance between those detections isn't included in the total estimate of distance by ethovision but with my code it is included and assumed to be a straight line (underestimate). However, sometimes the 5fps is smaller than 30 fps (positive point) because there was tortuosity in the path that was eliminated during abbreviation/summarization step going from 20-5fps. 
-
-# it seems as though the difference is larger for GS
-
-
-# look at differences in total distance for each trial 
-DS.totaldist = DS %>%
-  group_by(Spp, Treatment, ExposureHrs, Replicate, Arena) %>%
-  summarize(total.dist.30fps = sum(SumDistMoved, na.rm=T), 
-            total.dist.5fps = sum(SumDistMoved.Abbrev, na.rm=T)) %>%
-  data.frame()
-
-ggplot(subset(DS.totaldist, Spp=="GS"), aes(x=Replicate, y=total.dist.30fps)) + 
-  geom_point(pch=16, color="green3") + geom_point(aes(y=total.dist.5fps), pch=16, color="steelblue3") +
-  facet_grid(ExposureHrs ~ Treatment)
-
-ggplot(subset(DS.totaldist, Spp=="WS"), aes(x=Replicate, y=total.dist.30fps)) + 
-  geom_point(pch=17, color="green3") + geom_point(aes(y=total.dist.5fps), pch=16, color="steelblue3") +
-  facet_grid(ExposureHrs ~ Treatment)
-
-# 30fps is always longer total distance than 5fps but the trends seem consistent and there doesn't seem to be an obvious visual bias by treatment
-
-DS.distsd = DS.totaldist %>%
-  group_by(Spp, Treatment, ExposureHrs) %>%
-  summarize(sd.30fps = sd(total.dist.30fps, na.rm=T), 
-          sd.5fps = sd(total.dist.5fps, na.rm=T)) %>%
-  ungroup() %>%
-  data.frame()
-
-ggplot(DS.distsd, aes(x=factor(Treatment), y=sd.30fps)) + 
-  geom_point(pch=17, color="green3") + geom_point(aes(y=sd.5fps), pch=16, color="steelblue3") +
-  facet_grid(Spp ~ ExposureHrs) 
-# variance among trials is simliar for GS but slightly lower at 5fps, but for WS the trend isn't as clear. At 24hrs, the variance is higher with 5fps uexcept for the 2000 exposure, and at 96hrs its all over the board, but generally the 30fps is higher (100, 1000, 2000), but sometimes lower (1000) and sometimes the same (0, 5).  
-
-```
-## To summarize (8/18/2021) I've attempted to explore the usefulness of calculating distance moved from the 30fps dataset in ethovision, or calculating distance moved from the 5fps dataset after it has been condensed/sumarized. In the step for re-calculating distance after the fact, I've also used all sequential locations and assumed linear paths between them, even when there were substantial temporal gaps between detections. The results from this do not lead in a clear direction for continued analysis. The options are:   1) use Ethovision's estimated distance, and de-facto assume the fish is still when the track is lost (often true but not always)
-2) use distances calculated here, at 5 fps, but this feels unsatisfying because it is clear that this does lose some tortuosity (unclear whether that is real or erronious, but if we're trusting the software and post-processing then we must assume it's largely real). 
-3) re-jigger this code to calculate post-hoc distance moved for 30fps but for all sequential detections. This seems the most satisfying because it won't lose the tortuosity of the track but it will allow us to estimate an distance moved when the software loses a moving fish (if it is stationary it will also account for that). 
-
-- so before abbreviating the data to 5fps, I need to re-estimate missing distances between points, infill missing zone information (if I havent already), and keep estimates of velocity and turn angle/meander as is. Add a second column with 1/0 for points when data was moving or not, and consider all missing points as stationary for this (clear assumption to state in paper). Then analyze these four output variables for effects of treatment and time for each species (distance = activity, % time active = activity, turning or meander = directionality, center zone = thigmotaxis and boldness). Two four-panel plots to show results (raw and predicted? just raw?). 
-
 
 
 #### add measured concentrations (versus nominal)
@@ -265,516 +212,54 @@ DataSum2496 <- merge(DataSum2496nom, chemcsv, by.x=c("Spp","Treatment"), by.y=c(
 ```
 
 
+#### Evaluate for proper acclimation time - Distance
+```{r distance acclim test}
 
 
-#### Repeat the summarization with a dataset that has distance moved = 0 when there are NA
+acclimdat = DataSum2496
 
-```{r cut data NA0}
-GSdatasub.NA0 = GSdatasub
-GSdatasub.NA0$DistMoved_mm[is.na(GSdatasub.NA0$DistMoved_mm)] <- 0
- # replaces 499,963 missing datapoints under DistMoved_mm with '0'
-
-GSdatasum.NA0 = GSdatasub.NA0 %>%
-  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, Contaminant, cut) %>%
-  summarize(TrialTime = round(mean(TrialTime_s),1),
-            Xcent = mean(Xcent_mm, na.rm=T),
-            Ycent = mean(Ycent_mm, na.rm=T),
-            MnDistMoved = mean(DistMoved_mm, na.rm=T),
-            SumDistMoved = sum(DistMoved_mm, na.rm=T),
-            MnVel = mean(Vel_mms, na.rm=T),
-            Meander = mean(Meander_degmin, na.rm=T),
-            TurnAngle = mean(TurnAngle_deg, na.rm=T),
-            InZoneB = max(InZoneB), 
-            InZoneC = max(InZoneC) ) %>%
-  ungroup() %>%
-  data.frame()
+ acclimdat$acclim_window = cut(acclimdat$TrialTime, breaks=c(0,seq(120,840,120)), labels = seq(120,840,120) )
 
 
-WSdatasub.NA0 = WSdatasub
-WSdatasub.NA0$DistMoved_mm[is.na(WSdatasub.NA0$DistMoved_mm)] <- 0
- # replaces 162,110 missing datapoints under DistMoved_mm with '0'
-
-
-WSdatasum.NA0 = WSdatasub.NA0 %>%
-  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, Contaminant, cut) %>%
-  summarize(TrialTime = round(mean(TrialTime_s),1),
-            Xcent = mean(Xcent_mm, na.rm=T),
-            Ycent = mean(Ycent_mm, na.rm=T),
-            MnDistMoved = mean(DistMoved_mm, na.rm=T),
-            SumDistMoved = sum(DistMoved_mm, na.rm=T),
-            MnVel = mean(Vel_mms, na.rm=T),
-            Meander = mean(Meander_degmin, na.rm=T),
-            TurnAngle = mean(TurnAngle_deg, na.rm=T),
-            InZoneB = max(InZoneB), 
-            InZoneC = max(InZoneC) ) %>%
-  ungroup() %>%
-  data.frame()
-
-```
-```{r comb data NA0}
-DataSum.NA0 = rbind(GSdatasum.NA0, WSdatasum.NA0)
- DataSum.NA0$Trial = factor(DataSum.NA0$Trial) 
- DataSum.NA0$Replicate = factor(DataSum.NA0$Replicate) 
- DataSum.NA0$RepID = as.factor(paste0(DataSum.NA0$Treatment, "-", DataSum.NA0$Spp, "-", DataSum.NA0$Replicate))
- 
-# remove WS trial #5 (only 300 sec of data)
- 
-DataSum.NA0 = DataSum.NA0[!(DataSum.NA0$Spp=="WS" & DataSum.NA0$Trial==5),] 
- 
-# reduce range of data to analyze; 3min of acclimation, 12 min of trial (180 - 900 s, should have 3600 data points per fish per trial)
- 
-DataSumcut.NA0 = DataSum.NA0[DataSum.NA0$TrialTime>(3*60) & DataSum.NA0$TrialTime<(15*60),]
-
-# even smaller dataset to plot only the exposure hours that are comparable among the two species
-DataSum2496nom.NA0 = DataSumcut.NA0[DataSumcut.NA0$ExposureHrs %in% c(24,96),]
-
-```
-```{r chem analysis results NA0}
-chemcsv = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Bifenthrin_20200725_Summary.csv")
- chemcsv <- chemcsv %>% select(spp, nomconc, calcConc)
- 
-DataSum2496.NA0 <- merge(DataSum2496nom.NA0, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
-```
-
-
-
-## Exploratory Plots
-### Distance
-```{r distance plots, echo=F}
-
-## Summarize to take total distance (sum moved in a trial) for each fish replicates
-DataSum2496.dist = DataSum2496 %>%
-  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
+ tot_acclimdist = acclimdat[!is.na(acclimdat$acclim_window),] %>%
+  group_by(ExposureHrs, Treatment, Spp, RepID, acclim_window) %>%
   summarize(TotalfishDist = sum(SumDistMoved, na.rm=T)) %>%
   ungroup()  %>%
   data.frame()
 
-totfishdist_hist = ggplot(DataSum2496.dist, aes(x=TotalfishDist/10) ) + 
-  geom_histogram(bins=15) + 
-  facet_wrap(Treatment~Spp, labeller = labeller(
-    Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
-    #scales="free") +
-   theme_bw()
+acclimplot = ggplot(tot_acclimdist, aes(x=factor(acclim_window), y=TotalfishDist)) + geom_boxplot(aes(fill = factor(acclim_window)), alpha=.4 ) + 
+  scale_fill_manual(values=c("yellow", rep("white",6)))
 
-totfishdist = ggplot(DataSum2496.dist, 
-                           aes(fill=factor(Treatment), y=TotalfishDist/10, 
-                               x=factor(ExposureHrs) ) ) + 
-  geom_boxplot(outlier.size = .75) + 
-  facet_wrap(~Spp, labeller = labeller(
-    Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
-    #scales="free") +
-  ylab("Total Trial Distance (cm)") + 
-  xlab("Exposure Hours") +#("Bifenthrin Nominal Conc.") + 
-  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
-  theme_bw()
+acclimplot
 
-totfishdist
+acclimplot + facet_wrap(~Spp)
+
+acclimplot + facet_wrap(~Treatment)
+
+acclimplot + facet_wrap(~ExposureHrs)
 
 
- # try setting up a model for the CHANGE between 0 and target conc
- # arbitrarily compared each treatment from rep 1 to control from rep 1, etc. not from mean control value....this should matter
-DataSumContDiff.dist = DataSum2496.dist
-DataSumContDiff.dist$TreatmentNC = paste0("NC",DataSumContDiff.dist$Treatment)
-DataSumContDiff.dist = DataSumContDiff.dist %>%
-  select(-index, -Trial, -Arena,-RepID,-calcConc,-Treatment) %>%
-  pivot_wider(names_from=TreatmentNC, values_from=TotalfishDist) %>%
-  mutate(diff5 = NC5 - NC0,
-         diff100 = NC100 - NC0,
-         diff500 = NC500 - NC0,
-         diff1000 = NC1000 - NC0,
-         diff2000 = NC2000 - NC0) %>%
-  pivot_longer(cols=starts_with("diff"), 
-               names_to="Treatment",
-               names_prefix="diff",
-               values_to="cntrldiff",
-               values_drop_na=FALSE) %>%
-  select(Treatment, Replicate, ExposureHrs, Spp, cntrldiff)
-
-
-DataSumContDiff.dist <- merge(DataSumContDiff.dist, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
-
-DataSumContDiff.dist$Treatment = factor(DataSumContDiff.dist$Treatment, levels=c(5,100,500,1000,2000))
-
-  cntrlfishdist = ggplot(DataSumContDiff.dist, 
-                           aes(y=cntrldiff/10, 
-                               x=factor(Treatment) ) ) + 
-  geom_boxplot(outlier.size = .75) + 
-  facet_wrap(ExposureHrs~Spp, labeller = labeller(
-    Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
-    #scales="free") +
-  ylab("Change in Swimming Distance (cm) n\ treatment vs control") + 
-  xlab("Bifenthirin Nominal Conc") +
-  theme_bw()
-  
-  
- 
- # try setting up a model for the CHANGE between 24 and 96 hours
-DataSum2496.dist$ExposureHrsChr = paste0("ExpHr",DataSum2496.dist$ExposureHrs)
-DataSumChg.dist = DataSum2496.dist %>%
-  select(-index, -Trial, -Arena,-ExposureHrs) %>%
-  pivot_wider(names_from=ExposureHrsChr, values_from=TotalfishDist) %>%
-  mutate(chngdist = ExpHr96 - ExpHr24) 
-
-
-  chngfishdist.box = ggplot(DataSumChg.dist, 
-                           aes(y=chngdist/10, 
-                               x=factor(Treatment) ) ) + 
-  geom_boxplot(outlier.size = .75) + 
-  facet_wrap(~Spp, labeller = labeller(
-    Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
-    #scales="free") +
-  ylab("Change in Swimming Distance between 24 and 96hrs of exposure (cm)") + 
-  xlab("Bifenthirin Nominal Conc") +
-  theme_bw()
-  
-  chngfishdist.py = ggplot(DataSumChg.dist, 
-                           aes(y=chngdist/10, 
-                               x=log(calcConc+1), color=Spp ) ) + 
-  geom_point() + 
-  facet_wrap(~Spp, labeller = labeller(
-    Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
-    #scales="free") +
-  ylab("Change in Swimming Distance between 24 and 96hrs of exposure (cm)") + 
-  xlab("Bifenthirin Concentration (ng/L)") +
-  theme_bw()
-  
 ```
-```{r distance freqmodels, echo=F}
-qqnorm((DataSum2496.dist$TotalfishDist)); qqline((DataSum2496.dist$TotalfishDist))
-qqnorm(log(DataSum2496.dist$TotalfishDist)); qqline(log(DataSum2496.dist$TotalfishDist))
-
-#dist.lm = glm(TotalfishDist ~ Spp + Treatment + ExposureHrs + (1|RepID), data = DataSum2496.dist)
- #DataSum2496.dist$lnTreatment = factor(log(DataSum2496.dist$Treatment+1)) 
-dist.lm = lm(TotalfishDist ~ factor(Spp)+ factor(Treatment)*factor(ExposureHrs) , data = DataSum2496.dist)
-distspp.lm = lm(TotalfishDist ~ factor(Spp)*factor(Treatment) + factor(ExposureHrs) , data = DataSum2496.dist)
-
- plot(dist.lm)
- # plots look okay; slight bend in residual plot, normal okay
- 
- summary(dist.lm) # everything is significant except for expsure hrs when modeled with log(conc)
-   # effect of species is vastly stronger than anything else
- 
- TukeyHSD(aov(dist.lm))
-  # 2000 vs all other treatments are sig diff, no others (additive effect)
- TukeyHSD(aov(dist.lm))[[4]]
-  # interaction: 
-  # within 24hrs: 2000 vs 0,5,100, 500, and 1000 sig diff
-  # within 96hrs: 2000 vs 0,5, 100, 500 (not 1000) sig diff
-  # within treatment across hours: no significant differences
-```
-```{r distance Bayesmodels, echo=F}
-# try setting up the linear model in a bayesian form
-# using gaussian, and trying log transformed distance 
-
-DataSum2496_dist = DataSum2496.dist[,c("calcConc","ExposureHrs","Spp","TotalfishDist")]
-DataSum2496_dist$l_TotalfishDist = log(DataSum2496_dist$TotalfishDist)
-DataSum2496_dist$TotalfishDistDiv = DataSum2496_dist$TotalfishDist/1000
-DataSum2496_dist$l_calcConc = log(DataSum2496_dist$calcConc+1)
-DataSum2496_dist$l_calcConc2 = log(DataSum2496_dist$calcConc+1)^2
-
-DataSum2496_dist$SppDummy <- ifelse(DataSum2496_dist$Spp=="GS", 0,1)
-DataSum2496_dist$ExposeDummy <- ifelse(DataSum2496_dist$ExposureHrs=="24", 0,1)
-
-  
-# distspp.blm_lin = map2stan(
-#   alist(
-#     TotalfishDistDiv ~ dnorm(mu, sigma),
-#     mu  <- a + bt*(l_calcConc) + be*ExposeDummy + bs*SppDummy,
-#     a ~ dnorm(20,100),
-#     bt ~ dnorm(0,10),
-#     bs ~ dnorm(0,10),
-#     be ~ dnorm(0,10),
-#     sigma ~ dunif(0,10)
-#     ) ,
-#   data = DataSum2496_dist, iter = 2000, warmup = 500, chains = 1)
-# 
-# distspp.blm_add = map2stan(
-#   alist(
-#     TotalfishDistDiv ~ dnorm(mu, sigma),
-#     mu  <- a + bt*(l_calcConc) + bt2*(l_calcConc2) + be*ExposeDummy + bs*SppDummy,
-#     a ~ dnorm(20,100),
-#     bt ~ dnorm(0,10),
-#     bt2 ~ dnorm(0,10),
-#     bs ~ dnorm(0,10),
-#     be ~ dnorm(0,10),
-#     sigma ~ dunif(0,10)
-#     ) ,
-#   data = DataSum2496_dist, iter = 2000, warmup = 500, chains = 1)
-
-distspp.blm_int1 = map2stan(
-  alist(
-    TotalfishDistDiv ~ dnorm(mu, sigma),
-    mu  <- a + bt*(l_calcConc) + bt2*(l_calcConc2) + bts2*(SppDummy)*(l_calcConc2) + bs*SppDummy + be*ExposeDummy,
-    a ~ dnorm(20,100),
-    bt ~ dnorm(0,10),
-    bt2 ~ dnorm(0,10),
-    bts2 ~ dnorm(0,10),
-    bs ~ dnorm(0,10),
-    be ~ dnorm(0,10),
-    sigma ~ dunif(0,10)
-    ) ,
-  data = DataSum2496_dist, iter = 3000, warmup = 500, chains = 4)
+### there may be a very slight reduction in distance  moved in the 1st three minutes, but no behavioaral signal after that. Set acclimation time to 3 min.
 
 
-# distspp.blm_int2 = map2stan(
-#   alist(
-#     TotalfishDistDiv ~ dnorm(mu, sigma),
-#     mu  <- a + bt*(l_calcConc) + bts*(SppDummy)*(l_calcConc) + bt2*(l_calcConc2) + 
-#       bs*SppDummy + be*ExposeDummy,
-#     a ~ dnorm(20,100),
-#     bt ~ dnorm(0,10),
-#     bt2 ~ dnorm(0,10),
-#     bts ~ dnorm(0,10),
-#     bs ~ dnorm(0,10),
-#     be ~ dnorm(0,10),
-#     sigma ~ dunif(0,10)
-#     ) ,
-#   data = DataSum2496_dist, iter = 2000, warmup = 500, chains = 1)
-# 
-# 
-# distspp.blm_int3 = map2stan(
-#   alist(
-#     TotalfishDistDiv ~ dnorm(mu, sigma),
-#     mu  <- a + bt*(l_calcConc) + bt2*(l_calcConc2) + 
-#       bts*(SppDummy)*(l_calcConc) + 
-#       bts2*(SppDummy)*(l_calcConc) + 
-#       bs*SppDummy + be*ExposeDummy,
-#     a ~ dnorm(20,100),
-#     bt ~ dnorm(0,10),
-#     bt2 ~ dnorm(0,10),
-#     bts ~ dnorm(0,10),
-#     bts2 ~ dnorm(0,10),
-#     bs ~ dnorm(0,10),
-#     be ~ dnorm(0,10),
-#     sigma ~ dunif(0,10)
-#     ) ,
-#   data = DataSum2496_dist, iter = 2000, warmup = 500, chains = 1)
-#  # interactions at both the quadratic and non-quadratic make a poor model fit
+```{r remove acclim time} 
 
-distspp.blm_int4 = map2stan(
-  alist(
-    TotalfishDistDiv ~ dnorm(mu, sigma),
-    mu  <- a + bt*(l_calcConc) + bt2*(l_calcConc2) + bts2*(SppDummy)*(l_calcConc2) + 
-      bte2*(ExposeDummy)*(l_calcConc) + 
-      bs*SppDummy + be*ExposeDummy,
-    a ~ dnorm(20,100),
-    bt ~ dnorm(0,10),
-    bt2 ~ dnorm(0,10),
-    bts2 ~ dnorm(0,10),
-    bte2 ~ dnorm(0,10),
-    bs ~ dnorm(0,10),
-    be ~ dnorm(0,10),
-    sigma ~ dunif(0,10)
-    ) ,
-  data = DataSum2496_dist, iter = 2000, warmup = 500, chains = 1)
-
-
-plot(distspp.blm_add)
- #plot(distspp.blm_lin)
- plot(distspp.blm_int1)
- #plot(distspp.blm_int2)
- #plot(distspp.blm_int3)
- plot(distspp.blm_int4)
-precis(distspp.blm_add, prob = .95, digits=3)
- #precis(distspp.blm_lin, prob = .95, digits=3)
- precis(distspp.blm_int1, prob = .95, digits=3)
- #precis(distspp.blm_int2, prob = .95, digits=3)
- #precis(distspp.blm_int3, prob = .95, digits=3)
- precis(distspp.blm_int4, prob = .95, digits=3)
-plot(precis(distspp.blm_add, prob = .95))
- #plot(precis(distspp.blm_lin, prob = .95))
- plot(precis(distspp.blm_int1, prob = .95))
- #plot(precis(distspp.blm_int2, prob = .95))
- #plot(precis(distspp.blm_int3, prob = .95))
- plot(precis(distspp.blm_int4, prob = .95))
-
-compare(distspp.blm_add, distspp.blm_lin, distspp.blm_int1, distspp.blm_int2, distspp.blm_int3, distspp.blm_int4)
-
-
-# set up dataframe to plot posterior predictions
-preddat = expand.grid(l_calcConc=(seq(0,8,.01)), ExposeDummy = c(0,1), SppDummy = c(0,1))
-preddat$l_calcConc2 = preddat$l_calcConc^2
-
-# predict ofrom posteriors (on transformed scale)
-  WS_mu <- link(distspp.blm_int1, data = preddat[preddat$SppDummy==1,]) 
-  preddat$WS_mu_mn <- apply(WS_mu, 2, mean)
-  preddat$WS_PI05 = apply(WS_mu, 2, PI, .95)[1,]
-  preddat$WS_PI95 = apply(WS_mu, 2, PI, .95)[2,]
-  
-  GS_mu <- link(distspp.blm_int1, data = preddat[preddat$SppDummy==0,]) 
-  preddat$GS_mu_mn <- apply(GS_mu, 2, mean)
-  preddat$GS_PI05 = apply(GS_mu, 2, PI, .95)[1,]
-  preddat$GS_PI95 = apply(GS_mu, 2, PI, .95)[2,]
-  
-  # plot back-stransformed data
-  preddat$Spp <- ifelse(preddat$SppDummy==0,"GS","WS")
-  preddat$ExposureHrs <- ifelse(preddat$ExposeDummy==0,"24","96")
-  
-  preddatlong_GS = preddat[preddat$Spp=="GS",c("l_calcConc", "ExposeDummy", "SppDummy",
-                                               "l_calcConc2", "Spp", "ExposureHrs", 
-                                               "GS_mu_mn", "GS_PI05", "GS_PI95") ]
-   names(preddatlong_GS) = c("l_calcConc", "ExposeDummy", "SppDummy", "l_calcConc2",
-                             "Spp", "ExposureHrs", "mu_mn", "PI05", "PI95")
-   preddatlong_WS = preddat[preddat$Spp=="WS",c("l_calcConc", "ExposeDummy", "SppDummy",
-                                                "l_calcConc2", "Spp", "ExposureHrs",
-                                                "WS_mu_mn", "WS_PI05", "WS_PI95") ]
-   names(preddatlong_WS) = c("l_calcConc", "ExposeDummy", "SppDummy", "l_calcConc2",
-                             "Spp", "ExposureHrs", "mu_mn", "PI05", "PI95")
-    preddatlong = rbind(preddatlong_GS,preddatlong_WS)
-
-ggplot() + 
-  geom_point(data=DataSum2496_dist,#[DataSum2496_dist$Spp=="WS",], 
-             aes(x=(l_calcConc),                          
-                 y=TotalfishDistDiv*10, # puts this in meters
-                 color=factor(Spp))) + 
-  geom_line(data = preddatlong, aes(x=(l_calcConc), 
-                                y=mu_mn*10))+
-  geom_ribbon(data = preddatlong, aes(x=(l_calcConc), 
-                                  ymin=PI05*10, 
-                                  ymax=PI95*10), 
-              alpha=.4, col="grey90")+
-  facet_grid(Spp~ExposureHrs,labeller = labeller(
-    ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure"),
-    Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")) )+
-  scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
-  ylab("Total Distance Traveled (m)") + 
-  xlab("Bifenthrin Concentration (ng/L)") +
-  theme_bw()
-```
-### quadratic is critical, interaction of spp*quadratic is good, interaction of exposure time with either conc variable not a useful, and interactions of spp with both the simple and the quadratic conc term makes for poor SE estimates.  I also can review models if I use different data transformations (this one is linear transformation of concentration, but no transformation of distance traveled). 
-
-### predicted plots and contrasts
-```{r distance contrasts, echo=F}
-# pull posterior (distn of parameter estimates)
-postdist = extract.samples(distspp.blm_int1)
-
-# calculate effect of treatment, for each species, at 24hrs
-gamma.24GS = postdist$bt + postdist$bt2 
-gamma.24WS = postdist$bt + postdist$bt2 + postdist$bts2
-# calculate effect of treatment, for each species, at 96hrs (exposedummy=1)
-gamma.96GS = postdist$bt + postdist$bt2 + postdist$be
-gamma.96WS = postdist$bt + postdist$bt2 + postdist$bts2 + postdist$be
-
-# Can calc mean effect, as in rethinking textbook example for interactions, but less meaningful because it's a quadratic, so the effect changes given the treatment value
-## see page 236 from rethinking 2015 
-mean(gamma.24GS)
-mean(gamma.24WS)
-mean(gamma.96GS)
-mean(gamma.96WS)
-
-dens(gamma.24GS, xlab="quadratic interaction", col="green3", xlim=c(-2,4))
-dens(gamma.24WS, add=TRUE, col="steelblue3")
-dens(gamma.96GS, add=TRUE, col="darkblue")
-dens(gamma.96WS, add=TRUE, col="darkgreen")
-
-## pull predictions from model for plotting
-
-preddata.dist = expand.grid(
-
+DataSum2496 = DataSum2496[DataSum2496$TrialTime>(3*60),]
 
 ```
 
 
-
-
-### Distance with missing data replaced with 0 - after the fact I realized this should be identical. =) adding zero to a sum doesn't change it. 
-```{r distance plots NA0, echo=F}
-
-## Summarize to take total distance (sum moved in a trial) for each fish replicates
-DataSum2496.dist.NA0 = DataSum2496.NA0 %>%
-  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID) %>%
-  summarize(TotalfishDist = sum(SumDistMoved, na.rm=T)) %>%
-  ungroup()  %>%
-  data.frame()
-
-totfishdist.NA0 = ggplot(DataSum2496.dist.NA0, 
-                           aes(fill=factor(Treatment), y=TotalfishDist/10, 
-                               x=factor(ExposureHrs) ) ) + 
-  geom_boxplot(outlier.size = .75) + 
-  facet_wrap(~Spp, labeller = labeller(
-    Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
-    #scales="free") +
-  ylab("Total Trial Distance (cm)") + 
-  xlab("Exposure Hours") +#("Bifenthrin Nominal Conc.") + 
-  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
-  theme_bw()
-
-totfishdist.NA0
+#### write out cleaned dataframe for use in subsequent codes
+```{r write out data, echo=FALSE, eval=FALSE}
+getwd()
+write.csv(DataSum2496, "outputData/Exposure_Outputdata/Bifenthrin_2020_Cleaned_FullData.csv", row.names=F)
 ```
-```{r distance models NA0, echo=F}
-qqnorm((DataSum2496.dist.NA0$TotalfishDist))
-qqline((DataSum2496.dist.NA0$TotalfishDist))
-
-qqnorm(log(DataSum2496.dist.NA0$TotalfishDist))
-qqline(log(DataSum2496.dist.NA0$TotalfishDist))
 
 
-#dist.lm = glm(TotalfishDist ~ Spp + Treatment + ExposureHrs + (1|RepID), data = DataSum2496.dist)
- #DataSum2496.dist$lnTreatment = factor(log(DataSum2496.dist$Treatment+1)) 
-dist.lm.NA0 = lm(TotalfishDist ~ factor(Spp)+ factor(Treatment)*factor(ExposureHrs) , data = DataSum2496.dist.NA0)
-distspp.lm = lm(TotalfishDist ~ factor(Spp)*factor(Treatment) + factor(ExposureHrs) , data = DataSum2496.dist.NA0)
 
- plot(dist.lm.NA0)
- # plots look okay; slight bend in residual plot, normal okay
- 
- summary(dist.lm.NA0) # everything is significant except for expsure hrs when modeled with log(conc)
-   # effect of species is vastly stronger than anything else
- 
- TukeyHSD(aov(dist.lm.NA0))
-  # 2000 vs all other treatments are sig diff, no others (additive effect)
- TukeyHSD(aov(dist.lm.NA0))[[4]]
-  # interaction: 
-  # within 24hrs: 2000 vs 0,5,100, 500, and 1000 sig diff
-  # within 96hrs: 2000 vs 0,5, 100, 500 (not 1000) sig diff
-  # within treatment across hours: no significant differences
-```
- 
- 
-### Velocity 
-```{r velocity plots, echo=F}
+#### to be copied to other followup rmd files
 
-## Summarize movement velocity
- 
-DataSum2496.vel = DataSum2496 %>%
-  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID) %>%
-  summarize(MnVel = mean(MnVel, na.rm=T), npos = n()) %>%
-  ungroup()  %>%
-  data.frame()
-
-MoveVel.plot = ggplot(DataSum2496.vel, 
-                           aes(fill=factor(Treatment), y=MnVel, 
-                               x=factor(ExposureHrs) ) ) + 
-  geom_boxplot(outlier.size = .75) + 
-  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")), scales="free") +
-  ylab("Mean movement velocity (mm/s)") + 
-  xlab ("Exposure Hours") + 
-  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
-  theme_bw()
-```
-```{r velocity models, echo=F}
-vel.lm = lm(MnVel ~ factor(Spp)+ factor(Treatment)*factor(ExposureHrs) , data = DataSum2496.vel)
-velspp.lm = lm(MnVel ~ factor(Spp)*factor(Treatment)*factor(ExposureHrs) , data = DataSum2496.vel)
-
-velspp.lmm = lmer(MnVel ~ factor(Spp)*factor(Treatment)*factor(ExposureHrs)+ (1| RepID), data = DataSum2496.vel)
-
- plot(velspp.lmm)
- qqnorm(resid(velspp.lmm)); qqline(resid(velspp.lmm))
- # plots look okay; the tree-way interaction makes for a better distn of residuals
- 
- summary(velspp.lm) # everything is significant except for expsure hrs when modeled with log(conc)
-   # effect of species is vastly stronger than anything else
-   
-   TukeyHSD(aov(velspp.lm))[[4]]
-    # for WS, 2000 vs all other treatments are sig diff, and only one other (1000-100)
-    # for GS, no GS-GS concentrations were significantly different in this model
-   
-   TukeyHSD(aov(velspp.lm))[[5]]
-    # Ws-GS different at 24 and 69 hours, and WS-WS / GS-GS different at 24 & 96 hours; should do custom contrasts to publish because this is making all possible contrasts. Acutally, should fit in baysian model to publish and compare poterior predicted distribitions to compare. 
-  
-   TukeyHSD(aov(velspp.lm))[[6]]
-    ## if use the three-way interaction model, identify custom contrasts of interest. Thus applies to frequentist of bayesian analysis
-
-```
 
 
 ### Meander and Turn Angle
@@ -884,7 +369,7 @@ CenterC.plot = ggplot(DataSum2496.centC,
 
 ```
 
-These are some pretty good plots for WS. I think I'll use the distance moved (most intutive)
+These are some pretty good plots for WS. I think I'll use the distance moved (most intuitive)
 
 ```{r presentation plots}
 totfishdist
@@ -892,4 +377,104 @@ meanMeander.plot
 mnTurnangle.plot
 activefish
 CenterC.plot
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Old Code:
+
+Insert ~ ln200
+
+#### interpolate missing datapoints - testing testing fail
+```{r interpolate attempt1, eval=FALSE, include=FALSE}
+# about 6% of the timepoints in the reduced dataset are missing data at the MnDistMoved column (41,006 out of 669,600 total) because of removed data points in filtering
+# of those the vast majority are GS (40173 of 41006) because of the poorer recording conditions
+
+# here I remove all rows without X and Y centroids, and use my own function to calculate distance moved between the summarized centroids. I can't use this abbreviated dataset 
+
+DataSum2496nom_dist = DataSum2496nom %>%
+  group_by(uniqueID) %>%
+  subset(!is.na(MnDistMoved)) %>%
+  mutate(SumDistMoved.Abbrev = distmov(x1=lag(Xcent), x2=Xcent, y1=lag(Ycent), y2=Ycent) ) %>%
+  ungroup() %>%
+  data.frame()
+           
+# merge it back into the interpolated data 
+DS = merge(DataSum2496nom, DataSum2496nom_dist[, c("lineID","SumDistMoved.Abbrev")], by="lineID", all.x=T)
+
+
+
+# look at point differences when use these two methods; does it vary by species, treatment, or time?
+ggplot(DS, aes(x=factor(Treatment), y=(SumDistMoved - SumDistMoved.Abbrev) ) ) + 
+         geom_point() + geom_hline(yintercept=0, col="steelblue3") + 
+         facet_grid(ExposureHrs~Spp) + 
+         ylab("Difference in Distance Moved\nCalculated at 30fps vs 4fps centroids") + 
+         theme_bw()
+# removed 41,192 rows without data
+
+# A negative number indicates that the distance calculated from 5fps centroids is greater than the distance calculated from 30fps. This makes sense because if there is a missing point between two detections, the distance between those detections isn't included in the total estimate of distance by ethovision but with my code it is included and assumed to be a straight line (underestimate). Additionall;y, with this code any erroneous points that weren't filtered out successfully (likely because they didn't cause a distance to be recorded in the ethovision track, but the points were still present), the erroneous points are included in the interpolation and additional ines are drawn from the fish tothe cross-dish reflection and back. Argh. However, sometimes the 5fps is smaller than 30 fps (positive point) because there was tortuosity in the path that was eliminated during abbreviation/summarization step going from 20-5fps. 
+
+# it seems as though the difference is larger for GS, which makes sense if it's linked to poor detections, extra manual filtering, and both missing and erroneous points. 
+
+
+# look at differences in total distance for each trial 
+DS.totaldist = DS %>%
+  group_by(Spp, Treatment, ExposureHrs, Replicate, Arena) %>%
+  summarize(total.dist.30fps = sum(SumDistMoved, na.rm=T), 
+            total.dist.5fps = sum(SumDistMoved.Abbrev, na.rm=T)) %>%
+  data.frame()
+
+ggplot(subset(DS.totaldist, Spp=="GS"), aes(x=Replicate, y=total.dist.30fps)) + 
+  geom_point(pch=16, color="green3") + geom_point(aes(y=total.dist.5fps), pch=16, color="steelblue3") +
+  facet_grid(ExposureHrs ~ Treatment)
+
+ggplot(subset(DS.totaldist, Spp=="WS"), aes(x=Replicate, y=total.dist.30fps)) + 
+  geom_point(pch=17, color="green3") + geom_point(aes(y=total.dist.5fps), pch=16, color="steelblue3") +
+  facet_grid(ExposureHrs ~ Treatment)
+
+# 30fps is always longer total distance than 5fps but the trends seem consistent and there doesn't seem to be an obvious visual bias by treatment
+
+DS.distsd = DS.totaldist %>%
+  group_by(Spp, Treatment, ExposureHrs) %>%
+  summarize(sd.30fps = sd(total.dist.30fps, na.rm=T), 
+          sd.5fps = sd(total.dist.5fps, na.rm=T)) %>%
+  ungroup() %>%
+  data.frame()
+
+ggplot(DS.distsd, aes(x=factor(Treatment), y=sd.30fps)) + 
+  geom_point(pch=17, color="green3") + geom_point(aes(y=sd.5fps), pch=16, color="steelblue3") +
+  facet_grid(Spp ~ ExposureHrs) 
+# variance among trials is simliar for GS but slightly lower at 5fps, but for WS the trend isn't as clear. At 24hrs, the variance is higher with 5fps uexcept for the 2000 exposure, and at 96hrs its all over the board, but generally the 30fps is higher (100, 1000, 2000), but sometimes lower (1000) and sometimes the same (0, 5).  
+
+```
+
+```{r interpolation notes only, eval=FALSE, include=FALSE}
+
+## To summarize (8/18/2021) I've attempted to explore the usefulness of calculating distance moved from the 30fps dataset in ethovision, or calculating distance moved from the 5fps dataset after it has been condensed/sumarized. In the step for re-calculating distance after the fact, I've also used all sequential locations and assumed linear paths between them, even when there were substantial temporal gaps between detections. The results from this do not lead in a clear direction for continued analysis. The options are:   
+#1) use Ethovision's estimated distance, and de-facto assume the fish is still when the track is lost (often true but not always)  
+#2) use distances calculated here, at 5 fps, but this feels unsatisfying because it is clear that this does lose some tortuosity (unclear whether that is real or erronious, but if we're trusting the software and post-processing then we must assume it's largely real).  Also, upon a second review of the editing process, there were occational erroneous points left in as long as they didn't create long-distance movements. So with the ethovision distance estimate, erroneous points should not have a large effect. However, if I interpolate between all existing points then I'll be adding these long-distance erroneous movement to/from the reflection point BACK into the distance estimate. This is not correct, and likely more of a problem then the assumption that missing data = stationary fish. So this choice isn't preferable. 
+#3) re-jigger this code to calculate post-hoc distance moved for 30fps but for all sequential detections. This seems the most satisfying because it won't lose the tortuosity of the track but it will allow us to estimate an distance moved when the software loses a moving fish (if it is stationary it will also account for that). However, again, there is the3 issue with the poor detection/reflection and the limited editing. I think the editing is fine for if I use the ethovision distances, but maybe problematic if I interpolate. 
+
+#- so after all this days work, I think perhaps we go with the data we have, fill in the zeros for moving/not moving, fill in the zone ID for the last known location, and start the analysis. 
+#- Analysis will include four output variables for effects of treatment and time for each species: distance = activity index; % time active = activity index; turning or meander = directionality (body control?), center zone = thigmotaxis and boldness). Two four-panel plots to show results (raw and predicted? just raw?). 
 ```

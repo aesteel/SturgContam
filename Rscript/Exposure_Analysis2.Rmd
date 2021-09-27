@@ -1,0 +1,267 @@
+---
+title: "Exposure_Analysis2 - Exploratory Analysis"
+author: "Anna Steel"
+date: "9/3/2021"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readtext) # need this because the ethovision output .txt files have unusual encoding as UTF-16
+library(lme4)
+library(rethinking)
+library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
+
+knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
+```
+
+```{r utility functions, include=FALSE}
+# calculate hypotenuse of triangle created by two xy locations
+
+distmov = function(x1,x2,y1,y2) { dm = sqrt((x1-x2)^2 + (y1-y2)^2); return(dm)}
+
+# calculate number steps between detections; use summarized dataset (5 pos/sec)
+nstep = function(t2,t1, interv=0.2) {
+  if (t2-t1 < 0) stop('time steps backwards?')
+  nstep <- ( (t2-t1) / interv)
+  return(nstep)
+  }
+
+```
+
+
+## Read in Cleaned Data ("Exposure_Analysis1.Rmd")
+```{r read in clean data}
+DataSum2496 = read.csv("outputData/Exposure_Outputdata/Bifenthrin_2020_Cleaned_FullData.csv")
+```
+
+
+## Exploratory Plots for each metric (Total distance travelled, Mean velocity, Meander and Turn angle, Use of center zone (% time), Time Active, Full Rotations vs distance traveled) 
+  
+  
+### Distance  
+  
+```{r distance data, echo=F}
+
+## Summarize to take total distance (sum moved in a trial) for each fish replicate
+DataSum2496.dist = DataSum2496 %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
+  #summarize(TotalfishDist = sum(SumDistMoved, na.rm=T)) %>%
+  summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100)) %>%
+  ungroup()  %>%
+  data.frame()
+```
+
+```{r distance plots}
+totfishdist_hist = ggplot(DataSum2496.dist, aes(x=TotalfishDist_m) ) + 
+                     geom_histogram(bins=15) + 
+                     facet_wrap(Treatment~Spp, labeller = labeller(
+                         Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+ #scales="free") +
+                     theme_bw()
+
+totfishdist = ggplot(DataSum2496.dist, aes(fill=factor(Treatment), y=TotalfishDist_m, 
+                               x=factor(ExposureHrs) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_wrap(~Spp, labeller = labeller(
+                        Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),#)+
+                        scales="free") +
+                      ylab("Total Trial Distance (m)") + 
+                      xlab("Exposure Hours") +#("Bifenthrin Nominal Conc.") + 
+                      scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+                      theme_bw()
+
+totfishdist
+```
+
+```{r other ways of visualizing distance}
+
+ # look at the CHANGE between mean distance of control (mean for treatment-exposurehrs) and target conc (each individual)
+ 
+MeanDist0 = DataSum2496.dist %>%
+  subset(Treatment==0) %>%
+  group_by(Spp, ExposureHrs) %>%
+  summarize(mean0_dist = mean(TotalfishDist_m)) %>%
+  ungroup %>% data.frame
+DataSumDiff.dist = merge(DataSum2496.dist, MeanDist0, all.x=T)
+DataSumDiff.dist$DistDiff = DataSumDiff.dist$TotalfishDist_m - DataSumDiff.dist$mean0_dist
+
+
+  cntrlfishdist = ggplot(DataSumDiff.dist, 
+                         aes(y=DistDiff, x=factor(Treatment),fill=factor(Treatment) ) ) + 
+                       geom_hline(yintercept = 0, lwd=.6, linetype="dashed", color="red")+
+                       geom_boxplot(outlier.size = .75) + 
+                       facet_grid(ExposureHrs~Spp, labeller = labeller(
+                         Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                         ExposureHrs = c("24"="24 hours exposed","96"="96 hours exposed")))+
+                       ylab("Change in Swimming Distance (m)\n treatment vs control") + 
+                       xlab("Bifenthirin Nominal Conc") +
+                       scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+                       theme_bw()
+                          
+  cntrlfishdist
+
+  
+  
+# look at the change between 24 and 96 hours for each replicated individual
+ 
+DataSum2496.dist$ExposureHrsChr = paste0("ExpHr",DataSum2496.dist$ExposureHrs)
+DataSum2496.dist$lnCalcConc = log(DataSum2496.dist$calcConc+1)
+
+DataSumChg.dist = DataSum2496.dist %>%
+  pivot_wider(id_cols = c(RepID, Treatment, Spp, Replicate, calcConc, lnCalcConc), 
+              names_from = ExposureHrs, names_prefix="TotDistAt", 
+              values_from = TotalfishDist_m) %>%
+  mutate(chngdist = TotDistAt96 - TotDistAt24) %>%
+  data.frame
+
+
+
+  chngfishdist.box = ggplot(DataSumChg.dist, 
+                           aes(y=chngdist/10,  x=factor(Treatment),fill=factor(Treatment) ) ) +
+                   geom_hline(yintercept = 0, lwd=.6, linetype="dashed", color="red")+
+                   geom_boxplot(outlier.size = .75) + 
+                    facet_wrap(~Spp, labeller = labeller(
+                      Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
+                    ylab("Change in Swimming Distance\nfrom 24 to 96 hrs of exposure (m)") + 
+                    xlab("Bifenthirin Nominal Conc") +
+                    scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+                    theme_bw()
+  
+  chngfishdist.box
+  
+  
+  chngfishdist.py = ggplot(DataSumChg.dist, 
+                           aes(y=chngdist/10, x=log(calcConc+1), color=Spp ) ) + 
+                  geom_hline(yintercept = 0, lwd=.6, linetype="dashed", color="red")+
+                  geom_point() + 
+                  facet_wrap(~Spp, labeller = labeller(
+                    Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
+                  ylab("Change in Swimming Distance\nfrom 24 to 96 hrs of exposure (m)") + 
+                  xlab("log(Bifenthirin Concentration (ng/L))") +
+                  scale_color_manual(values=c("green3","grey60")) + 
+                  theme_bw()
+  
+  chngfishdist.py
+  
+  
+# do individuals consistently respond in the same way? Should I add a multilevel term for intercept or slope. Or both?
+  
+ggplot(DataSum2496.dist, aes(x=ExposureHrs, y=TotalfishDist_m, group=RepID, color=RepID)) + geom_point() + geom_line() + facet_grid(Spp~Treatment, scales="free") + theme(legend.position="none")
+# looks like there is often a trend, but not always. I think a random slope between the two time points would be really helpful. 
+
+ggplot(DataSum2496.dist, aes(x=ExposureHrs, y=TotalfishDist_m, group=RepID, color=Spp)) + geom_point() + geom_line() + facet_grid(Treatment~Replicate, scales="free") + theme_bw() + theme(legend.position="none")
+
+```
+
+### modelling for distance is in ExposureAnalysis3.rmd
+
+
+
+
+
+### Velocity 
+```{r velocity data, echo=F}
+
+## Summarize movement velocity
+ 
+DataSum2496.vel = DataSum2496 %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
+  summarize(MnVel = mean(MnVel, na.rm=T), npos = n()) %>%
+  ungroup()  %>%
+  data.frame()
+```
+
+```{r velocity plots}
+
+MoveVel.plot = ggplot(DataSum2496.vel, 
+                           aes(fill=factor(Treatment), y=MnVel, 
+                               x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")), scales="free") +
+  ylab("Mean movement velocity (mm/s)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+  theme_bw()
+
+MoveVel.plot
+```
+
+```{r other ways of visualizing velocity}
+
+ # look at the CHANGE between mean vel of control (mean for treatment-exposurehrs) and target conc (each individual)
+ 
+MeanVel0 = DataSum2496.vel %>%
+  subset(Treatment==0) %>%
+  group_by(Spp, ExposureHrs) %>%
+  summarize(mean0_Vel = mean(MnVel)) %>%
+  ungroup %>% data.frame
+
+DataSumDiff.Vel = merge(DataSum2496.vel, MeanVel0, all.x=T)
+
+DataSumDiff.Vel$VelDiff = DataSumDiff.Vel$MnVel - DataSumDiff.Vel$mean0_Vel
+
+
+  cntrlfishVel = ggplot(DataSumDiff.Vel, 
+                         aes(y=VelDiff/10, x=factor(Treatment),fill=factor(Treatment) ) ) + 
+                       geom_hline(yintercept = 0, lwd=.6, linetype="dashed", color="red")+
+                       geom_boxplot(outlier.size = .75) + 
+                       facet_grid(ExposureHrs~Spp, labeller = labeller(
+                         Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                         ExposureHrs = c("24"="24 hours exposed","96"="96 hours exposed")))+
+                       ylab("Change in Swimming Velocity\n treatment vs control") + 
+                       xlab("Bifenthirin Nominal Conc") +
+                       scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+                       theme_bw()
+                          
+  cntrlfishVel
+
+# look at the change between 24 and 96 hours for each treamtent-spp
+ 
+DataSum2496.vel$ExposureHrsChr = paste0("ExpHr",DataSum2496.vel$ExposureHrs)
+
+DataSumChg.Vel = DataSum2496.vel %>%
+  select(-index, -Trial, -Arena,-ExposureHrs) %>%
+  pivot_wider(names_from=ExposureHrsChr, values_from=MnVel) %>%
+  mutate(chngVel = ExpHr96 - ExpHr24) %>%
+  data.frame()
+
+
+  chngfishVel.box = ggplot(DataSumChg.Vel, 
+                           aes(y=chngVel/10,  x=factor(Treatment),fill=factor(Treatment) ) ) +
+                   geom_hline(yintercept = 0, lwd=.6, linetype="dashed", color="red")+
+                   geom_boxplot(outlier.size = .75) + 
+                    facet_wrap(~Spp, labeller = labeller(
+                      Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
+                    ylab("Change in Swimming Velocity\nfrom 24 to 96 hrs of exposure") + 
+                    xlab("Bifenthirin Nominal Conc") +
+                    scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+                    theme_bw()
+  
+  chngfishVel.box
+  
+  
+  chngfishVel.py = ggplot(DataSumChg.Vel, 
+                           aes(y=chngVel/10, x=log(calcConc+1), color=Spp ) ) + 
+                  geom_hline(yintercept = 0, lwd=.6, linetype="dashed", color="red")+
+                  geom_point() + 
+                  facet_wrap(~Spp, labeller = labeller(
+                    Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
+                  ylab("Change in Swimming Velocity\nfrom 24 to 96 hrs of exposure)") + 
+                  xlab("log(Bifenthirin Concentration (ng/L))") +
+                  scale_color_manual(values=c("green3","grey60")) + 
+                  theme_bw()
+  
+  chngfishVel.py
+  
+```
+
+
+
+
+
+
+
+### Meander and Turn Angle
