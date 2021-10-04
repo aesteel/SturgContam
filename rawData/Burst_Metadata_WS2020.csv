@@ -29,3 +29,441 @@ WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,
 WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,13,L,0,13,poor,good,2,swimming up in chamber
 WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,14,R,9,16,okay,okay,0,
 WSContam_005ngR3_T15,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,3,T15,12:40,12:45,13:03,18.8,65.72,1.3194,15,L,8,9,okay,poor,1,laser zero broken early by experimenter
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,1,L,2,17,poor,poor,2,"very agitaged, wants to swim up not out"
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,2,R,5,11,poor,okay,1,
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,3,L,4,10,poor,good,0,"stopped at 10, swam with crowder"
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,4,R,6,10,okay,good,0,penciling in chamber
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,5,L,7,8,good,good,0,
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,6,R,10,11,good,good,0,
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,7,L,3,21,good,good,1,still swimming up / pencilling frequently
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,8,,0,0,poor,poor,0,entered wrong start side to rasp pi - not valid swim 
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,9,R,19,19,good,good,0,
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,10,L,0,2,poor,good,3,swimming up into door
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,11,R,0,10,poor,poor,1,"swimming up, first gate skipped"
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,12,L,14,15,okay,poor,0,"delayed burst, fastest from 8-14, no stim"
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,13,R,2,10,poor,good,0,"pencil swimming, back to R"
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,14,R,0,17,okay,poor,0,"no response to stim, them swam out"
+WSContam_000ngR1_T10,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,1,T10,10:36,10:41,10:57,18.6,57.62,0.8214,15,L,0,2,poor,good,0,stopped swimming entirely at gate 2
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,1,R,10,13,good,good,0,jumpy
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,2,L,24,24,good,good,0,swim mostly at top
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,3,R,21,21,good,good,0,burst around chamber before bursting out into tunnel
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,4,L,0,6,poor,good,0,
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,5,L,0,3,poor,good,0,
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,6,R,6,17,okay,good,0,jumpy and sporadic
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,7,L,18,19,good,good,0,
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,8,R,6,7,okay,okay,0,
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,9,R,9,9,okay,okay,2,"strange, up into door many times"
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,10,L,4,14,okay,poor,0,
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,11,R,4,6,poor,okay,0,not respondoing to crowder well
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,12,R,21,22,good,good,2,"pinched 6 ties, late burst"
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,13,L,0,17,okay,good,0,"2 pinches, strange swim"
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,14,R,9,9,good,good,0,
+WSContam_000ngR2_T11,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,2,T11,11:02,11:07,11:25,18.3,61.64,1.0138,15,L,5,12,poor,good,0,caudal fin bleeding
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,1,R,7,16,okay,good,0,
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,2,L,6,6,okay,good,1,fast gilling
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,3,L,6,7,good,good,0,
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,4,R,5,7,okay,good,1,
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,5,R,0,6,poor,good,0,
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,6,L,5,14,okay,good,0,second burst 10-13 when put in crowder
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,7,R,4,5,okay,good,0,
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,8,R,7,15,good,good,0,
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,9,L,11,16,good,good,0,
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,10,R,5,5,poor,good,0,delay 3-45 seconds between bursts due to laser problems
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,11,R,5,15,good,good,0,body pinch
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,12,L,7,11,good,good,0,
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,13,R,7,7,good,good,0,
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,14,R,3,10,okay,good,0,
+WSContam_000ngR3_T12,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,0,000ng,3,T12,11:30,11:36,11:55,18.2,50.07,0.5628,15,L,15,16,good,good,0,
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,1,R,10,21,good,good,0,
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,2,L,11,14,good,good,0,
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,3,R,12,19,good,good,1,
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,4,L,12,18,good,good,0,
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,5,R,0,2,poor,okay,0,penciled at start gate; r/l with raspberry pi might not be right
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,6,L,10,23,good,good,0,r/l with raspberry pi might not be right
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,7,L,2,4,poor,okay,0,r/l with raspberry pi might not be right
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,8,L,8,13,okay,good,1,
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,9,R,8,13,good,good,0,
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,10,L,10,14,good,good,3,"refusing to burst, swimming upwards"
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,11,R,14,18,good,good,0,
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,12,L,11,1,good,good,1,
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,13,R,10,18,good,good,0,
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,14,L,13,19,good,good,1,
+WSContam_005ngR2_T13,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,5,005ng,2,T13,12:01,12:06,12:24,18.5,54.33,0.6419,15,R,8,11,good,good,0,
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,1,L,24,25,good,good,0,
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,2,R,10,13,good,good,0,burst last few gates too
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,3,L,11,11,good,good,0,abrupt stop and reversal at end of burst
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,4,R,6,8,okay,okay,0,
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,5,R,24,25,good,good,0,
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,6,L,13,13,okay,good,0,
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,7,R,19,20,good,good,0,
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,8,L,24,25,good,good,0,hard pinch
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,9,R,2,16,poor,good,0,"burst up and down, not straight"
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,10,L,5,9,okay,good,0,tail is red
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,11,R,0,5,poor,good,0,not a directed burst
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,12,R,5,9,poor,good,1,penciling in tunnel and post-burst chamber
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,13,L,9,15,okay,good,0,
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,14,R,4,17,okay,good,0,"high in water column, 'bouncy' burst"
+WSContam_100ngR1_T16,WS,7/15/20,5/28/20,48,"SB, AES",bif,15,100,100ng,1,T16,13:54,13:59,14:16,18,55.39,0.6976,15,L,9,16,okay,good,0,
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,1,L,6,16,okay,good,1,disoriented before burst
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,2,R,8,17,okay,okay,0,very active in chamber
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,3,L,5,13,okay,good,0,up and down burst
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,4,R,4,17,okay,good,1,
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,5,L,10,13,okay,good,0,up and down burst
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,6,R,4,10,okay,good,0,"C-start in chamber, butslow swim out"
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,7,L,6,13,okay,good,0,
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,8,R,9,11,good,good,0,upside down but not LOE
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,9,L,5,10,okay,good,1,"harder pinch, still limited reaction"
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,10,R,7,14,good,good,0,"harder pinch, penciling / tail propring in back corner of chamber"
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,11,L,6,8,okay,good,0,
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,12,R,12,14,good,good,0,up and down burst
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,13,L,2,7,poor,good,0,
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,14,R,12,16,good,good,0,straight along bottom
+WSContam_500ngR2_T17,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,2,T17,10:34,10:40,10:58,18.7,69.96,1.3568,15,L,9,14,good,good,0,
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,1,R,6,13,good,good,0,angular swim straigh to surface at 6
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,2,L,10,12,poor,good,1,"1st gate broken by door, thus called burst poor (else was good)"
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,3,L,11,12,good,good,0,
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,4,R,17,18,good,good,1,
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,5,L,13,17,good,good,0,circle in chamber befor burst
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,6,R,10,15,good,good,0,
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,7,L,15,17,good,good,0,
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,8,R,5,10,good,good,0,
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,9,R,8,12,good,good,0,straight burst
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,10,L,17,17,good,good,0,upside down but not LOE
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,11,R,10,14,good,good,0,straighter
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,12,L,0,6,poor,poor,1,"penciled on corks, lazy swim"
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,13,L,12,1,good,good,0,angled upwards at start of burst
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,14,R,4,11,poor,okay,1,"false start, wedged between cork and door"
+WSContam_500ngR3_T18,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,500,500ng,3,T18,11:00,11:05,11:22,18.1,63.58,0.9783,15,L,17,19,good,good,0,pretty straight
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,1,L,8,10,okay,good,0,"scute maybe got stuck on door on way out, stuttered"
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,2,R,4,10,poor,okay,0,
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,3,L,6,21,good,okay,0,
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,4,R,6,12,good,good,0,
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,5,L,14,16,good,good,0,
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,6,R,6,9,okay,okay,0,
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,7,R,10,22,good,good,0,agitaged in chamber
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,8,L,0,9,poor,poor,0,
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,9,R,4,9,okay,good,0,less responsive to stimulus
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,10,L,6,15,okay,good,1,zig-zag erratic burst
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,11,R,24,2,good,good,0,awesome straight burst
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,12,L,0,18,poor,poor,0,"delayed burst, fastest from 9-16 "
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,13,R,0,14,poor,okay,1,
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,14,L,12,14,good,good,0,
+WSContam_100ngR2_T19,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,2,T19,11:25,11:30,11:48,18.1,69.59,1.5144,15,R,11,15,good,good,0,
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,1,R,24,25,good,good,0,"hard pinch, computer readig from L, no valid data?"
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,2,L,0,19,poor,okay,0,
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,3,R,11,19,okay,good,2,agitated in chamber
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,4,L,2,9,poor,good,0,
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,5,R,4,17,poor,good,0,2nd burst from 5-8
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,6,L,8,16,good,good,0,not too responsive
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,7,R,18,22,good,good,2,"pinched middle of body, delayed burst"
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,8,L,0,2,poor,good,0,
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,9,L,0,14,poor,good,0,"top lobe of caudal fin red, fatigued fish = 3 min break befor next burst"
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,10,R,0,21,poor,good,0,swam but no burst; hard pinch
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,11,L,0,11,poor,good,0,"no burst, swimming normally"
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,12,R,4,16,okay,good,1,up and down swimming
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,13,L,6,19,okay,good,0,up and down swimming
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,14,R,8,17,okay,good,0,"proper behavior, just not fast. weird"
+WSContam_100ngR3_T20,WS,7/16/20,5/28/20,49,"SB, AES",bif,15,100,100ng,3,T20,11:57,12:04,12:26,18,62.3,1.0861,15,L,12,17,good,good,0,"delayed burst, fastest from 6-12"
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,1,L,5,14,okay,okay,0,
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,2,R,2,3,poor,poor,0,"no pinch, door opened too soon"
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,3,L,0,4,poor,poor,0,"burst prior to this one, not recorded"
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,4,L,0,9,poor,poor,1,"burst nto door, then out"
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,5,R,3,9,okay,okay,0,"good pinch, poor alignment"
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,6,R,2,4,okay,good,0,
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,7,L,2,5,okay,good,0,"burst prior to this one, not recorded"
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,8,R,0,6,poor,good,0,fatigued; extra three min rest prior to this
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,9,R,4,15,poor,good,2,
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,10,L,7,18,good,good,1,
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,11,R,7,14,good,good,0,
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,12,L,0,2,poor,okay,0,"no response to stim, mild redness on tail"
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,13,L,0,4,poor,none,0,door opened early
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,14,R,2,5,poor,good,0,zig-zag start
+WSContam_500ngR4_T21,WS,7/17/20,5/28/20,50,AES,bif,15,500,500ng,4,T21,8:18,8:23,8:46,18.6,68.4,1.2619,15,NA,NA,NA,NA,NA,NA,didn't run this trial
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,1,L,,20,poor,poor,0,missed pinch
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,2,R,,17,poor,poor,0,missed pinch
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,3,L,,0,poor,poor,0,missed pinch
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,4,R,,15,poor,poor,0,missed pinch
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,5,L,,21,poor,poor,0,
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,6,R,,19,poor,poor,0,
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,7,L,,17,poor,poor,0,chased with tweezers but still not much response
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,8,R,,22,okay,okay,0,
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,9,L,,23,poor,poor,1,
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,10,R,,18,okay,okay,0,punched again at gate 5
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,11,R,2,21,okay,good,0,not very responsive even with good pinch
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,12,L,4,24,good,good,1,
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,13,R,6,24,good,good,0,zig-zag burst
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,14,L,6,24,good,good,0,
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,15,R,7,18,okay,okay,0,
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,16,L,12,19,okay,okay,0,"bonus, reps 1-3 were missed pinches"
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,17,R,5,22,good,good,1,bonus
+WSContam_005ngR4_T22,WS,7/17/20,5/28/20,50,AES,bif,15,5,005ng,4,T22,9:02,9:07,NA,18.3,61.8,1.0691,18,L,2,6,poor,okay,0,bonus
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T23,9:46,9:51,10:09,18.1,64.44,1.1567,1,R,4,20,good,good,0,
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T23,9:46,9:51,10:09,18.1,64.44,1.1567,2,L,6,11,good,good,1,user tripped first laser
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T23,9:46,9:51,10:09,18.1,64.44,1.1567,3,R,8,14,good,good,0,
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T23,9:46,9:51,10:09,18.1,64.44,1.1567,4,L,0,4,poor,poor,1,
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T23,9:46,9:51,10:09,18.1,64.44,1.1567,5,L,0,16,poor,poor,1,escaped acclimation chamber without true stimulus
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T23,9:46,9:51,10:09,18.1,64.44,1.1567,6,R,9,16,good,good,0,
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T23,9:46,9:51,10:09,18.1,64.44,1.1567,7,L,0,6,poor,good,0,
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T23,9:46,9:51,10:09,18.1,64.44,1.1567,8,L,0,4,okay,poor,0,
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T22,9:46,9:51,10:09,18.1,64.44,1.1567,9,R,2,6,okay,okay,0,penciling in acclimation chamber
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T23,9:46,9:51,10:09,18.1,64.44,1.1567,10,R,9,12,good,good,0,"fatigued, proped up, rapid breathing"
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T23,9:46,9:51,10:09,18.1,64.44,1.1567,11,L,1,3,poor,good,0,
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T23,9:46,9:51,10:09,18.1,64.44,1.1567,12,L,3,15,okay,good,0,strakght up to 3
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T23,9:46,9:51,10:09,18.1,64.44,1.1567,13,R,0,4,poor,poor,0,
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T23,9:46,9:51,10:09,18.1,64.44,1.1567,14,R,7,18,good,good,0,
+WSContam_000ngR4_T23,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,4,T23,9:46,9:51,10:09,18.1,64.44,1.1567,15,L,3,16,okay,okay,1,
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,1,R,6,10,good,good,0,
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,2,L,0,12,poor,good,0,
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,3,R,2,4,poor,okay,0,
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,4,R,19,19,good,good,1,
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,5,L,3,7,good,good,0,
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,6,R,13,23,good,good,0,
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,7,L,0,3,poor,poor,0,"stopped @ 3, pinched again, swam to 7"
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,8,R,24,25,good,good,0,
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,9,L,3,8,okay,good,0,
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,10,R,0,7,poor,poor,0,
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,11,L,24,25,good,good,1,user broke 1st laser
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,12,R,0,6,poor,poor,0,
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,13,R,8,16,okay,okay,0,pinched in tunnel after missed in chamber
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,14,L,20,25,good,good,0,
+WSContam_100ngR4_T24,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,4,T24,10:12,10:17,10:35,18.2,60.61,0.9242,15,R,16,16,good,good,1,struggle to pinch
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,1,R,10,25,good,good,0,
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,2,L,12,24,good,good,0,
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,3,R,13,23,good,good,0,
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,4,L,10,19,good,poor,0,
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,5,R,7,11,okay,poor,0,
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,6,L,6,20,good,good,1,generally a cooperative fish so far
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,7,R,21,21,okay,okay,1,"swam along bottom consistently, missed gates"
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,8,L,24,25,good,good,0,
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,9,R,12,24,good,good,0,
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,10,L,11,18,okay,okay,0,2nd stim ~ 2 or 3
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,11,R,0,6,okay,good,0,
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,12,R,0,6,poor,good,0,gilling rapidly
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,13,R,9,13,good,good,0,
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,14,L,6,13,okay,good,1,
+WSContam_100ngR5_T25,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,5,T25,10:39,10:45,11:02,18.2,61.27,1.0821,15,R,11,19,okay,good,0,"delayed burst, fastest from 5-11"
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,1,L,0,4,poor,good,0,not cooperative
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,2,L,5,6,good,good,0,
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,3,R,0,13,okay,good,0,burst straight up
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,4,L,4,10,okay,good,0,
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,5,R,6,8,okay,good,0,"burst up, not prolonged"
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,6,R,0,11,poor,good,0,
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,7,L,8,13,good,good,0,user may have broken first laser
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,8,R,6,12,good,good,0,
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,9,L,3,5,good,good,0,
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,10,L,5,6,okay,good,0,
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,11,R,5,10,good,good,1,"burst are not long, but are quick"
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,12,R,3,13,okay,good,0,burst up into door then slipped back under door
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,13,L,7,25,good,good,0,straight(er)
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,14,R,0,6,poor,good,0,burst into gate
+WSContam_000ngR5_T26,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,5,T26,11:06,11:11,11:28,18.2,70.09,1.3428,15,R,5,7,good,good,0,
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,1,R,5,25,good,good,0,
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,2,L,12,13,good,good,0,
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,3,R,8,24,good,good,0,second burst from 13-24
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,4,L,0,5,poor,good,0,
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,5,L,22,22,good,good,0,"fast, along bottom, missed some gates"
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,6,R,10,11,good,good,0,
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,7,L,16,16,good,good,0,champ!
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,8,R,2,14,poor,poor,1,missed pinch
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,9,L,0,4,poor,good,0,
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,10,L,13,13,good,good,0,
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,11,R,14,18,good,good,0,
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,12,L,17,17,good,good,0,
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,13,R,15,19,good,good,0,"fatigued, red tail"
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,14,L,24,25,good,good,0,
+WSContam_500ngR5_T27,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,5,T27,11:32,11:37,11:55,18.1,66.22,1.3569,15,R,8,15,good,good,0,"up and down burst, then side to side"
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,1,L,NA,NA,NA,NA,NA,wrong side recorded with raspberry pi
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,2,R,7,24,good,good,0,
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,3,L,0,16,poor,good,0,stuck between door brace and corks
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,4,R,3,18,poor,okay,1,swimming up
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,5,L,5,14,okay,good,0,
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,6,R,0,15,poor,good,0,"not responsive to stimulus, swimming up"
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,7,L,5,13,okay,good,1,swimming upsidedown
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,8,R,4,16,okay,good,0,
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,9,L,0,8,poor,good,0,penciling
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,10,L,0,10,poor,good,0,penciling
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,11,R,5,17,okay,good,0,
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,12,L,5,23,okay,good,0,up and down burst
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,13,R,0,17,poor,good,0,
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,14,L,6,19,okay,good,1,
+WSContam_005ngR5_T28,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,5,T28,11:57,12:02,12:19,18.2,69.78,1.4613,15,R,0,8,poor,good,0,writhing not bursting
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,1,R,24,25,good,good,0,multiple bursts
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,2,L,10,18,good,good,0,
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,3,R,24,25,good,good,0,"slowed ~ 14, up and down swimming"
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,4,L,14,14,okay,good,0,delayed because hit door
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,5,R,13,22,good,good,0,
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,6,L,20,24,good,good,0,double burst
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,7,R,24,25,good,good,0,
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,8,L,19,21,good,good,0,
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,9,R,24,25,good,good,0,
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,10,L,20,20,good,poor,0,delayed burst
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,11,R,12,15,good,good,0,penciled for first time
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,12,L,24,25,good,good,0,
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,13,R,12,20,good,good,0,
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,14,L,24,25,good,good,0,
+WSContam_100ngR6_T29,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,100,100ng,6,T29,12:47,12:52,13:09,18.4,64.37,1.7108,15,R,24,25,good,good,0,
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,1,R,7,15,good,good,0,swimming up
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,2,L,9,19,good,good,0,
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,3,R,24,25,good,good,0,"prinched hard, great burst"
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,4,L,24,25,good,poor,1,"sped up through tunnel, burst on own"
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,5,R,6,18,good,good,1,gilling rapidly in chamber
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,6,R,8,10,okay,okay,0,previous burst run but not recorded; tail bruised from dorsal down
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,7,L,0,4,poor,good,0,
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,8,R,24,25,good,good,0,straight into end chamber
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,9,L,24,25,good,good,0,"up from 0-3, down from 3-5, straight to end while speeding up"
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,10,R,11,11,good,good,0,tired?
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,11,L,22,22,good,good,0,
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,12,R,7,12,okay,okay,0,
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,13,L,18,18,good,good,0,
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,14,R,17,17,good,good,0,"double burst, started up into door, down, then fastest from 5-17"
+WSContam_500ngR6_T30,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,500,500ng,6,T30,13:14,13:19,13:35,18.1,73.3,1.7077,15,NA,NA,NA,NA,NA,NA,ran one trial above without recording
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,1,L,0,14,poor,good,1,swam into gate
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,2,R,4,7,okay,good,0,swam up not out
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,3,R,3,6,good,good,0,fast but short
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,4,L,4,6,good,good,0,good but short
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,5,L,5,7,good,good,0,still swimming up with most bursts
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,6,R,5,7,okay,good,0,burst into chamber then out into tunnel
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,7,R,5,9,good,good,0,
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,8,L,4,6,good,good,0,
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,9,L,0,6,poor,okay,0,"pinched again from 5-11, stopped at 11 and not responsive"
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,10,R,5,11,good,good,0,3 minute break before this burst
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,11,L,2,4,poor,good,0,"pencilled at 4, not responsive"
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,12,L,0,7,poor,good,0,"pencilled at 2, not responsive"
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,13,R,3,14,okay,good,1,"pinched midway up body, gentler; longer swim"
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,14,L,3,7,okay,good,0,
+WSContam_000ngR6_T31,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,0,000ng,6,T31,13:42,13:47,14:07,18.2,67.2,1.2176,15,R,0,7,poor,good,0,"LOE in chamber, very little response"
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,1,L,5,20,okay,good,2,swimming back into chamber instead of our into tunnel
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,2,R,0,11,poor,poor,0,
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,3,L,2,10,okay,good,0,penciling at 10
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,4,R,0,13,poor,good,0,upside down in chamber
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,5,L,3,24,good,good,0,surface swimming to end
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,6,R,3,16,good,good,1,not very fast
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,7,L,4,20,good,good,0,
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,8,R,3,19,good,good,0,
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,9,L,4,5,good,good,0,bursting out ofchamber then up
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,10,L,3,17,good,good,0,
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,11,R,3,18,okay,good,0,
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,12,L,2,17,okay,good,0,"stim again at 5, swam to 12, handled from 17"
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,13,R,2,16,good,good,0,"up, like nearly all bursts so far"
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,14,L,3,16,okay,good,0,"burst up again, fastest 9-15"
+WSContam_005ngR6_T32,WS,7/17/20,5/28/20,50,"SB, AES",bif,15,5,005ng,6,T32,14:11,14:16,14:34,18.1,66.2,1.3558,15,R,0,10,poor,good,0,"penciled along tunnel, pinches as he went"
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,1,R,5,14,good,good,0,swam from down to up around gate 5; vertical burster
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,2,L,0,12,poor,okay,1,burst up then out of chamber
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,3,R,7,14,good,good,0,burst down then up at 7; common patternf ro many of our fish
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,4,L,5,10,good,good,2,false starts were up; struggling fish
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,5,L,6,18,good,good,2,false starts were up
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,6,R,5,9,good,good,0,"up from 0-3 down from 3-5, burst ended at 5"
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,7,R,8,15,good,good,0,straight along bottom
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,8,L,3,13,okay,good,2,
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,9,R,5,9,good,good,0,
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,10,R,6,1,okay,okay,0,"pinched again at 2, was stuck upside down in chamber before burst"
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,11,L,6,13,good,good,0,"proped on side in chamber, missed data on early gates"
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,12,R,4,13,okay,good,0,"burst from down to up, swimming vertically, tail red"
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,13,L,9,20,good,good,0,burst straight along bottom
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,14,R,5,10,good,good,0,
+WSContam_500ngR7_T33,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,7,T33,10:39,10:44,11:00,18.4,71.8,1.4224,15,L,3,4,okay,good,0,
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,1,L,3,16,poor,poor,0,
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,2,R,0,6,poor,poor,0,missed pinch
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,3,R,4,12,good,good,1,"proped on back in chamber, swimming up"
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,4,L,4,11,good,good,0,"fast but short, hard to get out of chamber"
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,5,R,0,10,poor,poor,0,
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,6,L,1,5,poor,okay,0,stopped on its side
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,7,L,1,6,okay,good,0,"swam straight up, pinched again, up again in a backflip"
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,8,L,2,10,okay,poor,1,"not responsive to stimulus, 2nd burst 6-8 with second pinch"
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,9,R,0,14,poor,poor,0,missed data @ early gates
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,10,L,0,3,poor,good,0,straight up - pencilling bursts
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,11,L,4,14,good,good,0,longer pinch
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,12,R,0,1,poor,good,1,spiraled up not out
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,13,R,4,19,good,good,0,burst up
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,14,L,2,10,okay,good,0,"straight, just not fast"
+WSContam_000ngR7_T34,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000g,7,T34,11:04,11:09,11:28,18.2,76.03,1.8423,15,R,0,9,poor,good,0,"3 pinches, no response"
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,1,R,13,23,good,good,,
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,2,L,12,21,good,good,0,looks like a promising fish!
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,3,R,22,24,good,good,0,"fast along bottom, missed middle gates"
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,4,L,13,20,good,good,0,
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,5,R,12,15,good,good,0,"went up ~13-14, else low"
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,6,L,12,16,good,good,0,"went up ~11-15, else straight on bottom"
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,7,R,15,10,good,good,0,went up ~12-13
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,8,L,10,18,good,good,0,went up ~13-17
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,9,R,7,10,okay,poor,0,zig zag burst from 0-5
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,10,L,7,12,good,good,0,red tail
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,11,R,12,14,good,good,0,getting tired; bursts going up and down more
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,12,L,9,14,good,good,0,
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,13,R,12,18,good,good,0,
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,14,L,24,25,good,good,0,went up ~12-15
+WSContam_100ngR7_T35,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,7,T35,11:32,11:37,11:54,18.1,67.4,1.2099,15,R,11,13,good,good,0,
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,1,L,5,13,good,good,0,"crashed into side, confused and disoriented"
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,2,R,10,25,good,good,0,up and down then straight
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,3,L,7,13,okay,okay,0,
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,4,R,4,11,okay,good,0,
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,5,L,7,15,good,good,0,
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,6,R,4,9,good,good,0,
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,7,L,7,18,good,good,0,
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,8,R,7,20,poor,poor,0,"2nd pinch with head at 3, good short burst"
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,9,L,24,25,good,good,0,
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,10,R,9,19,good,good,0,
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,11,L,14,17,good,good,0,twophse burst; 0-5 and 10-14
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,12,R,16,18,good,good,0,
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,13,L,3,8,good,good,0,
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,14,R,16,16,good,good,0,
+WSContam_500ngR8_T36,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,500,500ng,8,T36,11:57,12:02,12:20,18.1,68.9,1.3403,15,L,0,4,okay,poor,1,2nd pinch lead to good burst from 5-10
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,1,R,19,25,good,good,0,
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,2,L,20,20,good,good,0,2nd pinch in tunnel
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,3,R,24,25,good,good,0,"gate 4 broken, 10 seconds extra"
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,4,L,4,14,good,good,0,
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,5,R,24,25,good,good,0,
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,6,L,12,17,good,good,0,
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,7,R,11,25,good,poor,0,2nd pinch got burst 12-20
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,8,L,20,20,good,good,0,
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,9,R,6,20,okay,okay,0,second pinch at 10
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,10,L,16,19,good,good,0,
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,11,R,19,22,good,good,0,
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,12,L,0,16,poor,poor,1,user may have tripped gate 0 early
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,13,R,16,19,good,good,0,
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,14,L,0,15,poor,good,0,burst from 8-13 on her own with no stim
+WSContam_005ngR7_T37,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,7,T37,12:24,12:09,12:46,18.1,67.67,1.4837,15,R,19,23,good,good,0,
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,1,R,17,22,good,okay,1,"sped up around 6, tripped first gate early"
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,2,L,21,21,okay,good,0,"2nd pinch, head already had broken gate 4"
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,3,R,18,23,good,good,0,
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,4,L,22,22,good,good,0,2nd pinch got 12-22 burst
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,5,R,11,24,good,good,0,
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,6,L,18,19,good,good,0,
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,7,R,0,15,poor,poor,0,
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,8,L,7,14,good,good,0,"2nd pinch as left tunnel,maybe after 1st gate broken"
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,9,R,18,20,good,good,0,tail red
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,10,L,9,12,okay,okay,1,escaped after false start - no new stim
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,11,R,13,13,okay,good,0,burst straight up then down and out
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,12,L,8,13,good,good,0,getting less responsive/fast
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,13,R,16,22,good,good,0,
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,14,L,5,7,okay,good,0,
+WSContam_100ngR8_T38,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,100,100ng,8,T38,12:49,12:54,13:12,18.1,71.06,1.5656,15,R,4,16,good,good,0,
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,1,L,3,4,poor,good,0,"burst straight up, penciled at 4"
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,2,L,4,17,good,good,0,
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,3,R,5,22,good,good,0,"second burst 10-16, no second pinch"
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,4,L,24,25,good,good,0,burst up then second burst on own
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,5,R,19,19,okay,good,0,fast swim
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,6,L,24,25,good,good,0,11-24 peak speed
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,7,R,18,23,good,good,0,2nds burst
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,8,L,24,25,good,good,0,"breached early, birst up, then to end"
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,9,R,0,20,poor,good,0,"burst straight up to 3, then swims"
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,10,L,15,22,okay,good,0,"2nds burst at surface, unprovoked"
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,11,R,24,25,good,good,0,"1st burst up and down, 2nd fast to end"
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,12,L,3,20,okay,good,0,
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,13,R,13,18,good,good,0,
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,14,L,18,22,good,good,0,"1st stim was poor, second pinch at 3rd gate"
+WSContam_000ngR8_T39,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,0,000ng,8,T39,13:17,13:22,13:39,18.1,63.91,1.1832,15,R,22,25,good,good,0,delayed burst
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,1,R,16,25,good,good,0,
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,2,L,13,22,good,good,0,"up at 11, down at 15"
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,3,R,18,22,good,good,0,
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,4,L,24,25,good,good,0,
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,5,R,6,13,okay,good,1,burst into side walls before leaving chamber
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,6,L,14,17,good,good,0,
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,7,R,10,17,good,good,0,
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,8,L,3,3,poor,good,0,turned around on its own and went back to L
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,9,L,10,14,good,good,0,
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,10,R,6,11,okay,good,0,burst up then out of chamber
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,11,R,6,7,okay,good,0,"same up and down behavior, fatigue"
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,12,L,6,6,good,good,0,turned around and burst back into chamber
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,13,L,13,15,good,good,0,straight with slight zig zags
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,14,R,0,11,poor,poor,0,
+WSContam_005ngR8_T40,WS,7/18/20,5/28/20,51,"SB, AES",bif,15,5,005ng,8,T40,13:42,13:47,14:06,18.1,68.31,1.4448,15,R,5,14,good,good,0,fastest from 5-14
