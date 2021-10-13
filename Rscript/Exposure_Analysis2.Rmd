@@ -257,7 +257,7 @@ DataSumChg.Vel = DataSum2496.vel %>%
   chngfishVel.py
   
 ```
-
+# the trends look the same as distance, so for now I won't run models on velocity. Can add later if needed. 
 
 
 
@@ -265,3 +265,128 @@ DataSumChg.Vel = DataSum2496.vel %>%
 
 
 ### Meander and Turn Angle
+```{r meander/turn angle data, echo=F}
+
+## Summarize meander and turn angle
+DataSum2496.meand = DataSum2496 %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID) %>%
+  summarize(MnMeander = mean(Meander, na.rm=T), MnTurnAngle = mean(TurnAngle, na.rm=T)) %>%
+  ungroup()  %>%
+  data.frame()
+
+
+```
+
+```{r meander/turn angle plots, echo=F}
+meanMeander.plot = ggplot(DataSum2496.meand, 
+                           aes(fill=factor(Treatment), y=MnMeander, 
+                               x=factor(ExposureHrs) ) ) + geom_boxplot(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Mean Meander (deg/min)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+  theme_bw()
+
+
+mnTurnangle.plot = ggplot(DataSum2496.meand, 
+                           aes(fill=factor(Treatment), y=MnTurnAngle, 
+                              x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  #geom_violin(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Mean Turn Angle per replicate trial (deg)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+  theme_bw()
+
+
+meanMeander.plot
+mnTurnangle.plot
+
+```
+### modelling for meander is in ExposureAnalysis3.rmd
+
+
+
+
+
+
+### Time moving (distance moved > .5mm)
+```{r active time data, echo=F }
+
+#WS need longer distance to see trend; mm=2 is good
+#GS need shorter distance to see trend; mm=.5 is good
+threshold_mm=.5
+
+DataSum2496 <- mutate(DataSum2496,
+                active = ifelse(SumDistMoved > threshold_mm, 1, 0))
+
+PlotData_propactive = DataSum2496 %>%
+  group_by(Replicate, ExposureHrs, Treatment, Spp, RepID) %>%
+  summarize(npos=n(), nactive = sum(active), propactive = sum(active)/n() ) %>%
+  ungroup() %>%
+  data.frame()
+```
+
+```{r active time plots, echo=F}
+
+activefish = ggplot(PlotData_propactive, 
+                           aes(fill=factor(Treatment), y=propactive, 
+                               x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(
+    Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
+    #scales="free") +
+  ylab("proportion with active movement") + 
+  xlab("Exposure Hours") +#("Bifenthrin Nominal Conc.") + 
+  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+  theme_bw()
+
+activefish
+
+```
+
+
+
+## Sumarize time spent in center
+```{r center zone data, echo=F} 
+DataSum2496.centC = DataSum2496 %>%
+  filter(!is.na(InZoneC)) %>%  ### will this bias the data if I remove those points where there isn't a detection? If the fish is more likely to be in the center when it's stationary, and it's more likely to be undetected when it's stationary, this may bias these values and under-represent the effect of the bifenthrin (more stationary when strongly affected)
+  # also note, this line doesn't actually change the results because summing the InZoneC column drops all NA automatically; this line above just makes that explicit
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID) %>%
+  summarize(InZoneC = sum(InZoneC, na.rm=T), InZoneB = sum(InZoneB, na.rm=T), npos = n()) %>%
+  mutate(PercZoneC.1 = InZoneC / npos) %>%
+  mutate(PercZoneC.2 = InZoneC / (InZoneC+InZoneB)) %>%
+  # ran this comparison to see how much the NA can influence the data, and it seems to be minor
+  ungroup()  %>%
+  data.frame()
+
+```
+
+```{r center zone plots, echo=F}
+
+CenterC.plot = ggplot(DataSum2496.centC, 
+                           aes(fill=factor(Treatment), y=(PercZoneC.1), 
+                               x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  #geom_violin()+
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("% of recorded positions in Central Zone") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+  theme_bw()
+CenterC.plot
+
+ggplot(DataSum2496.centC, aes(x=PercZoneC.1, y=PercZoneC.2)) + geom_point(pch=21) + geom_abline(a=0,b=1, color="steelblue3") + facet_wrap(~Spp) + theme_bw()
+```
+
+These are some pretty good plots for WS. I think I'll use the distance moved (most intuitive), the turn angle, and the centerC plots. 
+
+```{r presentation plots}
+totfishdist
+meanMeander.plot
+mnTurnangle.plot
+activefish
+CenterC.plot
+```
+

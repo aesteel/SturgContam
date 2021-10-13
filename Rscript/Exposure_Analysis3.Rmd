@@ -41,10 +41,10 @@ DataSum2496 = read.csv("outputData/Exposure_Outputdata/Bifenthrin_2020_Cleaned_F
 
 
 
-## Statistical Models, predictions, and other posterior queries for each metric (Total distance travelled, Mean velocity, Meander and Turn angle, Use of center zone (% time), Time Active, Full Rotations vs distance traveled) 
+# Statistical Models, predictions, and other posterior queries for each metric (Total distance travelled, Mean velocity, Meander and Turn angle, Use of center zone (% time), Time Active, Full Rotations vs distance traveled) 
 
 
-### Distance Models
+## Distance Models #####
 ```{r distance data, echo=F}
 
 ## Summarize to take total distance (sum moved in a trial) for each fish replicates
@@ -392,9 +392,6 @@ distspp.blm_int5.rise.2 = map2stan(
 ```
 
 
-
-
-
 ```{r distance multi-level Bayesmodels predict, echo=F, eval=F}
 
 # pull posterior from model:
@@ -496,9 +493,7 @@ DistPred_orig_plot2
 ```
  
  
- 
- 
-### Contrasts
+### Distance Contrasts
 
 ### Study questions: 
 
@@ -780,7 +775,7 @@ posterior.preds = data.frame(PredGroupNames = PredGroupNames,
                              Pred95CIl = sapply(predgroups, quantile, 0.05),
                              Pred95CIu = sapply(predgroups, quantile, 0.95))
 ```
-# if use this in a paper, recolor to a more intuitive gradient and add legend
+#### if use this in a paper, recolor to a more intuitive gradient and add legend
  
  
 ```{r distance multi-level model time and spp contrasts, echo=F}
@@ -862,7 +857,7 @@ WS0bif_96.24.plot
 
 ```
 
-# well, these plots all look about the same, as they should since there's no interaction for concentration * exposure time; which fits the contrast value - it is 95.2% likely (for all comparisons of concentation, because there isn't an interaction) that for Green Sturgeon the distance moved at 96hrs (7ph) is greater than the distance moved at 24hrs (4 dph). But for white sturgeon, it's a 100% chance that there is less movement at 96hrs than at 24hrs exposure. 
+#### well, these plots all look about the same, as they should since there's no interaction for concentration * exposure time; which fits the contrast value - it is 95.2% likely (for all comparisons of concentation, because there isn't an interaction) that for Green Sturgeon the distance moved at 96hrs (7ph) is greater than the distance moved at 24hrs (4 dph). But for white sturgeon, it's a 100% chance that there is less movement at 96hrs than at 24hrs exposure. 
 
 
 
@@ -871,6 +866,7 @@ WS0bif_96.24.plot
 
  
      
+
 ## Velocity Models
 ### Velocity 
 ```{r velocity plots, echo=F}
@@ -914,4 +910,906 @@ velspp.lmm = lmer(MnVel ~ factor(Spp)*factor(Treatment)*factor(ExposureHrs)+ (1|
 
 
 
-## Meander and Turn Angle
+## Meander 
+
+## Meander Models #####
+```{r meander data, echo=F}
+
+## Summarize meander and turn angle
+DataSum2496.meand = DataSum2496 %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
+  summarize(MnMeander = mean(Meander, na.rm=T), MnTurnAngle = mean(TurnAngle, na.rm=T)) %>%
+  ungroup()  %>%
+
+  mutate(lnCalcConc = log(calcConc+1)) %>%
+  mutate(lnCalcConcC= scale(lnCalcConc, scale=FALSE)) %>%
+  mutate(lnCalcConcC2 = lnCalcConcC^2 ) %>% 
+   # order of transformations matters (log then scale then square)
+
+  mutate(ExposureHrsC = scale(ExposureHrs, scale=FALSE)) %>%
+  data.frame()
+
+MeanMeand0 = DataSum2496.meand %>%
+  subset(Treatment==0) %>%
+  group_by(Spp, ExposureHrs) %>%
+  summarize(mean0_meand = mean(MnMeander)) %>%
+  ungroup()  %>%
+  data.frame()
+
+DataSumDiff.meand = merge(DataSum2496.meand, MeanMeand0, all.x=T)
+DataSumDiff.meand$DistDiff = DataSumDiff.meand$MnMeander - DataSumDiff.meand$mean0_meand
+
+
+```
+
+
+```{r meander single-level Bayesmodels selection, echo=F, eval=F}
+# try setting up the linear model in a bayesian form, same as frequentist model above
+
+DSmeand_bmoddat = DataSum2496.meand[,c("MnMeander","lnCalcConcC","lnCalcConcC2",
+                                     "ExposureHrs","Spp","RepID")]
+DSmeand_bmoddat$lnCalcConcC = as.numeric(DSmeand_bmoddat$lnCalcConcC) 
+DSmeand_bmoddat$lnCalcConcC2 = as.numeric(DSmeand_bmoddat$lnCalcConcC2) 
+DSmeand_bmoddat$SppDummy <- ifelse(DSmeand_bmoddat$Spp=="GS", 0,1)
+DSmeand_bmoddat$ExposeDummy <- ifelse(DSmeand_bmoddat$ExposureHrs=="24", 0,1)
+
+# remove fish with only one timepoint of detection, because cant add random slope with one timepoint
+DSmeand_bmoddat = DSmeand_bmoddat[!(DSmeand_bmoddat$RepID %in% paste0(c(0,5,100,500,1000,2000), "-WS-4")),]
+DSmeand_bmoddat$RepID = as.factor(as.character(DSmeand_bmoddat$RepID))
+
+
+meandspp.blm_int1 = map2stan(
+  alist(
+    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+      mu  <-  a + 
+              be*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC) +
+              bts1*(SppDummy)*(lnCalcConcC) ,
+        a ~ dnorm(0,10),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bts1 ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+
+meandspp.blm_int2 = map2stan(
+  alist(
+    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+      mu  <-  a + 
+              be*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC) + 
+              bt2*(lnCalcConcC2),
+        a ~ dnorm(0,10),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+
+meandspp.blm_int3 = map2stan(
+  alist(
+    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+      mu  <-  a + 
+              be*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
+              bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
+        a ~ dnorm(0,10),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bts1 ~ dnorm(0,10),
+        bts2 ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+
+meandspp.blm_int4 = map2stan(
+  alist(
+    MnMeander ~ dnorm(mu, sigma),
+    mu  <- a + 
+           be*ExposeDummy + 
+           bs*SppDummy + 
+           bse*(SppDummy)*(ExposeDummy) +
+           bt*(lnCalcConcC) + 
+           bts1*(SppDummy)*(lnCalcConcC),
+        a ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bts1 ~ dnorm(0,10),
+        bts2 ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+
+meandspp.blm_int5 = map2stan(
+  alist(
+    MnMeander ~ dnorm(mu, sigma),
+    mu  <- a + 
+           be*ExposeDummy + 
+           bs*SppDummy + 
+           bse*(SppDummy)*(ExposeDummy) +
+           bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
+           bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
+        a ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bts1 ~ dnorm(0,10),
+        bts2 ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+
+
+meandspp.blm_int6 = map2stan(
+  alist(
+    MnMeander ~ dnorm(mu, sigma),
+    mu  <- a + 
+           be*ExposeDummy + 
+           bs*SppDummy + 
+           bse*(SppDummy)*(ExposeDummy) +
+           bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
+           bte1*(ExposeDummy)*(lnCalcConcC) + bte2*(ExposeDummy)*(lnCalcConcC2),
+        a ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bte1 ~ dnorm(0,10),
+        bte2 ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+
+
+
+compare(meandspp.blm_int1, meandspp.blm_int2, meandspp.blm_int3, meandspp.blm_int4, meandspp.blm_int5, meandspp.blm_int6)
+```
+
+```{r meander multi-level Baysemodels selection, echo=F, eval=F}
+
+set.seed(1983)
+meandspp.blm_int1.rise = map2stan(
+  alist(
+    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+      mu  <- a_fish[RepID] + 
+             be_fish[RepID]*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC)  + 
+              bts1*(SppDummy)*(lnCalcConcC),
+         # Right way to code intercept and slope, because includes correlation by individual
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be), sigma=sigma_fish, Rho=Rho),
+           a ~ dnorm(0,10),
+           be ~ dnorm(0,10),
+           sigma_fish ~ dcauchy(0,10),
+           Rho ~ dlkjcorr(2),
+             # not as flat as (1) but biases against strong correlations of intercept and slope
+        bt ~ dnorm(0,10),
+        #bt2 ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bts1 ~ dnorm(0,10),
+        #bts2 ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 2500, warmup = 750, chains = 4)
+ ## not too bad? Not great, but better than alot that I've been looking at 
+
+set.seed(2016)
+meandspp.blm_int1.ri = map2stan(
+  alist(
+    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+      mu  <- a_fish[RepID] + 
+             be*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC)  + 
+              bts1*(SppDummy)*(lnCalcConcC),
+           a_fish[RepID] ~ dnorm(a,a_sig),
+               a ~ dnorm(200,100),
+               a_sig ~ dcauchy(50,100),
+        be ~ dnorm(0,50),
+        bt ~ dnorm(0,50),
+        bs ~ dnorm(0,50),
+        bts1 ~ dnorm(0,50),
+    sigma ~ dcauchy(0,50)
+    ) ,
+  data = DSmeand_bmoddat, iter = 1500, warmup = 1000, chains = 4)
+ ## well, not aweful except for a_sig
+
+set.seed(2016)
+meandspp.blm_int1.se = map2stan(
+  alist(
+    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+      mu  <- a + 
+             be_fish[RepID]*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC)  + 
+              bts1*(SppDummy)*(lnCalcConcC),
+         a ~ dnorm(0,10),
+         be_fish[RepID] ~ dnorm(be,be_sig),
+           be ~ dnorm(0,10),
+           be_sig ~ dcauchy(0,10),
+         bt ~ dnorm(0,10),
+         bs ~ dnorm(0,10),
+         bts1 ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+ ##  
+
+
+meandspp.blm_int2.rise = map2stan(
+  alist(
+    MnMeander ~ dnorm(mu, sigma),  # data don't look normal; bimodal
+    mu  <- a_fish[RepID] +
+           be_fish[RepID]*ExposeDummy +
+             bs*SppDummy +
+             bt*(lnCalcConcC) + bt2*(lnCalcConcC2) +
+             bse*(SppDummy)*(ExposeDummy) +
+             bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2) +
+             bte1*(ExposeDummy)*(lnCalcConcC) + bte2*(ExposeDummy)*(lnCalcConcC2),
+         # does the interaction also need to have the random effect? I hope not =/
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be), sigma=sigma_fish, Rho=Rho), 
+           a ~ dnorm(0,10),
+           be ~ dnorm(0,10),
+           sigma_fish ~ dcauchy(0,10),
+           Rho ~ dlkjcorr(2),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bts1 ~ dnorm(0,10),
+        bts2 ~ dnorm(0,10),
+        bte1 ~ dnorm(0,10),
+        bte2 ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 4000, warmup = 1000, chains = 4)
+
+
+meandspp.blm_int5.rise.2 = map2stan(
+  alist(
+    MnMeander ~ dnorm(mu, sigma),
+    mu  <- a_fish[RepID] + 
+           be_fish[RepID]*ExposeDummy + 
+             bs*SppDummy + 
+             bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
+             bse*(SppDummy)*(ExposeDummy) +
+             bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),# 
+           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
+           be ~ dnorm(0,10),
+           sigma_fish ~ dcauchy(0,2),
+           Rho ~ dlkjcorr(2),
+             # not as flat as (1) but biases against strong correlations of intercept and slope
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bts1 ~ dnorm(0,10),
+        bts2 ~ dnorm(0,10),
+    sigma ~ dcauchy(0,2)
+    ) ,
+  data = DSmeand_bmoddat, iter = 4000, warmup = 1000, chains = 4)
+### Also DOES NOT FIT WELL - pretty bad convergence in trace plots, long run time
+
+
+meandspp.blm_int5.rise.2.offset = map2stan(
+  alist(
+    MnMeander ~ dnorm(mu, sigma),
+    mu  <- a + a_fish[RepID] +
+           be + be_fish[RepID]*ExposeDummy +
+             bs*SppDummy +
+             bt*(lnCalcConcC) + bt2*(lnCalcConcC2) +
+             bse*(SppDummy)*(ExposeDummy) +
+             bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(0,sigma=sigma_fish, Rho=Rho),#
+           a ~ dnorm(4,5), # approximate mean of base case (GS-24hr)
+           be ~ dnorm(0,5),
+           sigma_fish ~ dcauchy(0,2),
+           Rho ~ dlkjcorr(2),
+             # not as flat as (1) but biases against strong correlations of intercept and slope
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bts1 ~ dnorm(0,10),
+        bts2 ~ dnorm(0,10),
+    sigma ~ dcauchy(0,2)
+    ) ,
+  data = DSmeand_bmoddat, iter = 4000, warmup = 1000, chains = 4, cores=2)
+### Also DOES NOT FIT WELL - pretty bad convergence in trace plots, long run time
+
+
+meandspp.blm_int5.ri = map2stan(
+  alist(
+    MnMeander ~ dnorm(mu, sigma),
+    mu  <- a_fish[RepID] + 
+           bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
+           be*ExposeDummy + 
+           bs*SppDummy + 
+           bse*(SppDummy)*(ExposeDummy) +
+           bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
+             a_fish[RepID] ~ dnorm(a,a_sig),
+             a ~ dcauchy(0,10),
+             a_sig ~ dcauchy(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bts1 ~ dnorm(0,10),
+        bts2 ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+
+
+ plot(meandspp.blm_int1.rise)
+ plot(meandspp.blm_int2.rise)
+ plot(meandspp.blm_int5.rise.2)
+ plot(meandspp.blm_int5.rise.2.offset)
+ plot(meandspp.blm_int5.ri)
+ 
+ precis(meandspp.blm_int1.rise, prob = .95, digits=3)
+ precis(meandspp.blm_int2.rise, prob = .95, digits=3)
+ precis(meandspp.blm_int5.rise.2, prob = .95, digits=3)
+ precis(meandspp.blm_int5.rise.2.offset, prob = .95, digits=3)
+ precis(meandspp.blm_int5.ri, prob = .95, digits=3)
+
+ plot(precis(meandspp.blm_int1.rise, prob = .95))
+ plot(precis(meandspp.blm_int2.rise, prob = .95))
+ plot(precis(meandspp.blm_int5.rise.2, prob = .95, depth=2))
+ plot(precis(meandspp.blm_int5.rise.2.offset, prob = .95, depth=2))
+ plot(precis(meandspp.blm_int5.ri, prob = .95, depth=2))
+
+compare(meandspp.blm_int1.rise, meandspp.blm_int2.rise,
+        meandspp.blm_int5.rise.2, meandspp.blm_int5.rise.2.offset, 
+        meandspp.blm_int5.ri)
+
+plot(compare(meandspp.blm_int1.rise, meandspp.blm_int2.rise,
+             meandspp.blm_int5.rise.2,meandspp.blm_int5.rise.2.offset,  
+             meandspp.blm_int5.ri))
+
+```
+### I'm guess I'm happy with model int5.rise.2, that accounts for the repeated measures of an individual across time ('distspp.blm_int5.rise.2'). The trace plots have better mixing for int5.2 than int5.NC and Zack says that there's more to parameterizing the NC approach than is covered in the rethinking book chapter. The trace plots aren't great but it seems relatively stable as I change small things, so Zack says it's probably good enough. If I really cared I could go tweek parameters more and document the changes to the estimated parameters. I tried estimating the overall interept and slope seperately, with offsets for the individual IDs, but the variance for the overall parameters was huge and largely dependant on the prior. I'm going to move on and assume the model is good enough. 
+
+
+```{r distance multi-level Bayesmodels final, echo=F}
+
+DSdist_bmoddat = DataSum2496.dist[,c("TotalfishDist_m","lnCalcConcC","lnCalcConcC2",
+                                     "ExposureHrs","Spp","RepID")]
+#DSdist_bmoddat$TotalfishDistcm = DSdist_bmoddat$TotalfishDist/10
+DSdist_bmoddat$lnCalcConcC = as.numeric(DSdist_bmoddat$lnCalcConcC) 
+DSdist_bmoddat$lnCalcConcC2 = as.numeric(DSdist_bmoddat$lnCalcConcC2) 
+DSdist_bmoddat$SppDummy <- ifelse(DSdist_bmoddat$Spp=="GS", 0,1)
+DSdist_bmoddat$ExposeDummy <- ifelse(DSdist_bmoddat$ExposureHrs=="24", 0,1)
+
+# remove fish with only one timepoint of detection, because cant add random slope with one timepoint
+DSdist_bmoddat = DSdist_bmoddat[!(DSdist_bmoddat$RepID %in% paste0(c(0,5,100,500,1000,2000), "-WS-4")),]
+DSdist_bmoddat$RepID = as.factor(as.character(DSdist_bmoddat$RepID))
+
+set.seed(1983)
+distspp.blm_int5.rise.2 = map2stan(
+  alist(
+    TotalfishDist_m ~ dnorm(mu, sigma),
+    mu  <- a_fish[RepID] + 
+           be_fish[RepID]*ExposeDummy + 
+             bs*SppDummy + 
+             bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
+             bse*(SppDummy)*(ExposeDummy) +
+             bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
+    
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),# 
+           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
+           be ~ dnorm(0,10),
+           sigma_fish ~ dcauchy(0,2),
+           Rho ~ dlkjcorr(2), # not as flat as (1) but biases against strong correlations of intercept and slope
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bts1 ~ dnorm(0,10),
+        bts2 ~ dnorm(0,10),
+    sigma ~ dcauchy(0,2)
+    ) ,
+  data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4)
+
+
+# check model
+ precis(distspp.blm_int5.rise.2, prob = .95, digits=3)
+ plot(precis(distspp.blm_int5.rise.2, prob = .95))
+ plot(precis(distspp.blm_int5.rise.2, prob = .95, depth=2))
+
+ plot(distspp.blm_int5.rise.2)
+
+```
+
+
+```{r distance multi-level Bayesmodels predict, echo=F, eval=F}
+
+# pull posterior from model:
+set.seed(42)
+post = extract.samples(distspp.blm_int5.rise.2)
+
+# set up dataframe to plot posterior predictions
+preddat = list(CalcConc=rep(seq(0, 2250, 2), 4), 
+               lnCalcConc=log(rep(seq(0, 2250, 2),4)+1), 
+               lnCalcConcC=(log(rep(seq(0, 2250, 2),4)+1)) - 
+                 mean(DataSum2496.dist$lnCalcConc) ,
+               lnCalcConcC2=((log(rep(seq(0, 2250, 2),4)+1)) - 
+                 mean(DataSum2496.dist$lnCalcConc))^2 ,               
+               ExposeDummy = rep(c(0,1), each=1126*2), 
+               SppDummy = rep(rep(c(0,1),each=1126),2), 
+               RepID = rep(2,4504))
+
+# make zeros for individual random effects to predict to mean only -> model doesn't have any 'a' this way
+a_fish_zeros = matrix(0,12000,90)
+be_fish_zeros = matrix(0,12000,90)
+
+# use estimated posteriors for population of individuals to simulate new fish; shapes of distributions between model posteriors and predicted posteriors are nearly identical, not what I want...but it does predict uncertainty across individuals, but might as well just take predictions for individual fish are put them in as the data...not quote grasping this
+a_fish_sim = matrix(rnorm(12000*90, mean(post$a_fish), mean(post$sigma_fish[,1])),12000,90)
+be_fish_sim = matrix(rnorm(12000*90, mean(post$be_fish), mean(post$sigma_fish[,2])),12000,90)
+
+# replace individual fish estimates with global estimate; this should predict to the average individual in a population...so since I want to get at the population level response this seems more appropriate.
+a_global = matrix(post$a,12000,90)
+be_global = matrix(post$be,12000,90)
+
+# use link to predict to mean only
+link.int5.rise.2 <- link(distspp.blm_int5.rise.2, n=1000, data= preddat, 
+                         replace = list(a_fish = a_global, 
+                                        be_fish = be_global) )
+#                         replace = list(a_fish = a_fish_sim, 
+#                                        be_fish = be_fish_sim) )
+
+preddat.df <- data.frame(sapply(preddat,c)) # thanks stack overflow! https://stackoverflow.com/questions/4227223/convert-a-list-to-a-data-frame
+
+preddat.df$link_mu_mn <- apply(link.int5.rise.2, 2, mean) 
+preddat.df$link_PI05 = apply(link.int5.rise.2, 2, PI, .95)[1,] 
+preddat.df$link_PI95 = apply(link.int5.rise.2, 2, PI, .95)[2,] 
+
+
+# # predict from posteriors (on transformed scale)
+#   link_pred <- link(distspp.blm_int2.rise, data = preddat, n=1000) 
+#   preddat$link_mu_mn <- apply(link_pred, 2, mean)
+#   preddat$link_PI05 = apply(link_pred, 2, PI, .95)[1,]
+#   preddat$link_PI95 = apply(link_pred, 2, PI, .95)[2,]
+#   
+#  # predict with sim; it's my understanding that this integrates the error estimates too?
+#   sim_pred <- sim(distspp.blm_int2.rise, data = preddat, n=1000) 
+#   preddat$sim_mu_mn <- apply(sim_pred, 2, mean)
+#   preddat$sim_PI05 = apply(sim_pred, 2, PI, .95)[1,]
+#   preddat$sim_PI95 = apply(sim_pred, 2, PI, .95)[2,]
+#  
+  # plot back-transformed data
+  preddat.df$Spp <- ifelse(preddat.df$SppDummy==0,"GS","WS")
+  preddat.df$ExposureHrs <- ifelse(preddat.df$ExposeDummy==0,"24","96")
+
+
+DistPred_transf_plot2 = ggplot() + 
+  geom_point(data=DataSum2496.dist,
+             aes(x=(lnCalcConcC),                          
+                 y=TotalfishDist_m, 
+                 color=factor(Spp))) + 
+  geom_ribbon(data = preddat.df, aes(x=(lnCalcConcC), 
+              ymin=link_PI05, ymax=link_PI95), 
+              alpha=.4, col="grey70")+
+  geom_line(data = preddat.df, aes(x=(lnCalcConcC), y=link_mu_mn), lwd=.2)+
+    facet_grid(Spp~ExposureHrs, scales="free", labeller = labeller(
+      ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure"),
+      Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
+    scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
+    ylab("Total Distance Traveled (m)") + 
+    scale_x_continuous(name="Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
+    theme_bw()
+
+
+DistPred_orig_plot2 = ggplot() + 
+  geom_point(data=DataSum2496.dist,
+             aes(x=(calcConc),                          
+                 y=TotalfishDist_m, 
+                 color=factor(Spp))) + 
+  geom_ribbon(data = preddat.df, aes(x=(CalcConc), 
+              ymin=link_PI05, ymax=link_PI95), 
+              alpha=.4, col="grey70")+
+  geom_line(data = preddat.df, aes(x=(CalcConc), y=link_mu_mn), lwd=.2)+
+  facet_grid(Spp~ExposureHrs, scales="free", labeller = labeller(
+    ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure"),
+    Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
+  scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
+  ylab("Total Distance Traveled (cm)") + 
+  scale_x_continuous(name="Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
+  theme_bw()
+
+DistPred_transf_plot2
+DistPred_orig_plot2 
+
+```
+ 
+ 
+### Distance Contrasts
+
+### Study questions: 
+
+###  1) is there an effect (all treatment vs control), and which metrics show an effect
+
+###  2) does that effect change with time [96 treat vs 96 control and 24 treat vs 24 control OR individual change from 24 to 96 (all treatments) as compared to individual change for control between 24 and 96]
+
+###  3) Does the magnitude of the effect vary between species
+
+```{r distance multi-level model density plots, echo=F}
+set.seed(1983) 
+postdist = extract.samples(distspp.blm_int5.rise.2)
+  # # calculate effect of treatment, for each species, at 96hrs 
+  # #  (exposedummy=1 for 96hrs, sppdummy = 1 for GS)
+  # gamma.96GS = post$a + post$be + post$bt + post$bt2
+  #     # because I'm using 'be' that was estimated as a sub-parameter of be_fish, this should be predicting the global expected effect, not the effect dependent on fish identity
+  # 
+  # gamma.96WS = ppost$a + post$be + post$bs + post$bt + post$bt2 + post$bse + post$bts1 + post$bts2
+  # 
+  # 
+  # # Can calc mean effect, as in rethinking textbook example for interactions, but less meaningful because it's a quadratic, so the effect changes given the treatment value. Need to estimate it at each level of treatment and make pair-wise comparisons or predict to a new level
+  # 
+  # ## see page 236 from rethinking 2015
+  # 
+  # 
+  # mean(gamma.96GS)
+  # mean(gamma.96WS)
+  # 
+  # dens(gamma.96GS, xlab="quadratic interaction", col="green3", xlim=c(-400,0))
+  # dens(gamma.96WS, add=TRUE, col="steelblue3")
+
+# reference table to convert from treatment to centered, log-transformed measured concentrations
+TreatCalcTable = unique(DataSum2496.dist[order(DataSum2496.dist$Treatment)
+                                             ,c("Spp", "Treatment","lnCalcConc", "lnCalcConcC")])
+TreatCalcTable$lnCalcConcC2 = TreatCalcTable$lnCalcConcC ^ 2
+
+
+
+# calculate differences between control and treatment at each time point for each species (20 contrasts)
+GS0bif24 = postdist$a +
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC2)
+GS5bif24 = postdist$a + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC2)
+GS100bif24 = postdist$a + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC2)
+GS500bif24 = postdist$a + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC2)
+GS1000bif24 = postdist$a +
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC) + 
+  postdist$bt2* as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC2)
+GS2000bif24 = postdist$a + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC) + 
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC2)
+
+mean(GS0bif24)
+mean(GS5bif24)
+ cont.GS_0.5bif_24 = (sum(GS0bif24<GS5bif24) / length(GS0bif24)) 
+ cont.GS_0.5bif_24 #72.0% prob that 5 is more than 0
+mean(GS100bif24)
+ cont.GS_0.100bif_24 = (sum(GS0bif24<GS100bif24) / length(GS0bif24)) 
+ cont.GS_0.100bif_24 #62.4% prob that 100 is more than 0
+mean(GS500bif24)
+ cont.GS_0.500bif_24 = (sum(GS0bif24<GS500bif24) / length(GS0bif24)) 
+ cont.GS_0.500bif_24 #40.7% prob that 500 is more than 0
+mean(GS1000bif24)
+ cont.GS_0.1000bif_24 = (sum(GS0bif24<GS1000bif24) / length(GS0bif24)) 
+ cont.GS_0.1000bif_24 #32.8% prob that 1000 is more than 0
+mean(GS2000bif24)
+ cont.GS_0.2000bif_24 = (sum(GS0bif24<GS2000bif24) / length(GS0bif24)) 
+ cont.GS_0.2000bif_24 #13.7% prob that 2000 is more than 0 (86.3% chance that 2000 is less than 0)
+
+GS24.plot = ggplot() + geom_density(aes(x=GS0bif24, color="black")) + 
+  geom_density(aes(x=GS5bif24, color="green3")) + 
+  geom_density(aes(x=GS100bif24, color="goldenrod")) + 
+  geom_density(aes(x=GS500bif24, color="red3")) + 
+  geom_density(aes(x=GS1000bif24, color="pink")) + 
+  geom_density(aes(x=GS2000bif24, color="steelblue3")) + 
+  scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
+                     values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
+                              "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
+                     labels=c("0 ng/L", "5 ng/L", "100ng/L", 
+                              "500ng/L", "1000ng/L", "2000 ng/L") ) + 
+  xlab("Distance moved (GS @ 24hr)")+
+  theme_bw()
+
+
+# repeat for green sturgeon, 96hr
+
+GS0bif96 = postdist$a + postdist$be +
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC2)
+GS5bif96 = postdist$a + postdist$be + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC2)
+GS100bif96 = postdist$a + postdist$be + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC2)
+GS500bif96 = postdist$a + postdist$be + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC2)
+GS1000bif96 = postdist$a + postdist$be +
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC) + 
+  postdist$bt2* as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC2)
+GS2000bif96 = postdist$a + postdist$be + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC) + 
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC2)
+
+mean(GS0bif96)
+mean(GS5bif96)
+ cont.GS_0.5bif_96 = (sum(GS0bif96<GS5bif96) / length(GS0bif96)) 
+ cont.GS_0.5bif_96 #72.0% prob that 5 is more than 0
+mean(GS100bif96)
+mean(GS500bif96)
+mean(GS1000bif96)
+mean(GS2000bif96)
+
+GS96.plot = ggplot() + geom_density(aes(x=GS0bif96), color="black") + 
+  geom_density(aes(x=GS5bif96), color="green3") + 
+  geom_density(aes(x=GS100bif96), color="goldenrod") + 
+  geom_density(aes(x=GS500bif96), color="red3") + 
+  geom_density(aes(x=GS1000bif96), color="pink") + 
+  geom_density(aes(x=GS2000bif96), color="steelblue3") + 
+  scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
+                     values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
+                              "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
+                     labels=c("0 ng/L", "5 ng/L", "100ng/L", 
+                              "500ng/L", "1000ng/L", "2000 ng/L") ) + 
+  xlab("Distance moved (GS @ 96hr)")+
+  theme_bw()
+
+
+# repeat for white sturgeon, 24hr
+
+WS0bif24 = postdist$a + postdist$bs +
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2) +
+  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
+  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2)
+WS5bif24 = postdist$a + postdist$bs + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)+
+  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
+  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)
+WS100bif24 = postdist$a + postdist$bs + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)+
+  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
+  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)
+WS500bif24 = postdist$a + postdist$bs + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)+
+  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
+  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)
+WS1000bif24 = postdist$a + postdist$bs +
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
+  postdist$bt2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)+
+  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
+  postdist$bts2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)
+WS2000bif24 = postdist$a + postdist$bs + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)+
+  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
+  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)
+
+mean(WS0bif24)
+mean(WS5bif24)
+ cont.WS_0.5bif_24 = (sum(WS0bif24<WS5bif24) / length(WS0bif24)) 
+ cont.WS_0.5bif_24 #100% prob that 5 is more than 0
+mean(WS100bif24)
+ cont.WS_0.100bif_24 = (sum(WS0bif24<WS100bif24) / length(WS0bif24)) 
+ cont.WS_0.100bif_24 #100% prob that 100 is more than 0
+mean(WS500bif24)
+ cont.WS_0.500bif_24 = (sum(WS0bif24<WS500bif24) / length(WS0bif24)) 
+ cont.WS_0.500bif_24 #55% prob that 500 is more than 0
+mean(WS1000bif24)
+ cont.WS_0.1000bif_24 = (sum(WS0bif24<WS1000bif24) / length(WS0bif24)) 
+ cont.WS_0.1000bif_24 #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
+mean(WS2000bif24)
+ cont.WS_0.2000bif_24 = (sum(WS0bif24<WS2000bif24) / length(WS0bif24)) 
+ cont.WS_0.2000bif_24 #0% prob that 2000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
+ 
+WS24.plot = ggplot() + geom_density(aes(x=WS0bif24), color="black") + 
+  geom_density(aes(x=WS5bif24), color="green3") + 
+  geom_density(aes(x=WS100bif24), color="goldenrod") + 
+  geom_density(aes(x=WS500bif24), color="red3") + 
+  geom_density(aes(x=WS1000bif24), color="pink") + 
+  geom_density(aes(x=WS2000bif24), color="steelblue3") + 
+  scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
+                     values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
+                              "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
+                     labels=c("0 ng/L", "5 ng/L", "100ng/L", 
+                              "500ng/L", "1000ng/L", "2000 ng/L") ) + 
+  xlab("Distance moved (WS @ 24hr)")+
+  theme_bw()
+
+
+# repeat for white sturgeon, 96hr
+
+
+WS0bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2) +
+  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
+  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2)
+WS5bif96 = postdist$a + postdist$bs + postdist$be + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2) +
+  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
+  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)
+WS100bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2) +
+  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
+  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)
+WS500bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2) +
+  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
+  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)
+WS1000bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
+  postdist$bt2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2) +
+  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
+  postdist$bts2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)
+WS2000bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
+  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
+  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2) +
+  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
+  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)
+
+mean(WS0bif96)
+mean(WS5bif96)
+ cont.WS_0.5bif_96 = (sum(WS0bif96<WS5bif96) / length(WS0bif96)) 
+ cont.WS_0.5bif_96 #100% prob that 5 is more than 0
+mean(WS100bif96)
+ cont.WS_0.100bif_96 = (sum(WS0bif96<WS100bif96) / length(WS0bif96)) 
+ cont.WS_0.100bif_96 #100% prob that 100 is more than 0
+mean(WS500bif96)
+ cont.WS_0.500bif_96 = (sum(WS0bif96<WS500bif96) / length(WS0bif96)) 
+ cont.WS_0.500bif_96 #55.0% prob that 500 is more than 0
+mean(WS1000bif96)
+ cont.WS_0.1000bif_96 = (sum(WS0bif96<WS1000bif96) / length(WS0bif96)) 
+ cont.WS_0.1000bif_96 #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
+mean(WS2000bif96)
+ cont.WS_0.2000bif_96 = (sum(WS0bif96<WS2000bif96) / length(WS0bif96)) 
+ cont.WS_0.2000bif_96 #0% prob that 2000 is more than 0 (i.e. 100% prob that 2000 is less than 0)
+
+WS96.plot = ggplot() + geom_density(aes(x=WS0bif96), color="black") + 
+  geom_density(aes(x=WS5bif96), color="green3") + 
+  geom_density(aes(x=WS100bif96), color="goldenrod") + 
+  geom_density(aes(x=WS500bif96), color="red3") + 
+  geom_density(aes(x=WS1000bif96), color="pink") + 
+  geom_density(aes(x=WS2000bif96), color="steelblue3") + 
+  scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
+                     values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
+                              "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
+                     labels=c("0 ng/L", "5 ng/L", "100ng/L", 
+                              "500ng/L", "1000ng/L", "2000 ng/L") ) + 
+  xlab("Distance moved (WS @ 96hr)")+
+  theme_bw()
+
+GS24.plot + GS96.plot + WS24.plot + WS96.plot
+
+predgroups = list(GS0bif24, GS5bif24,GS100bif24,GS500bif24,GS1000bif24,GS2000bif24,
+                  GS0bif96, GS5bif96,GS100bif96,GS500bif96,GS1000bif96,GS2000bif96,
+                  WS0bif24, WS5bif24,WS100bif24,WS500bif24,WS1000bif24,WS2000bif24,
+                  WS0bif96, WS5bif96,WS100bif96,WS500bif96,WS1000bif96,WS2000bif96)
+PredGroupNames =  as.character(expression(GS0bif24,GS5bif24,GS100bif24,GS500bif24,
+                                          GS1000bif24,GS2000bif24,
+                   GS0bif96, GS5bif96,GS100bif96,GS500bif96,GS1000bif96,GS2000bif96,
+                   WS0bif24, WS5bif24,WS100bif24,WS500bif24,WS1000bif24,WS2000bif24,
+                   WS0bif96, WS5bif96,WS100bif96,WS500bif96,WS1000bif96,WS2000bif96))
+posterior.preds = data.frame(PredGroupNames = PredGroupNames, 
+                             PredMeans = sapply(predgroups, mean),
+                             Pred95CIl = sapply(predgroups, quantile, 0.05),
+                             Pred95CIu = sapply(predgroups, quantile, 0.95))
+```
+#### if use this in a paper, recolor to a more intuitive gradient and add legend
+ 
+ 
+```{r distance multi-level model time and spp contrasts, echo=F}
+# this uses the predicted posteriors for distance moved, calculated above
+
+# GS vs WS
+cont.GS.WS_0bif_24 = sum(GS0bif24<WS0bif24) / length(GS0bif24)
+ cont.GS.WS_0bif_24 # 100% probability that GS will move less than WS
+
+ cont.GS.WS_0bif_96 = sum(GS0bif96<WS0bif96) / length(GS0bif96)
+ cont.GS.WS_0bif_96 # 100% probability that GS will move less than WS
+cont.GS.WS_2000bif_96 = sum(GS2000bif96<WS2000bif96) / length(GS2000bif96)
+ cont.GS.WS_2000bif_96 # 99.89% probability that GS will move less than WS
+
+
+# Green Sturgeon, Exposure Hr
+cont.GS0bif_96.24 = (sum(GS0bif96<GS0bif24) / length(GS0bif96)) 
+# cont.GS5bif_96.24 = (sum(GS5bif96<GS5bif24) / length(GS5bif96))
+# cont.GS100bif_96.24 = (sum(GS100bif96<GS100bif24) / length(GS100bif96))
+# cont.GS500bif_96.24 = (sum(GS500bif96<GS500bif24) / length(GS500bif96))
+# cont.GS1000bif_96.24 = (sum(GS1000bif96<GS1000bif24) / length(GS1000bif96))
+# cont.GS2000bif_96.24 = (sum(GS2000bif96<GS2000bif24) / length(GS2000bif96))
+
+cont.GS0bif_96.24
+# ; cont.GS5bif_96.24; cont.GS100bif_96.24; cont.GS500bif_96.24; cont.GS1000bif_96.24; cont.GS2000bif_96.24
+
+# ha! they're all the same, because there's no interaction of exposure time and treatment. 
+ # 4.8% of the samples from the posterior showed less distance moved at 96 than 24; so most likely that movement is greater at 96 than 24 (95.2%)
+
+GS0bif_96.24.plot = ggplot() + geom_density(aes(x=GS0bif96), color="steelblue3") + 
+  geom_density(aes(x=GS0bif24), color="green3") + 
+  xlab("Distance moved - GS @ 0 ng/L bifenthrin\n24 vs 96 hrs)") +
+  theme_bw()
+# GS5bif_96.24.plot = ggplot() + geom_density(aes(x=GS5bif96), color="steelblue3") + 
+#   geom_density(aes(x=GS5bif24), color="green3") + 
+#   xlab("Distance moved - GS @ 5 ng/L bifenthrin\n24 vs 96 hrs)") +
+#   theme_bw()
+# GS100bif_96.24.plot = ggplot() + geom_density(aes(x=GS100bif96), color="steelblue3") + 
+#   geom_density(aes(x=GS100bif24), color="green3") + 
+#   xlab("Distance moved - GS @ 100 ng/L bifenthrin\n24 vs 96 hrs)") +
+#   theme_bw()
+# GS500bif_96.24.plot = ggplot() + geom_density(aes(x=GS500bif96), color="steelblue3") + 
+#   geom_density(aes(x=GS500bif24), color="green3") + 
+#   xlab("Distance moved - GS @ 500 ng/L bifenthrin\n24 vs 96 hrs)") +
+#   theme_bw()
+# GS1000bif_96.24.plot = ggplot() + geom_density(aes(x=GS1000bif96), color="steelblue3") + 
+#   geom_density(aes(x=GS1000bif24), color="green3") + 
+#   xlab("Distance moved - GS @ 1000 ng/L bifenthrin\n24 vs 96 hrs)") +
+#   theme_bw()
+# GS2000bif_96.24.plot = ggplot() + geom_density(aes(x=GS2000bif96), color="steelblue3") + 
+#   geom_density(aes(x=GS2000bif24), color="green3") + 
+#   xlab("Distance moved - GS @ 2000 ng/L bifenthrin\n24 vs 96 hrs)") +
+#   theme_bw()
+
+# use patchwork grammar to plot multiple plots
+GS0bif_96.24.plot
+#(GS0bif_96.24.plot|GS5bif_96.24.plot|GS100bif_96.24.plot)/(GS500bif_96.24.plot|GS1000bif_96.plot|GS2000bif_96.plot)
+
+cont.GS0bif_96.24 # 4.8% chance that GS move less at 96hrs than 24hrs (ie: move more with age)
+# cont.GS5bif_96.24
+# cont.GS100bif_96.24
+# cont.GS500bif_96.24
+# cont.GS1000bif_96.24
+# cont.GS2000bif_96.24
+
+
+
+# White Sturgeon: probability of a difference between 24 and 96 hours, at each treatment level
+cont.WS0bif_96.24 = (sum(WS0bif96<WS0bif24) / length(WS0bif96)) 
+cont.WS0bif_96.24
+# 4.8% of the samples from the posterior showed less distance moved at 96 than 24; so most likely that movement is greater at 96 than 24 (95.2%)
+
+WS0bif_96.24.plot = ggplot() + geom_density(aes(x=WS0bif96), color="steelblue3") + 
+  geom_density(aes(x=WS0bif24), color="green3") + 
+  xlab("Distance moved - WS @ 0 ng/L bifenthrin\n24 vs 96 hrs)") +
+  theme_bw()
+WS0bif_96.24.plot
+
+
+```
+
+#### well, these plots all look about the same, as they should since there's no interaction for concentration * exposure time; which fits the contrast value - it is 95.2% likely (for all comparisons of concentation, because there isn't an interaction) that for Green Sturgeon the distance moved at 96hrs (7ph) is greater than the distance moved at 24hrs (4 dph). But for white sturgeon, it's a 100% chance that there is less movement at 96hrs than at 24hrs exposure. 
+
+
+
+
+
+
+ 
+     
