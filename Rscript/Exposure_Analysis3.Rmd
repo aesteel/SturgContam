@@ -867,7 +867,7 @@ WS0bif_96.24.plot
  
      
 
-## Velocity Models
+## Velocity Models #####
 ### Velocity 
 ```{r velocity plots, echo=F}
 
@@ -910,16 +910,25 @@ velspp.lmm = lmer(MnVel ~ factor(Spp)*factor(Treatment)*factor(ExposureHrs)+ (1|
 
 
 
-## Meander 
+## TurnAngle Models #####
+```{r turnangle data, echo=F}
+## transform turn angle into two variables; forward and backward (< or > 90) and flop the angle to be between 0-90 to create a single mode. Without transformation it's bimodal
+DataSum2496.TAonly = DataSum2496[!is.na(DataSum2496$TurnAngle),]
 
-## Meander Models #####
-```{r meander data, echo=F}
+DataSum2496.TAonly$TurnAngleTrans = DataSum2496.TAonly$TurnAngle
+DataSum2496.TAonly$TurnAngleDir[DataSum2496.TAonly$TurnAngle<=90] <- "forward"
+DataSum2496.TAonly$TurnAngleDir[DataSum2496.TAonly$TurnAngle>90] <- "back"
 
-## Summarize meander and turn angle
-DataSum2496.meand = DataSum2496 %>%
-  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
-  summarize(MnMeander = mean(Meander, na.rm=T), MnTurnAngle = mean(TurnAngle, na.rm=T)) %>%
-  ungroup()  %>%
+DataSum2496.TAonly$TurnAngleTrans[DataSum2496.TAonly$TurnAngle>90] <- 180 - 
+  DataSum2496.TAonly$TurnAngle[DataSum2496.TAonly$TurnAngle>90]
+### still has a peak at zero, maybe because I didn't have left and right information about the turns. Check out ethovision again and see if there is a turn angle otuput that preserves this aspect too
+
+
+## don't summarize by fish-video, as we did for distance, because we want to keep the variability within fish as part of the dataset
+DataSum2496.ta = DataSum2496.TAonly %>%
+  #group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
+  #summarize(MnTurnAngle = mean(TurnAngleTrans, na.rm=T)) %>%
+  #ungroup()  %>%
 
   mutate(lnCalcConc = log(calcConc+1)) %>%
   mutate(lnCalcConcC= scale(lnCalcConc, scale=FALSE)) %>%
@@ -929,55 +938,52 @@ DataSum2496.meand = DataSum2496 %>%
   mutate(ExposureHrsC = scale(ExposureHrs, scale=FALSE)) %>%
   data.frame()
 
-MeanMeand0 = DataSum2496.meand %>%
-  subset(Treatment==0) %>%
-  group_by(Spp, ExposureHrs) %>%
-  summarize(mean0_meand = mean(MnMeander)) %>%
-  ungroup()  %>%
-  data.frame()
-
-DataSumDiff.meand = merge(DataSum2496.meand, MeanMeand0, all.x=T)
-DataSumDiff.meand$DistDiff = DataSumDiff.meand$MnMeander - DataSumDiff.meand$mean0_meand
-
 
 ```
 
 
-```{r meander single-level Bayesmodels selection, echo=F, eval=F}
+```{r turn angle single-level Bayesmodels selection, echo=F, eval=F}
 # try setting up the linear model in a bayesian form, same as frequentist model above
 
-DSmeand_bmoddat = DataSum2496.meand[,c("MnMeander","lnCalcConcC","lnCalcConcC2",
+DSta_bmoddat = DataSum2496.ta[,c("TurnAngleTrans","TurnAngleDir","lnCalcConcC","lnCalcConcC2",
                                      "ExposureHrs","Spp","RepID")]
-DSmeand_bmoddat$lnCalcConcC = as.numeric(DSmeand_bmoddat$lnCalcConcC) 
-DSmeand_bmoddat$lnCalcConcC2 = as.numeric(DSmeand_bmoddat$lnCalcConcC2) 
-DSmeand_bmoddat$SppDummy <- ifelse(DSmeand_bmoddat$Spp=="GS", 0,1)
-DSmeand_bmoddat$ExposeDummy <- ifelse(DSmeand_bmoddat$ExposureHrs=="24", 0,1)
+DSta_bmoddat$lnCalcConcC = as.numeric(DSta_bmoddat$lnCalcConcC) 
+DSta_bmoddat$lnCalcConcC2 = as.numeric(DSta_bmoddat$lnCalcConcC2) 
+DSta_bmoddat$SppDummy <- ifelse(DSta_bmoddat$Spp=="GS", 0,1)
+DSta_bmoddat$ExposeDummy <- ifelse(DSta_bmoddat$ExposureHrs=="24", 0,1)
+DSta_bmoddat$TADirDummy <- ifelse(DSta_bmoddat$TurnAngleDir=="forward", 0,1)
 
 # remove fish with only one timepoint of detection, because cant add random slope with one timepoint
-DSmeand_bmoddat = DSmeand_bmoddat[!(DSmeand_bmoddat$RepID %in% paste0(c(0,5,100,500,1000,2000), "-WS-4")),]
-DSmeand_bmoddat$RepID = as.factor(as.character(DSmeand_bmoddat$RepID))
+DSta_bmoddat = DSta_bmoddat[!(DSta_bmoddat$RepID %in% paste0(c(0,5,100,500,1000,2000), "-WS-4")),]
+DSta_bmoddat$RepID = as.factor(as.character(DSta_bmoddat$RepID))
 
 
-meandspp.blm_int1 = map2stan(
+taspp.blm_int1 = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+    TurnAngleTrans ~ dnorm(mu, sigma), # data had a long right tail and are bounded by 0 and 90.
       mu  <-  a + 
+              bd*TADirDummy + 
               be*ExposeDummy + 
               bs*SppDummy + 
               bt*(lnCalcConcC) +
-              bts1*(SppDummy)*(lnCalcConcC) ,
-        a ~ dnorm(0,10),
+              bt2*(lnCalcConcC2),
+        #a ~ unif(0,90), # is this the right way to deal with the bounds?
+        a ~ dunif(0,90),
+        bd ~ dnorm(0,10),
         be ~ dnorm(0,10),
         bs ~ dnorm(0,10),
         bt ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+  data = DSta_bmoddat, iter = 1000, warmup = 500, chains = 1)
+## these models take a very long time to fit, due to high amount of data since we didn't summarize by trial. May need to subsample from dataset for model selection process? 
 
-meandspp.blm_int2 = map2stan(
+
+### none of these tested yet (Oct 15 2021)
+taspp.blm_int2 = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+    MnTurnAngle ~ dnorm(mu, sigma), # data don't look normal; bimodal
       mu  <-  a + 
               be*ExposeDummy + 
               bs*SppDummy + 
@@ -990,11 +996,11 @@ meandspp.blm_int2 = map2stan(
         bt2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+  data = DSta_bmoddat, iter = 2000, warmup = 500, chains = 4)
 
-meandspp.blm_int3 = map2stan(
+taspp.blm_int3 = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+    MnTurnAngle ~ dnorm(mu, sigma), # data don't look normal; bimodal
       mu  <-  a + 
               be*ExposeDummy + 
               bs*SppDummy + 
@@ -1009,11 +1015,11 @@ meandspp.blm_int3 = map2stan(
         bts2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+  data = DSta_bmoddat, iter = 2000, warmup = 500, chains = 4)
 
-meandspp.blm_int4 = map2stan(
+taspp.blm_int4 = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma),
+    MnTurnAngle ~ dnorm(mu, sigma),
     mu  <- a + 
            be*ExposeDummy + 
            bs*SppDummy + 
@@ -1030,11 +1036,11 @@ meandspp.blm_int4 = map2stan(
         bts2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+  data = DSta_bmoddat, iter = 2000, warmup = 500, chains = 4)
 
-meandspp.blm_int5 = map2stan(
+taspp.blm_int5 = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma),
+    MnTurnAngle ~ dnorm(mu, sigma),
     mu  <- a + 
            be*ExposeDummy + 
            bs*SppDummy + 
@@ -1051,12 +1057,12 @@ meandspp.blm_int5 = map2stan(
         bts2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+  data = DSta_bmoddat, iter = 2000, warmup = 500, chains = 4)
 
 
-meandspp.blm_int6 = map2stan(
+taspp.blm_int6 = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma),
+    MnTurnAngle ~ dnorm(mu, sigma),
     mu  <- a + 
            be*ExposeDummy + 
            bs*SppDummy + 
@@ -1073,19 +1079,19 @@ meandspp.blm_int6 = map2stan(
         bte2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+  data = DSta_bmoddat, iter = 2000, warmup = 500, chains = 4)
 
 
 
-compare(meandspp.blm_int1, meandspp.blm_int2, meandspp.blm_int3, meandspp.blm_int4, meandspp.blm_int5, meandspp.blm_int6)
+compare(taspp.blm_int1, taspp.blm_int2, taspp.blm_int3, taspp.blm_int4, taspp.blm_int5, taspp.blm_int6)
 ```
 
 ```{r meander multi-level Baysemodels selection, echo=F, eval=F}
 
 set.seed(1983)
-meandspp.blm_int1.rise = map2stan(
+taspp.blm_int1.rise = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+    MnTurnAngle ~ dnorm(mu, sigma), # data don't look normal; bimodal
       mu  <- a_fish[RepID] + 
              be_fish[RepID]*ExposeDummy + 
               bs*SppDummy + 
@@ -1105,13 +1111,13 @@ meandspp.blm_int1.rise = map2stan(
         #bts2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2500, warmup = 750, chains = 4)
+  data = DSta_bmoddat, iter = 2500, warmup = 750, chains = 4)
  ## not too bad? Not great, but better than alot that I've been looking at 
 
 set.seed(2016)
-meandspp.blm_int1.ri = map2stan(
+taspp.blm_int1.ri = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+    MnTurnAngle ~ dnorm(mu, sigma), # data don't look normal; bimodal
       mu  <- a_fish[RepID] + 
              be*ExposeDummy + 
               bs*SppDummy + 
@@ -1126,13 +1132,13 @@ meandspp.blm_int1.ri = map2stan(
         bts1 ~ dnorm(0,50),
     sigma ~ dcauchy(0,50)
     ) ,
-  data = DSmeand_bmoddat, iter = 1500, warmup = 1000, chains = 4)
+  data = DSta_bmoddat, iter = 1500, warmup = 1000, chains = 4)
  ## well, not aweful except for a_sig
 
 set.seed(2016)
-meandspp.blm_int1.se = map2stan(
+taspp.blm_int1.se = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+    MnTurnAngle ~ dnorm(mu, sigma), # data don't look normal; bimodal
       mu  <- a + 
              be_fish[RepID]*ExposeDummy + 
               bs*SppDummy + 
@@ -1147,13 +1153,13 @@ meandspp.blm_int1.se = map2stan(
          bts1 ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+  data = DSta_bmoddat, iter = 2000, warmup = 500, chains = 4)
  ##  
 
 
-meandspp.blm_int2.rise = map2stan(
+taspp.blm_int2.rise = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma),  # data don't look normal; bimodal
+    MnTurnAngle ~ dnorm(mu, sigma),  # data don't look normal; bimodal
     mu  <- a_fish[RepID] +
            be_fish[RepID]*ExposeDummy +
              bs*SppDummy +
@@ -1177,12 +1183,12 @@ meandspp.blm_int2.rise = map2stan(
         bte2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 4000, warmup = 1000, chains = 4)
+  data = DSta_bmoddat, iter = 4000, warmup = 1000, chains = 4)
 
 
-meandspp.blm_int5.rise.2 = map2stan(
+taspp.blm_int5.rise.2 = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma),
+    MnTurnAngle ~ dnorm(mu, sigma),
     mu  <- a_fish[RepID] + 
            be_fish[RepID]*ExposeDummy + 
              bs*SppDummy + 
@@ -1203,13 +1209,13 @@ meandspp.blm_int5.rise.2 = map2stan(
         bts2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,2)
     ) ,
-  data = DSmeand_bmoddat, iter = 4000, warmup = 1000, chains = 4)
+  data = DSta_bmoddat, iter = 4000, warmup = 1000, chains = 4)
 ### Also DOES NOT FIT WELL - pretty bad convergence in trace plots, long run time
 
 
-meandspp.blm_int5.rise.2.offset = map2stan(
+taspp.blm_int5.rise.2.offset = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma),
+    MnTurnAngle ~ dnorm(mu, sigma),
     mu  <- a + a_fish[RepID] +
            be + be_fish[RepID]*ExposeDummy +
              bs*SppDummy +
@@ -1230,13 +1236,13 @@ meandspp.blm_int5.rise.2.offset = map2stan(
         bts2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,2)
     ) ,
-  data = DSmeand_bmoddat, iter = 4000, warmup = 1000, chains = 4, cores=2)
+  data = DSta_bmoddat, iter = 4000, warmup = 1000, chains = 4, cores=2)
 ### Also DOES NOT FIT WELL - pretty bad convergence in trace plots, long run time
 
 
-meandspp.blm_int5.ri = map2stan(
+taspp.blm_int5.ri = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma),
+    MnTurnAngle ~ dnorm(mu, sigma),
     mu  <- a_fish[RepID] + 
            bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
            be*ExposeDummy + 
@@ -1255,34 +1261,34 @@ meandspp.blm_int5.ri = map2stan(
         bts2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+  data = DSta_bmoddat, iter = 2000, warmup = 500, chains = 4)
 
 
- plot(meandspp.blm_int1.rise)
- plot(meandspp.blm_int2.rise)
- plot(meandspp.blm_int5.rise.2)
- plot(meandspp.blm_int5.rise.2.offset)
- plot(meandspp.blm_int5.ri)
+ plot(taspp.blm_int1.rise)
+ plot(taspp.blm_int2.rise)
+ plot(taspp.blm_int5.rise.2)
+ plot(taspp.blm_int5.rise.2.offset)
+ plot(taspp.blm_int5.ri)
  
- precis(meandspp.blm_int1.rise, prob = .95, digits=3)
- precis(meandspp.blm_int2.rise, prob = .95, digits=3)
- precis(meandspp.blm_int5.rise.2, prob = .95, digits=3)
- precis(meandspp.blm_int5.rise.2.offset, prob = .95, digits=3)
- precis(meandspp.blm_int5.ri, prob = .95, digits=3)
+ precis(taspp.blm_int1.rise, prob = .95, digits=3)
+ precis(taspp.blm_int2.rise, prob = .95, digits=3)
+ precis(taspp.blm_int5.rise.2, prob = .95, digits=3)
+ precis(taspp.blm_int5.rise.2.offset, prob = .95, digits=3)
+ precis(taspp.blm_int5.ri, prob = .95, digits=3)
 
- plot(precis(meandspp.blm_int1.rise, prob = .95))
- plot(precis(meandspp.blm_int2.rise, prob = .95))
- plot(precis(meandspp.blm_int5.rise.2, prob = .95, depth=2))
- plot(precis(meandspp.blm_int5.rise.2.offset, prob = .95, depth=2))
- plot(precis(meandspp.blm_int5.ri, prob = .95, depth=2))
+ plot(precis(taspp.blm_int1.rise, prob = .95))
+ plot(precis(taspp.blm_int2.rise, prob = .95))
+ plot(precis(taspp.blm_int5.rise.2, prob = .95, depth=2))
+ plot(precis(taspp.blm_int5.rise.2.offset, prob = .95, depth=2))
+ plot(precis(taspp.blm_int5.ri, prob = .95, depth=2))
 
-compare(meandspp.blm_int1.rise, meandspp.blm_int2.rise,
-        meandspp.blm_int5.rise.2, meandspp.blm_int5.rise.2.offset, 
-        meandspp.blm_int5.ri)
+compare(taspp.blm_int1.rise, taspp.blm_int2.rise,
+        taspp.blm_int5.rise.2, taspp.blm_int5.rise.2.offset, 
+        taspp.blm_int5.ri)
 
-plot(compare(meandspp.blm_int1.rise, meandspp.blm_int2.rise,
-             meandspp.blm_int5.rise.2,meandspp.blm_int5.rise.2.offset,  
-             meandspp.blm_int5.ri))
+plot(compare(taspp.blm_int1.rise, taspp.blm_int2.rise,
+             taspp.blm_int5.rise.2,taspp.blm_int5.rise.2.offset,  
+             taspp.blm_int5.ri))
 
 ```
 ### I'm guess I'm happy with model int5.rise.2, that accounts for the repeated measures of an individual across time ('distspp.blm_int5.rise.2'). The trace plots have better mixing for int5.2 than int5.NC and Zack says that there's more to parameterizing the NC approach than is covered in the rethinking book chapter. The trace plots aren't great but it seems relatively stable as I change small things, so Zack says it's probably good enough. If I really cared I could go tweek parameters more and document the changes to the estimated parameters. I tried estimating the overall interept and slope seperately, with offsets for the individual IDs, but the variance for the overall parameters was huge and largely dependant on the prior. I'm going to move on and assume the model is good enough. 
