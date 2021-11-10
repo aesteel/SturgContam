@@ -14,6 +14,7 @@ library(lme4)
 library(rethinking)
 library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
 library(patchwork)
+library(circular)
 
 knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
 ```
@@ -35,7 +36,7 @@ nstep = function(t2,t1, interv=0.2) {
 
 ## Read in Cleaned Data ("Exposure_Analysis1.Rmd")
 ```{r read in clean data}
-DataSum2496 = read.csv("outputData/Exposure_Outputdata/Bifenthrin_2020_Cleaned_FullData.csv")
+DataSum2496.raw = read.csv("outputData/Exposure_Outputdata/Bifenthrin_2020_Cleaned_FullData.csv")
 ```
 
 
@@ -48,7 +49,7 @@ DataSum2496 = read.csv("outputData/Exposure_Outputdata/Bifenthrin_2020_Cleaned_F
 ```{r distance data, echo=F}
 
 ## Summarize to take total distance (sum moved in a trial) for each fish replicates
-DataSum2496.dist = DataSum2496 %>%
+DataSum2496.dist = DataSum2496.raw %>%
   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
   summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100)) %>%
   ungroup()  %>%
@@ -136,9 +137,9 @@ distspp.blm_int2.rise = map2stan(
              bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2) +
              bte1*(ExposeDummy)*(lnCalcConcC) + bte2*(ExposeDummy)*(lnCalcConcC2),
          # does the interaction also need to have the random effect? I hope not =/
-           c(a_fish,be_fish)[RepID] ~ dmvnormNC(sigma=sigma_fish, Rho=Rho), #Mu=c(a,be),
-           # a ~ dnorm(0,10),
-           # be ~ dnorm(0,10),
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu = c(a,be), sigma=sigma_fish, Rho=Rho), 
+           a ~ dnorm(0,10),
+           be ~ dnorm(0,10),
            sigma_fish ~ dcauchy(0,10),
            Rho ~ dlkjcorr(2),
              # not as flat as (1) but biases against strong correlations of intercept and slope
@@ -155,7 +156,42 @@ distspp.blm_int2.rise = map2stan(
   data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4)
 
 
-distspp.blm_int5.rise.2 = map2stan(
+
+# same parameters as the center zone model, with bse added; more intuitive to me...lets each of the four categorical groups have a unique slope and curvature for the effect of treatment
+distspp.blm_int3.rise = map2stan( # the true 'full' model as far as I can figure
+  alist(
+    TotalfishDist_m ~ dnorm(mu, sigma),
+    mu  <- a_fish[RepID] +
+           be_fish[RepID]*ExposeDummy +
+             bs*SppDummy +
+             bt*(lnCalcConcC) + 
+             bse*(SppDummy)*(ExposeDummy) +
+             bte*(lnCalcConcC)*(ExposeDummy) +
+             bts*(lnCalcConcC)*(SppDummy) + 
+             bt2*(lnCalcConcC2) +
+             bt2e*(lnCalcConcC2)*(ExposeDummy)+
+             bt2s*(lnCalcConcC2)*(SppDummy),
+
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),# 
+           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
+           be ~ dnorm(0,10),
+           sigma_fish ~ dcauchy(0,2),
+           Rho ~ dlkjcorr(2),
+    
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bte ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bts ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt2e ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4)
+## trace plots look fine. Not great, but definitely fine. Rhat are fine, and n_eff are fine (again, not great). large error bars on a and be (with random effects) so taht seems reasonable, and narrow errors for all the other parametes. bte, bt2e, and bt2s are near zero, bs and bt2 are large effects (relative) and bt2s is also not zero. bt and bt2 are likely no zero but small. All in all, this seems like a good model, and it runs well...still should use WAIC to compare to other options here. 
+
+distspp.blm_int5.rise.2 = map2stan( # same as int3.rise except for the two interactions between treatmen/treatment^2 and exposure
   alist(
     TotalfishDist_m ~ dnorm(mu, sigma),
     mu  <- a_fish[RepID] + 
@@ -179,7 +215,10 @@ distspp.blm_int5.rise.2 = map2stan(
     sigma ~ dcauchy(0,2)
     ) ,
   data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4)
+# see notes below for thoughts on traceplots etc. take home = it's fine
 
+plot(compare(distspp.blm_int5.rise.2, distspp.blm_int3.rise))
+# the less complex model (without interaction between exposure time and concentration) is better; dWAIC = 9.2, weight for model int5.rise.2 is 99%. 
 
 
 distspp.blm_int5.rise.2.offset = map2stan(
@@ -209,84 +248,84 @@ distspp.blm_int5.rise.2.offset = map2stan(
 
 
 
-distspp.blm_int5.rise.2.lkj3 = map2stan(
-  alist(
-    TotalfishDist_m ~ dnorm(mu, sigma),
-    mu  <- a_fish[RepID] + 
-           be_fish[RepID]*ExposeDummy + 
-           bs*SppDummy + 
-           bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-           bse*(SppDummy)*(ExposeDummy) +
-           bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-        c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be),sigma=sigma_fish, Rho=Rho),# 
-             a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
-             be ~ dnorm(0,10),
-             sigma_fish ~ dcauchy(0,2),
-             Rho ~ dlkjcorr(3),
-        
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,2)
-    ) ,
-  data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4, cores=2)
- 
-
-
-distspp.blm_int5.rise.2.lkj1 = map2stan(
-  alist(
-    TotalfishDist_m ~ dnorm(mu, sigma),
-    mu  <- a_fish[RepID] + 
-           be_fish[RepID]*ExposeDummy + 
-           bs*SppDummy + 
-           bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-           bse*(SppDummy)*(ExposeDummy) +
-           bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-    
-        c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be),sigma=sigma_fish, Rho=Rho),# 
-                 a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
-                 be ~ dnorm(0,10),
-                 sigma_fish ~ dcauchy(0,2),
-                 Rho ~ dlkjcorr(1),
-    
-        bs ~ dnorm(0,10),
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,2)
-    ) ,
-  data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4, cores=2)
- 
-distspp.blm_int5.rise.NC = map2stan(
-  alist(
-    TotalfishDist_m ~ dnorm(mu, sigma),
-    mu  <- a_fish[RepID] +
-           be_fish[RepID]*ExposeDummy +
-             bs*SppDummy +
-             bse*(SppDummy)*(ExposeDummy) +
-             bt*(lnCalcConcC) + bt2*(lnCalcConcC2) +
-             bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-         # does the interaction also need to have the random effect? I hope not =/
-           c(a_fish,be_fish)[RepID] ~ dmvnormNC(sigma=sigma_fish, Rho=Rho),#
-           #a ~ dnorm(0,10),
-           #be ~ dnorm(0,10),
-           sigma_fish ~ dcauchy(0,10),
-           Rho ~ dlkjcorr(2),
-             # not as flat as (1) but biases against strong correlations of intercept and slope
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
-    ) ,
-  data = DSdist_bmoddat, iter = 2000, warmup = 500, chains = 4)
+# distspp.blm_int5.rise.2.lkj3 = map2stan(
+#   alist(
+#     TotalfishDist_m ~ dnorm(mu, sigma),
+#     mu  <- a_fish[RepID] + 
+#            be_fish[RepID]*ExposeDummy + 
+#            bs*SppDummy + 
+#            bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
+#            bse*(SppDummy)*(ExposeDummy) +
+#            bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
+#         c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be),sigma=sigma_fish, Rho=Rho),# 
+#              a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
+#              be ~ dnorm(0,10),
+#              sigma_fish ~ dcauchy(0,2),
+#              Rho ~ dlkjcorr(3),
+#         
+#         bt ~ dnorm(0,10),
+#         bt2 ~ dnorm(0,10),
+#         bs ~ dnorm(0,10),
+#         bse ~ dnorm(0,10),
+#         bts1 ~ dnorm(0,10),
+#         bts2 ~ dnorm(0,10),
+#     sigma ~ dcauchy(0,2)
+#     ) ,
+#   data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4, cores=2)
+#  
+# 
+# 
+# distspp.blm_int5.rise.2.lkj1 = map2stan(
+#   alist(
+#     TotalfishDist_m ~ dnorm(mu, sigma),
+#     mu  <- a_fish[RepID] + 
+#            be_fish[RepID]*ExposeDummy + 
+#            bs*SppDummy + 
+#            bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
+#            bse*(SppDummy)*(ExposeDummy) +
+#            bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
+#     
+#         c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be),sigma=sigma_fish, Rho=Rho),# 
+#                  a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
+#                  be ~ dnorm(0,10),
+#                  sigma_fish ~ dcauchy(0,2),
+#                  Rho ~ dlkjcorr(1),
+#     
+#         bs ~ dnorm(0,10),
+#         bt ~ dnorm(0,10),
+#         bt2 ~ dnorm(0,10),
+#         bse ~ dnorm(0,10),
+#         bts1 ~ dnorm(0,10),
+#         bts2 ~ dnorm(0,10),
+#     sigma ~ dcauchy(0,2)
+#     ) ,
+#   data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4, cores=2)
+#  
+# distspp.blm_int5.rise.NC = map2stan(
+#   alist(
+#     TotalfishDist_m ~ dnorm(mu, sigma),
+#     mu  <- a_fish[RepID] +
+#            be_fish[RepID]*ExposeDummy +
+#              bs*SppDummy +
+#              bse*(SppDummy)*(ExposeDummy) +
+#              bt*(lnCalcConcC) + bt2*(lnCalcConcC2) +
+#              bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
+#          # does the interaction also need to have the random effect? I hope not =/
+#            c(a_fish,be_fish)[RepID] ~ dmvnormNC(sigma=sigma_fish, Rho=Rho),#
+#            #a ~ dnorm(0,10),
+#            #be ~ dnorm(0,10),
+#            sigma_fish ~ dcauchy(0,10),
+#            Rho ~ dlkjcorr(2),
+#              # not as flat as (1) but biases against strong correlations of intercept and slope
+#         bt ~ dnorm(0,10),
+#         bt2 ~ dnorm(0,10),
+#         bs ~ dnorm(0,10),
+#         bse ~ dnorm(0,10),
+#         bts1 ~ dnorm(0,10),
+#         bts2 ~ dnorm(0,10),
+#     sigma ~ dcauchy(0,10)
+#     ) ,
+#   data = DSdist_bmoddat, iter = 2000, warmup = 500, chains = 4)
 
 distspp.blm_int5.ri = map2stan(
   alist(
@@ -505,25 +544,8 @@ DistPred_orig_plot2
 
 ```{r distance multi-level model density plots, echo=F}
 set.seed(1983) 
-postdist = extract.samples(distspp.blm_int5.rise.2)
-  # # calculate effect of treatment, for each species, at 96hrs 
-  # #  (exposedummy=1 for 96hrs, sppdummy = 1 for GS)
-  # gamma.96GS = post$a + post$be + post$bt + post$bt2
-  #     # because I'm using 'be' that was estimated as a sub-parameter of be_fish, this should be predicting the global expected effect, not the effect dependent on fish identity
-  # 
-  # gamma.96WS = ppost$a + post$be + post$bs + post$bt + post$bt2 + post$bse + post$bts1 + post$bts2
-  # 
-  # 
-  # # Can calc mean effect, as in rethinking textbook example for interactions, but less meaningful because it's a quadratic, so the effect changes given the treatment value. Need to estimate it at each level of treatment and make pair-wise comparisons or predict to a new level
-  # 
-  # ## see page 236 from rethinking 2015
-  # 
-  # 
-  # mean(gamma.96GS)
-  # mean(gamma.96WS)
-  # 
-  # dens(gamma.96GS, xlab="quadratic interaction", col="green3", xlim=c(-400,0))
-  # dens(gamma.96WS, add=TRUE, col="steelblue3")
+postdist = extract.samples(distspp.blm_int5.rise.2)  # maybe change to distspp.blm_int3.rise, and if so, change the model prediction parts in the following chunk and the next. Argh. 
+
 
 # reference table to convert from treatment to centered, log-transformed measured concentrations
 TreatCalcTable = unique(DataSum2496.dist[order(DataSum2496.dist$Treatment)
@@ -867,12 +889,12 @@ WS0bif_96.24.plot
  
      
 
-## Velocity Models
+## Velocity Models - abandoned b/c very similar pattern to distance #####
 ### Velocity 
 ```{r velocity plots, echo=F}
 
 ## Summarize movement velocity
- DataSum9696.vel = DataSum2496 %>%
+ DataSum9696.vel = DataSum2496.raw %>%
   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
   summarize(MnVel = mean(MnVel, na.rm=T), npos = n()) %>%
   ungroup()  %>%
@@ -910,34 +932,40 @@ velspp.lmm = lmer(MnVel ~ factor(Spp)*factor(Treatment)*factor(ExposureHrs)+ (1|
 
 
 
-## Meander 
-
-## Meander Models #####
+## Meander Models - issues because it's circular data; review with +/- turn data #####
 ```{r meander data, echo=F}
-
-## Summarize meander and turn angle
-DataSum2496.meand = DataSum2496 %>%
-  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
-  summarize(MnMeander = mean(Meander, na.rm=T), MnTurnAngle = mean(TurnAngle, na.rm=T)) %>%
-  ungroup()  %>%
-
+## Add transformations of concentrations, exposure hours, and meander
+ 
+DataSum2496 <- DataSum2496.raw %>%
+  mutate(MeanderLog = log(Meander)) %>%
+  mutate(TurnAngleCirc = as.circular(TurnAngle)) %>%
   mutate(lnCalcConc = log(calcConc+1)) %>%
   mutate(lnCalcConcC= scale(lnCalcConc, scale=FALSE)) %>%
   mutate(lnCalcConcC2 = lnCalcConcC^2 ) %>% 
    # order of transformations matters (log then scale then square)
-
-  mutate(ExposureHrsC = scale(ExposureHrs, scale=FALSE)) %>%
   data.frame()
 
-MeanMeand0 = DataSum2496.meand %>%
-  subset(Treatment==0) %>%
-  group_by(Spp, ExposureHrs) %>%
-  summarize(mean0_meand = mean(MnMeander)) %>%
+## Summarize meander and turn angle
+DataSum2496.meand <- DataSum2496 %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, 
+           lnCalcConc, lnCalcConcC, lnCalcConcC2, Spp, RepID) %>%
+  summarize(MnMeander = mean(Meander, na.rm=T), 
+            MnMeanderLog = mean(MeanderLog, na.rm=T),
+            MnTurnAngle = mean(TurnAngle, na.rm=T),
+            MnTurnAngleCirc = as.numeric(mean(TurnAngleCirc, na.rm=T))
+            ) %>%
   ungroup()  %>%
   data.frame()
 
-DataSumDiff.meand = merge(DataSum2496.meand, MeanMeand0, all.x=T)
-DataSumDiff.meand$DistDiff = DataSumDiff.meand$MnMeander - DataSumDiff.meand$mean0_meand
+# MeanMeand0 = DataSum2496.meand %>%
+#   subset(Treatment==0) %>%
+#   group_by(Spp, ExposureHrs) %>%
+#   summarize(mean0_meand = mean(MnMeander)) %>%
+#   ungroup()  %>%
+#   data.frame()
+# 
+# DataSumDiff.meand = merge(DataSum2496.meand, MeanMeand0, all.x=T)
+# DataSumDiff.meand$DistDiff = DataSumDiff.meand$MnMeander - DataSumDiff.meand$mean0_meand
 
 
 ```
@@ -945,44 +973,59 @@ DataSumDiff.meand$DistDiff = DataSumDiff.meand$MnMeander - DataSumDiff.meand$mea
 
 ```{r meander single-level Bayesmodels selection, echo=F, eval=F}
 # try setting up the linear model in a bayesian form, same as frequentist model above
-
-DSmeand_bmoddat = DataSum2496.meand[,c("MnMeander","lnCalcConcC","lnCalcConcC2",
+# use all meander data points, not summarized data
+DSmeand_bmoddat = DataSum2496[,c(#"MnMeanderLog",
+                                      # "MnTurnAngleCirc",
+                                      "TurnAngleCirc",
+                                       "lnCalcConcC","lnCalcConcC2",
                                      "ExposureHrs","Spp","RepID")]
+DSmeand_bmoddat = DSmeand_bmoddat[!is.na(DSmeand_bmoddat$TurnAngleCirc),]
+
 DSmeand_bmoddat$lnCalcConcC = as.numeric(DSmeand_bmoddat$lnCalcConcC) 
 DSmeand_bmoddat$lnCalcConcC2 = as.numeric(DSmeand_bmoddat$lnCalcConcC2) 
-DSmeand_bmoddat$SppDummy <- ifelse(DSmeand_bmoddat$Spp=="GS", 0,1)
-DSmeand_bmoddat$ExposeDummy <- ifelse(DSmeand_bmoddat$ExposureHrs=="24", 0,1)
+DSmeand_bmoddat$SppDummy <- as.numeric(ifelse(DSmeand_bmoddat$Spp=="GS", 0,1))
+DSmeand_bmoddat$ExposeDummy <- as.numeric(ifelse(DSmeand_bmoddat$ExposureHrs=="24", 0,1))
+DSmeand_bmoddat$TurnAngleCirc = as.numeric(DSmeand_bmoddat$TurnAngleCirc) 
 
 # remove fish with only one timepoint of detection, because cant add random slope with one timepoint
 DSmeand_bmoddat = DSmeand_bmoddat[!(DSmeand_bmoddat$RepID %in% paste0(c(0,5,100,500,1000,2000), "-WS-4")),]
 DSmeand_bmoddat$RepID = as.factor(as.character(DSmeand_bmoddat$RepID))
 
+DSmeand_bmoddat = DSmeand_bmoddat[!is.na(DSmeand_bmoddat$TurnAngleCirc),]
 
+set.seed(1983)
 meandspp.blm_int1 = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+    TurnAngleCirc ~ dnorm(mu, sigma), 
       mu  <-  a + 
               be*ExposeDummy + 
               bs*SppDummy + 
               bt*(lnCalcConcC) +
-              bts1*(SppDummy)*(lnCalcConcC) ,
+              bts*(SppDummy)*(lnCalcConcC) ,
         a ~ dnorm(0,10),
         be ~ dnorm(0,10),
         bs ~ dnorm(0,10),
         bt ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
+        bts ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+  data = DSmeand_bmoddat, iter = 800, warmup = 300, chains = 1)
 
+# trash = c(1,2,3)
+# saveRDS(trash, "trash.Rds")
+# trash = readRDS("trash.Rds")
+saveRDS(meandspp.blm_int1, "meandspp.blm_int1.Rds")
+
+
+set.seed(1983)
 meandspp.blm_int2 = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+    TurnAngleCirc ~ dnorm(mu, sigma), 
       mu  <-  a + 
               be*ExposeDummy + 
               bs*SppDummy + 
               bt*(lnCalcConcC) + 
-              bt2*(lnCalcConcC2),
+              bt2*(lnCalcConcC2), 
         a ~ dnorm(0,10),
         be ~ dnorm(0,10),
         bs ~ dnorm(0,10),
@@ -990,197 +1033,236 @@ meandspp.blm_int2 = map2stan(
         bt2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+  data = DSmeand_bmoddat, iter = 800, warmup = 300, chains = 1)
 
+saveRDS(meandspp.blm_int2, "meandspp.blm_int2.Rds")
+
+
+
+set.seed(1983)
 meandspp.blm_int3 = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+    TurnAngleCirc ~ dnorm(mu, sigma), 
       mu  <-  a + 
               be*ExposeDummy + 
               bs*SppDummy + 
-              bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-              bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
+              bt*(lnCalcConcC) + 
+              bt2*(lnCalcConcC2) + 
+              bt2e*(lnCalcConcC2)*(ExposeDummy), 
         a ~ dnorm(0,10),
         be ~ dnorm(0,10),
         bs ~ dnorm(0,10),
         bt ~ dnorm(0,10),
         bt2 ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
+        bt2e ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+  data = DSmeand_bmoddat, iter = 800, warmup = 300, chains = 1)
 
+saveRDS(meandspp.blm_int3, "meandspp.blm_int3.Rds")
+
+
+set.seed(1983)
 meandspp.blm_int4 = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma),
-    mu  <- a + 
-           be*ExposeDummy + 
-           bs*SppDummy + 
-           bse*(SppDummy)*(ExposeDummy) +
-           bt*(lnCalcConcC) + 
-           bts1*(SppDummy)*(lnCalcConcC),
+    TurnAngleCirc ~ dnorm(mu, sigma), 
+      mu  <-  a + 
+              be*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC) + 
+              bt2*(lnCalcConcC2) + 
+              bt2e*(lnCalcConcC2)*(ExposeDummy)+ 
+              bt2s*(lnCalcConcC2)*(SppDummy), 
         a ~ dnorm(0,10),
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
         be ~ dnorm(0,10),
         bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
-    ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
-
-meandspp.blm_int5 = map2stan(
-  alist(
-    MnMeander ~ dnorm(mu, sigma),
-    mu  <- a + 
-           be*ExposeDummy + 
-           bs*SppDummy + 
-           bse*(SppDummy)*(ExposeDummy) +
-           bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-           bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-        a ~ dnorm(0,10),
         bt ~ dnorm(0,10),
         bt2 ~ dnorm(0,10),
-        be ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
+        bt2e ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+  data = DSmeand_bmoddat, iter = 800, warmup = 300, chains = 1)
 
-
-meandspp.blm_int6 = map2stan(
-  alist(
-    MnMeander ~ dnorm(mu, sigma),
-    mu  <- a + 
-           be*ExposeDummy + 
-           bs*SppDummy + 
-           bse*(SppDummy)*(ExposeDummy) +
-           bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-           bte1*(ExposeDummy)*(lnCalcConcC) + bte2*(ExposeDummy)*(lnCalcConcC2),
-        a ~ dnorm(0,10),
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        be ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bte1 ~ dnorm(0,10),
-        bte2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
-    ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+saveRDS(meandspp.blm_int4, "meandspp.blm_int4.Rds")
 
 
 
-compare(meandspp.blm_int1, meandspp.blm_int2, meandspp.blm_int3, meandspp.blm_int4, meandspp.blm_int5, meandspp.blm_int6)
+compare(meandspp.blm_int1, meandspp.blm_int2, meandspp.blm_int3, meandspp.blm_int4)
+
+
+# 
+# 
+# a_fish[RepID] + 
+#              be_fish[RepID]*ExposeDummy + 
+#               bs*SppDummy + 
+#               bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
+#               bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
+#         # Wrong way of extending a random intercept; doesn't include correlation between slope and intercept for the same individual
+#         # a_fish[RepID] ~ dnorm(a,a_sig),
+#         #   a ~ dcauchy(0,10),
+#         #   a_sig ~ dcauchy(0,10),
+#         # be_fish[RepID] ~ dnorm(be,be_sig),
+#         #   be ~ dcauchy(0,10),
+#         #   be_sig ~ dcauchy(0,10),
+#         # Right way, because includes correlation by individual
+#            c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be), sigma=sigma_fish, Rho=Rho),
+#            a ~ dnorm(0,10),
+#            be ~ dnorm(0,10),
+#            sigma_fish ~ dcauchy(0,10),
+#            Rho ~ dlkjcorr(2),
+#              # not as flat as (1) but biases against strong correlations of intercept and slope
+#        
+
 ```
 
 ```{r meander multi-level Baysemodels selection, echo=F, eval=F}
 
+# # set.seed(1983)
+# # meandspp.blm_int1.rise = map2stan(
+# #   alist(
+# #     MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+# #       mu  <- a_fish[RepID] + 
+# #              be_fish[RepID]*ExposeDummy + 
+# #               bs*SppDummy + 
+# #               bt*(lnCalcConcC)  + 
+# #               bts1*(SppDummy)*(lnCalcConcC),
+# #          # Right way to code intercept and slope, because includes correlation by individual
+# #            c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be), sigma=sigma_fish, Rho=Rho),
+# #            a ~ dnorm(0,10),
+# #            be ~ dnorm(0,10),
+# #            sigma_fish ~ dcauchy(0,10),
+# #            Rho ~ dlkjcorr(2),
+# #              # not as flat as (1) but biases against strong correlations of intercept and slope
+# #         bt ~ dnorm(0,10),
+# #         #bt2 ~ dnorm(0,10),
+# #         bs ~ dnorm(0,10),
+# #         bts1 ~ dnorm(0,10),
+# #         #bts2 ~ dnorm(0,10),
+# #     sigma ~ dcauchy(0,10)
+# #     ) ,
+# #   data = DSmeand_bmoddat, iter = 2500, warmup = 750, chains = 4)
+# #  ## not too bad? Not great, but better than alot that I've been looking at 
+# # 
+# # set.seed(2016)
+# # meandspp.blm_int1.ri = map2stan(
+# #   alist(
+# #     MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+# #       mu  <- a_fish[RepID] + 
+# #              be*ExposeDummy + 
+# #               bs*SppDummy + 
+# #               bt*(lnCalcConcC)  + 
+# #               bts1*(SppDummy)*(lnCalcConcC),
+# #            a_fish[RepID] ~ dnorm(a,a_sig),
+# #                a ~ dnorm(200,100),
+# #                a_sig ~ dcauchy(50,100),
+# #         be ~ dnorm(0,50),
+# #         bt ~ dnorm(0,50),
+# #         bs ~ dnorm(0,50),
+# #         bts1 ~ dnorm(0,50),
+# #     sigma ~ dcauchy(0,50)
+# #     ) ,
+# #   data = DSmeand_bmoddat, iter = 1500, warmup = 1000, chains = 4)
+# #  ## well, not aweful except for a_sig
+# 
+# set.seed(2016)
+# meandspp.blm_int1.se = map2stan(
+#   alist(
+#     MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
+#       mu  <- a + 
+#              be_fish[RepID]*ExposeDummy + 
+#               bs*SppDummy + 
+#               bt*(lnCalcConcC)  + 
+#               bts1*(SppDummy)*(lnCalcConcC),
+#          a ~ dnorm(0,10),
+#          be_fish[RepID] ~ dnorm(be,be_sig),
+#            be ~ dnorm(0,10),
+#            be_sig ~ dcauchy(0,10),
+#          bt ~ dnorm(0,10),
+#          bs ~ dnorm(0,10),
+#          bts1 ~ dnorm(0,10),
+#     sigma ~ dcauchy(0,10)
+#     ) ,
+#   data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
+#  ##  
+# 
+
 set.seed(1983)
-meandspp.blm_int1.rise = map2stan(
+meandspp.blm_int3.rise = map2stan(
   alist(
-    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
-      mu  <- a_fish[RepID] + 
-             be_fish[RepID]*ExposeDummy + 
+    TurnAngleCirc ~ dnorm(mu, sigma), 
+      mu  <-  a_fish[RepID] + 
+              be_fish[RepID]*ExposeDummy + 
               bs*SppDummy + 
-              bt*(lnCalcConcC)  + 
-              bts1*(SppDummy)*(lnCalcConcC),
-         # Right way to code intercept and slope, because includes correlation by individual
-           c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be), sigma=sigma_fish, Rho=Rho),
-           a ~ dnorm(0,10),
-           be ~ dnorm(0,10),
-           sigma_fish ~ dcauchy(0,10),
-           Rho ~ dlkjcorr(2),
-             # not as flat as (1) but biases against strong correlations of intercept and slope
-        bt ~ dnorm(0,10),
-        #bt2 ~ dnorm(0,10),
+              bt*(lnCalcConcC) + 
+              bt2*(lnCalcConcC2) + 
+              bt2e*(lnCalcConcC2)*(ExposeDummy) +
+              bt2s*(lnCalcConcC2)*(SppDummy), 
+                 c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be), sigma=sigma_fish, Rho=Rho), 
+                   a ~ dnorm(0,10),
+                   be ~ dnorm(0,10),
+                   sigma_fish ~ dcauchy(0,10),
+                   Rho ~ dlkjcorr(2),
         bs ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        #bts2 ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt2e ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2500, warmup = 750, chains = 4)
- ## not too bad? Not great, but better than alot that I've been looking at 
+  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 2)
 
-set.seed(2016)
-meandspp.blm_int1.ri = map2stan(
-  alist(
-    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
-      mu  <- a_fish[RepID] + 
-             be*ExposeDummy + 
-              bs*SppDummy + 
-              bt*(lnCalcConcC)  + 
-              bts1*(SppDummy)*(lnCalcConcC),
-           a_fish[RepID] ~ dnorm(a,a_sig),
-               a ~ dnorm(200,100),
-               a_sig ~ dcauchy(50,100),
-        be ~ dnorm(0,50),
-        bt ~ dnorm(0,50),
-        bs ~ dnorm(0,50),
-        bts1 ~ dnorm(0,50),
-    sigma ~ dcauchy(0,50)
-    ) ,
-  data = DSmeand_bmoddat, iter = 1500, warmup = 1000, chains = 4)
- ## well, not aweful except for a_sig
+saveRDS(meandspp.blm_int3.rise, "meandspp.blm_int3.rise.Rds")
 
-set.seed(2016)
-meandspp.blm_int1.se = map2stan(
-  alist(
-    MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
-      mu  <- a + 
-             be_fish[RepID]*ExposeDummy + 
-              bs*SppDummy + 
-              bt*(lnCalcConcC)  + 
-              bts1*(SppDummy)*(lnCalcConcC),
-         a ~ dnorm(0,10),
-         be_fish[RepID] ~ dnorm(be,be_sig),
-           be ~ dnorm(0,10),
-           be_sig ~ dcauchy(0,10),
-         bt ~ dnorm(0,10),
-         bs ~ dnorm(0,10),
-         bts1 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
-    ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
- ##  
+## model fit after four or more days of running. 
+## there were 381 transitions that exceeded max tree depth (set at 10)
+## bulk effective sample size is too low and total effective sample size is too low . suggest running the chains for more iterations. Lowest n_eff was for bt2e (89) while highest possible should have been 3000. Only sigma was over 500. Rhat are actually okay, se seem reasonable. Trace plots are somewhat strange; 
+ # be_fish[1:15] arent as 'fuzzy' as usual, have n_eff just under 100, but two chains overlap. be_fish[16:30] look great and have n_eff ~3000. be_fish[31-45] are somewhere in between (n_eff 107-179), and be_fish[46-68] are only slightly worse (n_eff 93-128). be_fish[69-75] look the same as the first (n_eff 90-95). be_fish[76-90] look just fine (n_eff 182-305). 
+ # a_fish[1-15] look fine with n_eff ~ 100, [16-23] are nearly flat lines but with large x axis range and n_eff>2500, [24-30] look fine w/ n_eff 275-285, [31-75] look fine w/ n_eff 95-164 and n_ff trending down over this range, [76-90] also look fine, n_eff 171-202. Not concerned about the pattern of these trace plots except for those few with 'flat' lines but the high n_eff makes me think it's not an issue of identifiabiilty. 
+ # the global estimate for be is not optimal, but not terrible. Estimate for bt2e wiggles a little more than I'd like but mostly within bounds and the two chains pretty much agree. The estimate for sigma is perfectly straight with n_eff=2866, sand I'm not sure what this means (now wondering about the a_fish with the same pattern?). all other estimates have good trace plots. 
+ # If it didn't take ages to run I'd just run it again for longer and see. But if this isn't the best model I won't waste the time. 
 
-
-meandspp.blm_int2.rise = map2stan(
+set.seed(1983)
+meandspp.blm_int4.rise = map2stan(
   alist(
     MnMeander ~ dnorm(mu, sigma),  # data don't look normal; bimodal
     mu  <- a_fish[RepID] +
            be_fish[RepID]*ExposeDummy +
              bs*SppDummy +
-             bt*(lnCalcConcC) + bt2*(lnCalcConcC2) +
-             bse*(SppDummy)*(ExposeDummy) +
-             bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2) +
-             bte1*(ExposeDummy)*(lnCalcConcC) + bte2*(ExposeDummy)*(lnCalcConcC2),
-         # does the interaction also need to have the random effect? I hope not =/
-           c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be), sigma=sigma_fish, Rho=Rho), 
+             bt*(lnCalcConcC) + 
+             bt2*(lnCalcConcC2) +
+             bts1*(SppDummy)*(lnCalcConcC) + 
+             bts2*(SppDummy)*(lnCalcConcC2),
+                 c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be),    
+                                              sigma=sigma_fish, Rho=Rho), 
            a ~ dnorm(0,10),
            be ~ dnorm(0,10),
            sigma_fish ~ dcauchy(0,10),
            Rho ~ dlkjcorr(2),
+        bs ~ dnorm(0,10),
         bt ~ dnorm(0,10),
         bt2 ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
         bts1 ~ dnorm(0,10),
         bts2 ~ dnorm(0,10),
-        bte1 ~ dnorm(0,10),
-        bte2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
+     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 4000, warmup = 1000, chains = 4)
+  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 2)
+
+saveRDS(meandspp.blm_int4.rise, "meandspp.blm_int4.rise.Rds")
+### n_eff==1?? Rhat is not close to 1 (3-45,0000!)
 
 
-meandspp.blm_int5.rise.2 = map2stan(
+
+
+
+
+
+
+
+
+
+
+meandspp.blm_intXX.rise.2 = map2stan(
   alist(
     MnMeander ~ dnorm(mu, sigma),
     mu  <- a_fish[RepID] + 
@@ -1207,7 +1289,7 @@ meandspp.blm_int5.rise.2 = map2stan(
 ### Also DOES NOT FIT WELL - pretty bad convergence in trace plots, long run time
 
 
-meandspp.blm_int5.rise.2.offset = map2stan(
+meandspp.blm_intXXX.rise.2.offset = map2stan(
   alist(
     MnMeander ~ dnorm(mu, sigma),
     mu  <- a + a_fish[RepID] +
@@ -1234,7 +1316,7 @@ meandspp.blm_int5.rise.2.offset = map2stan(
 ### Also DOES NOT FIT WELL - pretty bad convergence in trace plots, long run time
 
 
-meandspp.blm_int5.ri = map2stan(
+meandspp.blm_intXX.ri = map2stan(
   alist(
     MnMeander ~ dnorm(mu, sigma),
     mu  <- a_fish[RepID] + 
@@ -1288,99 +1370,360 @@ plot(compare(meandspp.blm_int1.rise, meandspp.blm_int2.rise,
 ### I'm guess I'm happy with model int5.rise.2, that accounts for the repeated measures of an individual across time ('distspp.blm_int5.rise.2'). The trace plots have better mixing for int5.2 than int5.NC and Zack says that there's more to parameterizing the NC approach than is covered in the rethinking book chapter. The trace plots aren't great but it seems relatively stable as I change small things, so Zack says it's probably good enough. If I really cared I could go tweek parameters more and document the changes to the estimated parameters. I tried estimating the overall interept and slope seperately, with offsets for the individual IDs, but the variance for the overall parameters was huge and largely dependant on the prior. I'm going to move on and assume the model is good enough. 
 
 
-```{r distance multi-level Bayesmodels final, echo=F}
+### more to come....turn angle data needs some serious reconsideration given the circular nature of the data. Perhaps need to re-output data as directional turns so we have the full 360 and can work with it more appropriately. ###
 
-DSdist_bmoddat = DataSum2496.dist[,c("TotalfishDist_m","lnCalcConcC","lnCalcConcC2",
+
+
+
+ 
+     
+## Center Zone Models - good and complete! #####
+```{r center zone data, echo=F, eval=F} 
+DataSum2496.centC = DataSum2496.raw %>%
+  filter(!is.na(InZoneC)) %>%  ### will this bias the data if I remove those points where there isn't a detection? If the fish is more likely to be in the center when it's stationary, and it's more likely to be undetected when it's stationary, this may bias these values and under-represent the effect of the bifenthrin (more stationary when strongly affected)
+  # also note, this line doesn't actually change the results because summing the InZoneC column drops all NA automatically; this line above just makes that explicit
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
+  summarize(InZoneC = sum(InZoneC, na.rm=T), InZoneB = sum(InZoneB, na.rm=T), npos = n()) %>%
+  mutate(PercZoneC1 = InZoneC / npos) %>%
+  mutate(PercZoneC2 = InZoneC / (InZoneC+InZoneB)) %>%
+  # ran this comparison to see how much the NA can influence the data, and it seems to be minor
+  ungroup()  %>%
+  data.frame()
+
+ DataSum2496.centC$lnCalcConc = log(DataSum2496.centC$calcConc+1)
+ DataSum2496.centC$lnCalcConcC= scale(DataSum2496.centC$lnCalcConc, scale=FALSE)
+ DataSum2496.centC$lnCalcConcC2 = DataSum2496.centC$lnCalcConcC^2 
+    # order of transformations matters (log then scale then square)
+
+ # add a tiny amount to the perc to keep it above zero (issues for fitting because logit(0)=Inf
+ # but don't add so much that the max will be =>1
+ DataSum2496.centC$PercZoneC1 = DataSum2496.centC$PercZoneC1 +.001
+ DataSum2496.centC$PercZoneC2 = DataSum2496.centC$PercZoneC2 +.001
+ 
+```
+
+```{r center zone data 2, echo=F} 
+DataSum2496.centC = DataSum2496.raw %>%
+  filter(!is.na(InZoneC)) %>%  ### will this bias the data if I remove those points where there isn't a detection? If the fish is more likely to be in the center when it's stationary, and it's more likely to be undetected when it's stationary, this may bias these values and under-represent the effect of the bifenthrin (more stationary when strongly affected)
+  # also note, this line doesn't actually change the results because summing the InZoneC column drops all NA automatically; this line above just makes that explicit
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
+  summarize(nCent = sum(InZoneC), npos = n()) %>%
+  ungroup()  %>%
+  data.frame()
+
+ DataSum2496.centC$lnCalcConc = log(DataSum2496.centC$calcConc+1)
+ DataSum2496.centC$lnCalcConcC= scale(DataSum2496.centC$lnCalcConc, scale=FALSE)
+ DataSum2496.centC$lnCalcConcC2 = DataSum2496.centC$lnCalcConcC^2 
+    # order of transformations matters (log then scale then square)
+
+ DataSum2496.centC$nOuter = DataSum2496.centC$npos - DataSum2496.centC$nCent
+ 
+ 
+```
+
+
+```{r centerzone multi-level Bayesmodels selection, echo=F, eval=F}
+# try setting up the linear model in a bayesian form, same as frequentist model above
+# use all meander data points, not summarized data
+DScent_bmoddat = DataSum2496.centC[,c("nCent", "npos", "lnCalcConcC","lnCalcConcC2",
                                      "ExposureHrs","Spp","RepID")]
-#DSdist_bmoddat$TotalfishDistcm = DSdist_bmoddat$TotalfishDist/10
-DSdist_bmoddat$lnCalcConcC = as.numeric(DSdist_bmoddat$lnCalcConcC) 
-DSdist_bmoddat$lnCalcConcC2 = as.numeric(DSdist_bmoddat$lnCalcConcC2) 
-DSdist_bmoddat$SppDummy <- ifelse(DSdist_bmoddat$Spp=="GS", 0,1)
-DSdist_bmoddat$ExposeDummy <- ifelse(DSdist_bmoddat$ExposureHrs=="24", 0,1)
+DScent_bmoddat$lnCalcConcC = as.numeric(DScent_bmoddat$lnCalcConcC) 
+DScent_bmoddat$lnCalcConcC2 = as.numeric(DScent_bmoddat$lnCalcConcC2) 
+DScent_bmoddat$SppDummy <- as.numeric(ifelse(DScent_bmoddat$Spp=="GS", 0,1))
+DScent_bmoddat$ExposeDummy <- as.numeric(ifelse(DScent_bmoddat$ExposureHrs=="24", 0,1))
 
 # remove fish with only one timepoint of detection, because cant add random slope with one timepoint
-DSdist_bmoddat = DSdist_bmoddat[!(DSdist_bmoddat$RepID %in% paste0(c(0,5,100,500,1000,2000), "-WS-4")),]
-DSdist_bmoddat$RepID = as.factor(as.character(DSdist_bmoddat$RepID))
+DScent_bmoddat = DScent_bmoddat[!(DScent_bmoddat$RepID %in% paste0(c(0,5,100,500,1000,2000), "-WS-4")),]
+DScent_bmoddat$RepID = as.factor(as.character(DScent_bmoddat$RepID))
+
 
 set.seed(1983)
-distspp.blm_int5.rise.2 = map2stan(
+centspp.blm_int_a = map2stan(
   alist(
-    TotalfishDist_m ~ dnorm(mu, sigma),
-    mu  <- a_fish[RepID] + 
-           be_fish[RepID]*ExposeDummy + 
-             bs*SppDummy + 
-             bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-             bse*(SppDummy)*(ExposeDummy) +
-             bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
+    nCent ~ dbinom(npos, p), 
+      logit(p)  <- a_fish[RepID] + 
+              be*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC) ,
+    
+           a_fish[RepID] ~ dnorm(a,sigma_fish),
+           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
+           sigma_fish ~ dcauchy(0,2),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10)
+    ) ,
+  data = DScent_bmoddat, iter = 2000, warmup = 300, chains = 3)
+# wanders around the parameter space a lot. Doens't look very good at all. Hm. 
+
+set.seed(1983)
+centspp.blm_int1 = map2stan(
+  alist(
+    nCent ~ dbinom(npos, p), 
+      logit(p)  <- a_fish[RepID] + 
+              be_fish[RepID]*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC) ,
     
            c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),# 
            a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
            be ~ dnorm(0,10),
            sigma_fish ~ dcauchy(0,2),
            Rho ~ dlkjcorr(2), # not as flat as (1) but biases against strong correlations of intercept and slope
+    
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10)
+    ) ,
+  data = DScent_bmoddat, iter = 2000, warmup = 300, chains = 3)
+
+set.seed(1983)
+centspp.blm_int2 = map2stan(
+  alist(
+    nCent ~ dbinom(npos, p), 
+      logit(p)  <-  a_fish[RepID] + 
+              be_fish[RepID]*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC) + 
+              bt2*(lnCalcConcC2), 
+      
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),# 
+           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
+           be ~ dnorm(0,10),
+           sigma_fish ~ dcauchy(0,2),
+           Rho ~ dlkjcorr(2), # not as flat as (1) but biases against strong correlations of intercept and slope
+    
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10)
+    ) ,
+  data = DScent_bmoddat, iter = 2000, warmup = 300, chains = 3)
+
+set.seed(1983)
+centspp.blm_int3 = map2stan(
+  alist(
+      nCent ~ dbinom(npos, p), 
+      logit(p)  <-  a_fish[RepID] + 
+              be_fish[RepID]*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC) + 
+              bt2*(lnCalcConcC2) + 
+              bt2e*(lnCalcConcC2)*(ExposeDummy), 
+      
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),# 
+           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
+           be ~ dnorm(0,10),
+           sigma_fish ~ dcauchy(0,2),
+           Rho ~ dlkjcorr(2), # not as flat as (1) but biases against strong correlations of intercept and slope
+    
+        bs ~ dnorm(0,10),
         bt ~ dnorm(0,10),
         bt2 ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,2)
+        bt2e ~ dnorm(0,10)
     ) ,
-  data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4)
+  data = DScent_bmoddat, iter = 2000, warmup = 300, chains = 3)
+
+set.seed(1983)
+centspp.blm_int4 = map2stan(
+  alist(
+    nCent ~ dbinom(npos, p), 
+      logit(p)  <- a_fish[RepID] + 
+              be_fish[RepID]*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC) + 
+              bt2*(lnCalcConcC2) + 
+              bt2s*(lnCalcConcC2)*(SppDummy), 
+       
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),# 
+           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
+           be ~ dnorm(0,10),
+           sigma_fish ~ dcauchy(0,2),
+           Rho ~ dlkjcorr(2), # not as flat as (1) but biases against strong correlations of intercept and slope
+    
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10)
+    ) ,
+  data = DScent_bmoddat, iter = 2000, warmup = 300, chains = 3)
+## 2294 transitions after warmup that exceeded max treedepth; wants more sampling too
+
+set.seed(1983)
+centspp.blm_int5 = map2stan(
+  alist(
+    nCent ~ dbinom(npos, p),
+      logit(p)  <- a_fish[RepID] +
+              be_fish[RepID]*ExposeDummy +
+              bs*SppDummy +
+              bt*(lnCalcConcC) +
+              bte*(lnCalcConcC)*(ExposeDummy)+
+              bt2*(lnCalcConcC2) +
+              bt2s*(lnCalcConcC2)*(SppDummy),
+
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),#
+           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
+           be ~ dnorm(0,10),
+           sigma_fish ~ dcauchy(0,2),
+           Rho ~ dlkjcorr(2), # not as flat as (1) but biases against strong correlations of intercept and slope
+
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bte ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10)
+    ) ,
+  data = DScent_bmoddat, iter = 2000, warmup = 300, chains = 3)
 
 
-# check model
- precis(distspp.blm_int5.rise.2, prob = .95, digits=3)
- plot(precis(distspp.blm_int5.rise.2, prob = .95))
- plot(precis(distspp.blm_int5.rise.2, prob = .95, depth=2))
+set.seed(1983)
+centspp.blm_int6 = map2stan(
+  alist(
+    nCent ~ dbinom(npos, p),
+      logit(p)  <- a_fish[RepID] +
+              be_fish[RepID]*ExposeDummy +
+              bs*SppDummy +
+              bt*(lnCalcConcC) +
+              bte*(lnCalcConcC)*(ExposeDummy)+
+              bts*(lnCalcConcC)*(SppDummy),
 
- plot(distspp.blm_int5.rise.2)
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),#
+           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
+           be ~ dnorm(0,10),
+           sigma_fish ~ dcauchy(0,2),
+           Rho ~ dlkjcorr(2), # not as flat as (1) but biases against strong correlations of intercept and slope
+
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bte ~ dnorm(0,10),
+        bts ~ dnorm(0,10)
+    ) ,
+  data = DScent_bmoddat, iter = 2000, warmup = 300, chains = 3)
+
+set.seed(1983)
+centspp.blm_int7 = map2stan(
+  alist(
+    nCent ~ dbinom(npos, p),
+      logit(p)  <- a_fish[RepID] +
+              be_fish[RepID]*ExposeDummy +
+              bs*SppDummy +
+              bt*(lnCalcConcC) +
+              bse*(SppDummy)*(ExposeDummy)+
+              bte*(lnCalcConcC)*(ExposeDummy)+
+              bts*(lnCalcConcC)*(SppDummy)+
+              bt2*(lnCalcConcC2) +
+              bt2e*(lnCalcConcC2)*(ExposeDummy)+
+              bt2s*(lnCalcConcC2)*(SppDummy),
+
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),#
+           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
+           be ~ dnorm(0,10),
+           sigma_fish ~ dcauchy(0,2),
+           Rho ~ dlkjcorr(2), # not as flat as (1) but biases against strong correlations of intercept and slope
+
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bte ~ dnorm(0,10),
+        bts ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt2e ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10)
+    ) ,
+  data = DScent_bmoddat, iter = 2000, warmup = 300, chains = 3)
+
+set.seed(1983)
+centspp.blm_int8 = map2stan(
+  alist(
+    nCent ~ dbinom(npos, p),
+      logit(p)  <- a_fish[RepID] +
+              be_fish[RepID]*ExposeDummy +
+              bs*SppDummy +
+              bt*(lnCalcConcC) +
+              bse*(SppDummy)*(ExposeDummy)+
+              bts*(lnCalcConcC)*(SppDummy)+
+              bt2*(lnCalcConcC2) +
+              bt2s*(lnCalcConcC2)*(SppDummy),
+
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),#
+           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
+           be ~ dnorm(0,10),
+           sigma_fish ~ dcauchy(0,2),
+           Rho ~ dlkjcorr(2), # not as flat as (1) but biases against strong correlations of intercept and slope
+
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bts ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10)
+    ) ,
+  data = DScent_bmoddat, iter = 2000, warmup = 300, chains = 3)
+
+compare(centspp.blm_int1, centspp.blm_int2, centspp.blm_int3, centspp.blm_int4, centspp.blm_int5, centspp.blm_int6, centspp.blm_int7,centspp.blm_int8)
+## models are basically all the same...8 is slightly better WAIC than 7 (1.6) suggesting there isn't a need for the interacgtion between treatment and exposure period. But 7 is the only one that is >2 different from the 'best' which are models 2 and 4
 
 ```
 
 
-```{r distance multi-level Bayesmodels predict, echo=F, eval=F}
+
+```{r center zone multi-level Bayesmodels predict, echo=F, eval=F}
 
 # pull posterior from model:
 set.seed(42)
-post = extract.samples(distspp.blm_int5.rise.2)
+post = extract.samples(centspp.blm_int7)
 
 # set up dataframe to plot posterior predictions
 preddat = list(CalcConc=rep(seq(0, 2250, 2), 4), 
                lnCalcConc=log(rep(seq(0, 2250, 2),4)+1), 
                lnCalcConcC=(log(rep(seq(0, 2250, 2),4)+1)) - 
-                 mean(DataSum2496.dist$lnCalcConc) ,
+                 mean(DataSum2496.centC$lnCalcConc) ,
                lnCalcConcC2=((log(rep(seq(0, 2250, 2),4)+1)) - 
-                 mean(DataSum2496.dist$lnCalcConc))^2 ,               
+                 mean(DataSum2496.centC$lnCalcConc))^2 ,               
                ExposeDummy = rep(c(0,1), each=1126*2), 
                SppDummy = rep(rep(c(0,1),each=1126),2), 
-               RepID = rep(2,4504))
+               RepID = rep(2,4504),
+               npos = rep(mean(DataSum2496.centC$npos), 4504) )
 
 # make zeros for individual random effects to predict to mean only -> model doesn't have any 'a' this way
-a_fish_zeros = matrix(0,12000,90)
-be_fish_zeros = matrix(0,12000,90)
+  # a_fish_zeros = matrix(0,12000,90)
+  # be_fish_zeros = matrix(0,12000,90)
 
 # use estimated posteriors for population of individuals to simulate new fish; shapes of distributions between model posteriors and predicted posteriors are nearly identical, not what I want...but it does predict uncertainty across individuals, but might as well just take predictions for individual fish are put them in as the data...not quote grasping this
-a_fish_sim = matrix(rnorm(12000*90, mean(post$a_fish), mean(post$sigma_fish[,1])),12000,90)
-be_fish_sim = matrix(rnorm(12000*90, mean(post$be_fish), mean(post$sigma_fish[,2])),12000,90)
+  # a_fish_sim = matrix(rnorm(12000*90, mean(post$a_fish), mean(post$sigma_fish[,1])),12000,90)
+  # be_fish_sim = matrix(rnorm(12000*90, mean(post$be_fish), mean(post$sigma_fish[,2])),12000,90)
 
 # replace individual fish estimates with global estimate; this should predict to the average individual in a population...so since I want to get at the population level response this seems more appropriate.
-a_global = matrix(post$a,12000,90)
-be_global = matrix(post$be,12000,90)
+a_global = matrix(post$a,459000,90)
+be_global = matrix(post$be,459000,90)
 
 # use link to predict to mean only
-link.int5.rise.2 <- link(distspp.blm_int5.rise.2, n=1000, data= preddat, 
+link.int2 <- link(centspp.blm_int2, n=1000, data= preddat, 
                          replace = list(a_fish = a_global, 
                                         be_fish = be_global) )
-#                         replace = list(a_fish = a_fish_sim, 
-#                                        be_fish = be_fish_sim) )
+link.int3 <- link(centspp.blm_int3, n=1000, data= preddat, 
+                         replace = list(a_fish = a_global, 
+                                        be_fish = be_global) )
+link.int4 <- link(centspp.blm_int4, n=1000, data= preddat, 
+                         replace = list(a_fish = a_global, 
+                                        be_fish = be_global) )
+link.int5 <- link(centspp.blm_int5, n=1000, data= preddat, 
+                         replace = list(a_fish = a_global, 
+                                        be_fish = be_global) )
+link.int6 <- link(centspp.blm_int6, n=1000, data= preddat, 
+                         replace = list(a_fish = a_global, 
+                                        be_fish = be_global) )
+link.int7 <- link(centspp.blm_int7, n=1000, data= preddat, 
+                         replace = list(a_fish = a_global, 
+                                        be_fish = be_global) )
+preddat.df <- data.frame(sapply(preddat,c)) # thanks stack overflow! (turns the list into a dataframe) https://stackoverflow.com/questions/4227223/convert-a-list-to-a-data-frame
 
-preddat.df <- data.frame(sapply(preddat,c)) # thanks stack overflow! https://stackoverflow.com/questions/4227223/convert-a-list-to-a-data-frame
+preddat.df$link_mu_mn <- apply(link.int7, 2, mean) 
+preddat.df$link_PI05 = apply(link.int7, 2, PI, .95)[1,] 
+preddat.df$link_PI95 = apply(link.int7, 2, PI, .95)[2,] 
 
-preddat.df$link_mu_mn <- apply(link.int5.rise.2, 2, mean) 
-preddat.df$link_PI05 = apply(link.int5.rise.2, 2, PI, .95)[1,] 
-preddat.df$link_PI95 = apply(link.int5.rise.2, 2, PI, .95)[2,] 
-
+# preddat.df$link_mu_mn <- apply(link.int5, 2, mean) 
+# preddat.df$link_PI05 = apply(link.int5, 2, PI, .95)[1,] 
+# preddat.df$link_PI95 = apply(link.int5, 2, PI, .95)[2,] 
+ 
 
 # # predict from posteriors (on transformed scale)
 #   link_pred <- link(distspp.blm_int2.rise, data = preddat, n=1000) 
@@ -1394,33 +1737,33 @@ preddat.df$link_PI95 = apply(link.int5.rise.2, 2, PI, .95)[2,]
 #   preddat$sim_PI05 = apply(sim_pred, 2, PI, .95)[1,]
 #   preddat$sim_PI95 = apply(sim_pred, 2, PI, .95)[2,]
 #  
-  # plot back-transformed data
+  # plot predictions and data
   preddat.df$Spp <- ifelse(preddat.df$SppDummy==0,"GS","WS")
   preddat.df$ExposureHrs <- ifelse(preddat.df$ExposeDummy==0,"24","96")
 
 
-DistPred_transf_plot2 = ggplot() + 
-  geom_point(data=DataSum2496.dist,
+CentPred_transf_plot2_mod7 = ggplot() + 
+  geom_point(data=DataSum2496.centC,
              aes(x=(lnCalcConcC),                          
-                 y=TotalfishDist_m, 
+                 y=nCent/npos, 
                  color=factor(Spp))) + 
   geom_ribbon(data = preddat.df, aes(x=(lnCalcConcC), 
               ymin=link_PI05, ymax=link_PI95), 
               alpha=.4, col="grey70")+
-  geom_line(data = preddat.df, aes(x=(lnCalcConcC), y=link_mu_mn), lwd=.2)+
+  geom_line(data = preddat.df, aes(x=(lnCalcConcC), y=link_mu_mn), lwd=.2)+ 
     facet_grid(Spp~ExposureHrs, scales="free", labeller = labeller(
       ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure"),
       Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
     scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
-    ylab("Total Distance Traveled (m)") + 
-    scale_x_continuous(name="Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
+    ylab("Proportion of Positions within Central Zone") + 
+    scale_x_continuous(name="log(Bifenthrin Concentration) (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
     theme_bw()
 
 
-DistPred_orig_plot2 = ggplot() + 
-  geom_point(data=DataSum2496.dist,
+CentPred_orig_plot2_mod7 = ggplot() + 
+  geom_point(data=DataSum2496.centC,
              aes(x=(calcConc),                          
-                 y=TotalfishDist_m, 
+                 y=nCent/npos, 
                  color=factor(Spp))) + 
   geom_ribbon(data = preddat.df, aes(x=(CalcConc), 
               ymin=link_PI05, ymax=link_PI95), 
@@ -1430,293 +1773,309 @@ DistPred_orig_plot2 = ggplot() +
     ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure"),
     Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
   scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
-  ylab("Total Distance Traveled (cm)") + 
+  ylab("Proportion of Positions within Central Zone") + 
   scale_x_continuous(name="Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
   theme_bw()
 
-DistPred_transf_plot2
-DistPred_orig_plot2 
+
+
+CentPred_transf_plot2_mod1
+CentPred_transf_plot2_mod2
+CentPred_transf_plot2_mod3
+CentPred_transf_plot2_mod4
+CentPred_transf_plot2_mod5
+CentPred_transf_plot2_mod6
+CentPred_transf_plot2_mod7
+
+CentPred_orig_plot2_mod1
+CentPred_orig_plot2_mod2
+CentPred_orig_plot2_mod3
+CentPred_orig_plot2_mod4
+CentPred_orig_plot2_mod5
+CentPred_orig_plot2_mod6
+CentPred_orig_plot2_mod7
 
 ```
+ ### Hm. WAIC suggests they're nearly all equal, except for 7 (barely, nearly better). From looking at the fit of the prediction lines, I think 6 is not a good model because without the quadratic it doesn't fit the curve of the data and the mechanism we expected. Model 5 allows the quadratic to vary by species (green sturgeon curve becomes flatter in the transformed plots), and the effect of concentration to vary by exposure period (24 hr curve becomes flatter). This looks pretty good, but the confidence bands are wider than those for model 4 while the trend is very smiliar. Model 3 lets the quadratic vary by exposure period (but not spp), so I built/fit Model 7 to let both the standard and quadratic effectws for treatment vary by exposure period and species (ie: seperate line for each of the four facets). This model seems to be better, or at least not worse, based on AIC, and the plots look better too. Let's go with 7 - I think it's similar to the model for distance too, which will make the paper easier to write. 
  
  
-### Distance Contrasts
+ 
+### Central Zone Contrasts
 
 ### Study questions: 
 
 ###  1) is there an effect (all treatment vs control), and which metrics show an effect
+- posterior for bt x control vs posteriors for bt x each level of treatment (5 comps)
+- in reality, this seems better nested under the following two contrast grouping, because the early-life stange behavior of the two species is so different, and it also seems that the WS are more affected (or perhaps just more mobile and this easier to detect change?)
 
-###  2) does that effect change with time [96 treat vs 96 control and 24 treat vs 24 control OR individual change from 24 to 96 (all treatments) as compared to individual change for control between 24 and 96]
+###  2) Does the magnitude of the effect vary between species
+- posterior for bt X GS x control vs posteriors for bt x GS x each level of treatment (5 comps)
+- posterior for bt x WS x control vs posteriors for bt x WS x each level of treatment (5 comps)
+= 10 comparisons
 
-###  3) Does the magnitude of the effect vary between species
+###  3) does that effect change with time [96 treat vs 96 control and 24 treat vs 24 control OR individual change from 24 to 96 (all treatments) as compared to individual change for control between 24 and 96]
+- posterior for bt-24control vs bt-24xtreatments (n=5) and bt-96control vs bt-96 treatments (n=5) = 10 comparisons
+- OR the above comparisions by species
+= 20 comparisons. 
 
-```{r distance multi-level model density plots, echo=F}
+
+### Esh. Appendix table? mean difference, 95%CI or probability that the difference is not zero, which is more comparable to a p-value I think. It's the confidence that there IS a difference in the direction indicated (+ or -)
+
+
+
+```{r cent multi-level model density plots, echo=F}
 set.seed(1983) 
-postdist = extract.samples(distspp.blm_int5.rise.2)
-  # # calculate effect of treatment, for each species, at 96hrs 
-  # #  (exposedummy=1 for 96hrs, sppdummy = 1 for GS)
-  # gamma.96GS = post$a + post$be + post$bt + post$bt2
-  #     # because I'm using 'be' that was estimated as a sub-parameter of be_fish, this should be predicting the global expected effect, not the effect dependent on fish identity
-  # 
-  # gamma.96WS = ppost$a + post$be + post$bs + post$bt + post$bt2 + post$bse + post$bts1 + post$bts2
-  # 
-  # 
-  # # Can calc mean effect, as in rethinking textbook example for interactions, but less meaningful because it's a quadratic, so the effect changes given the treatment value. Need to estimate it at each level of treatment and make pair-wise comparisons or predict to a new level
-  # 
-  # ## see page 236 from rethinking 2015
-  # 
-  # 
-  # mean(gamma.96GS)
-  # mean(gamma.96WS)
-  # 
-  # dens(gamma.96GS, xlab="quadratic interaction", col="green3", xlim=c(-400,0))
-  # dens(gamma.96WS, add=TRUE, col="steelblue3")
-
+postcent = extract.samples(centspp.blm_int4)
+ 
 # reference table to convert from treatment to centered, log-transformed measured concentrations
-TreatCalcTable = unique(DataSum2496.dist[order(DataSum2496.dist$Treatment)
+TreatCalcTable = unique(DataSum2496.centC[order(DataSum2496.centC$Treatment)
                                              ,c("Spp", "Treatment","lnCalcConc", "lnCalcConcC")])
 TreatCalcTable$lnCalcConcC2 = TreatCalcTable$lnCalcConcC ^ 2
 
 
 
 # calculate differences between control and treatment at each time point for each species (20 contrasts)
-GS0bif24 = postdist$a +
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC2)
-GS5bif24 = postdist$a + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC2)
-GS100bif24 = postdist$a + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC2)
-GS500bif24 = postdist$a + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC2)
-GS1000bif24 = postdist$a +
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC) + 
-  postdist$bt2* as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC2)
-GS2000bif24 = postdist$a + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC) + 
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC2)
+GS0bif24cent = postcent$a +
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC2)
+GS5bif24cent = postcent$a + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC2)
+GS100bif24cent = postcent$a + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC2)
+GS500bif24cent = postcent$a + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC2)
+GS1000bif24cent = postcent$a +
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC) + 
+  postcent$bt2* as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC2)
+GS2000bif24cent = postcent$a + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC) + 
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC2)
 
-mean(GS0bif24)
-mean(GS5bif24)
- cont.GS_0.5bif_24 = (sum(GS0bif24<GS5bif24) / length(GS0bif24)) 
- cont.GS_0.5bif_24 #72.0% prob that 5 is more than 0
-mean(GS100bif24)
- cont.GS_0.100bif_24 = (sum(GS0bif24<GS100bif24) / length(GS0bif24)) 
- cont.GS_0.100bif_24 #62.4% prob that 100 is more than 0
-mean(GS500bif24)
- cont.GS_0.500bif_24 = (sum(GS0bif24<GS500bif24) / length(GS0bif24)) 
- cont.GS_0.500bif_24 #40.7% prob that 500 is more than 0
-mean(GS1000bif24)
- cont.GS_0.1000bif_24 = (sum(GS0bif24<GS1000bif24) / length(GS0bif24)) 
- cont.GS_0.1000bif_24 #32.8% prob that 1000 is more than 0
-mean(GS2000bif24)
- cont.GS_0.2000bif_24 = (sum(GS0bif24<GS2000bif24) / length(GS0bif24)) 
- cont.GS_0.2000bif_24 #13.7% prob that 2000 is more than 0 (86.3% chance that 2000 is less than 0)
+mean(GS0bif24cent)
+mean(GS5bif24cent)
+ cont.GS_0.5bif_24cent = (sum(GS0bif24cent<GS5bif24cent) / length(GS0bif24cent)) 
+ cont.GS_0.5bif_24cent #  % prob that 5 is more than 0
+mean(GS100bif24cent)
+ cont.GS_0.100bif_24cent = (sum(GS0bif24cent<GS100bif24cent) / length(GS0bif24cent)) 
+ cont.GS_0.100bif_24cent #  % prob that 100 is more than 0
+mean(GS500bif24cent)
+ cont.GS_0.500bif_24cent = (sum(GS0bif24cent<GS500bif24cent) / length(GS0bif24cent)) 
+ cont.GS_0.500bif_24cent #  % prob that 500 is more than 0
+mean(GS1000bif24cent)
+ cont.GS_0.1000bif_24cent = (sum(GS0bif24cent<GS1000bif24cent) / length(GS0bif24cent)) 
+ cont.GS_0.1000bif_24cent #  % prob that 1000 is more than 0
+mean(GS2000bif24cent)
+ cont.GS_0.2000bif_24cent = (sum(GS0bif24cent<GS2000bif24cent) / length(GS0bif24cent)) 
+ cont.GS_0.2000bif_24cent #  % prob that 2000 is more than 0 (  % chance that 2000 is less than 0)
 
-GS24.plot = ggplot() + geom_density(aes(x=GS0bif24, color="black")) + 
-  geom_density(aes(x=GS5bif24, color="green3")) + 
-  geom_density(aes(x=GS100bif24, color="goldenrod")) + 
-  geom_density(aes(x=GS500bif24, color="red3")) + 
-  geom_density(aes(x=GS1000bif24, color="pink")) + 
-  geom_density(aes(x=GS2000bif24, color="steelblue3")) + 
+GS24cent.plot = ggplot() + geom_density(aes(x=GS0bif24cent, color="black")) + 
+  geom_density(aes(x=GS5bif24cent, color="green3")) + 
+  geom_density(aes(x=GS100bif24cent, color="goldenrod")) + 
+  geom_density(aes(x=GS500bif24cent, color="red3")) + 
+  geom_density(aes(x=GS1000bif24cent, color="pink")) + 
+  geom_density(aes(x=GS2000bif24cent, color="steelblue3")) + 
   scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
                      values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
                               "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
                      labels=c("0 ng/L", "5 ng/L", "100ng/L", 
                               "500ng/L", "1000ng/L", "2000 ng/L") ) + 
-  xlab("Distance moved (GS @ 24hr)")+
+  xlab("Log Proportion of Detections in Central Zone (GS @ 24hr)")+
+  xlim(c(-5,2))+
   theme_bw()
+
+
+
+
+
 
 
 # repeat for green sturgeon, 96hr
 
-GS0bif96 = postdist$a + postdist$be +
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC2)
-GS5bif96 = postdist$a + postdist$be + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC2)
-GS100bif96 = postdist$a + postdist$be + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC2)
-GS500bif96 = postdist$a + postdist$be + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC2)
-GS1000bif96 = postdist$a + postdist$be +
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC) + 
-  postdist$bt2* as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC2)
-GS2000bif96 = postdist$a + postdist$be + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC) + 
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC2)
+GS0bif96cent = postcent$a + postcent$be +
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC2) 
+GS5bif96cent = postcent$a + postcent$be + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC2)
+GS100bif96cent = postcent$a + postcent$be + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC2)
+GS500bif96cent = postcent$a + postcent$be + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC2)
+GS1000bif96cent = postcent$a + postcent$be +
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC) + 
+  postcent$bt2* as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC2)
+GS2000bif96cent = postcent$a + postcent$be + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC) + 
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC2)
 
-mean(GS0bif96)
-mean(GS5bif96)
- cont.GS_0.5bif_96 = (sum(GS0bif96<GS5bif96) / length(GS0bif96)) 
- cont.GS_0.5bif_96 #72.0% prob that 5 is more than 0
-mean(GS100bif96)
-mean(GS500bif96)
-mean(GS1000bif96)
-mean(GS2000bif96)
+mean(GS0bif96cent)
+mean(GS5bif96cent)
+ cont.GS_0.5bif_96cent = (sum(GS0bif96cent<GS5bif96cent) / length(GS0bif96cent)) 
+ cont.GS_0.5bif_96cent #72.0% prob that 5 is more than 0
+mean(GS100bif96cent)
+mean(GS500bif96cent)
+mean(GS1000bif96cent)
+mean(GS2000bif96cent)
 
-GS96.plot = ggplot() + geom_density(aes(x=GS0bif96), color="black") + 
-  geom_density(aes(x=GS5bif96), color="green3") + 
-  geom_density(aes(x=GS100bif96), color="goldenrod") + 
-  geom_density(aes(x=GS500bif96), color="red3") + 
-  geom_density(aes(x=GS1000bif96), color="pink") + 
-  geom_density(aes(x=GS2000bif96), color="steelblue3") + 
+GS96cent.plot = ggplot() + geom_density(aes(x=GS0bif96cent), color="black") + 
+  geom_density(aes(x=GS5bif96cent), color="green3") + 
+  geom_density(aes(x=GS100bif96cent), color="goldenrod") + 
+  geom_density(aes(x=GS500bif96cent), color="red3") + 
+  geom_density(aes(x=GS1000bif96cent), color="pink") + 
+  geom_density(aes(x=GS2000bif96cent), color="steelblue3") + 
   scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
                      values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
                               "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
                      labels=c("0 ng/L", "5 ng/L", "100ng/L", 
                               "500ng/L", "1000ng/L", "2000 ng/L") ) + 
-  xlab("Distance moved (GS @ 96hr)")+
+  xlab("Log Proportion of Detections in Central Zone (GS @ 96hr)")+
+  xlim(c(-5,2))+
   theme_bw()
 
 
 # repeat for white sturgeon, 24hr
 
-WS0bif24 = postdist$a + postdist$bs +
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2) +
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2)
-WS5bif24 = postdist$a + postdist$bs + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)+
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)
-WS100bif24 = postdist$a + postdist$bs + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)+
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)
-WS500bif24 = postdist$a + postdist$bs + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)+
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)
-WS1000bif24 = postdist$a + postdist$bs +
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
-  postdist$bt2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)+
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
-  postdist$bts2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)
-WS2000bif24 = postdist$a + postdist$bs + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)+
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)
+WS0bif24cent = postcent$a + postcent$bs +
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2) +
+  postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2)
+WS5bif24cent = postcent$a + postcent$bs + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)+
+  postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)
+WS100bif24cent = postcent$a + postcent$bs + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)+
+  postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)
+WS500bif24cent = postcent$a + postcent$bs + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)+
+  postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)
+WS1000bif24cent = postcent$a + postcent$bs +
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
+  postcent$bt2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)+
+  postcent$bt2s* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)
+WS2000bif24cent = postcent$a + postcent$bs + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)+
+  postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)
 
-mean(WS0bif24)
-mean(WS5bif24)
- cont.WS_0.5bif_24 = (sum(WS0bif24<WS5bif24) / length(WS0bif24)) 
- cont.WS_0.5bif_24 #100% prob that 5 is more than 0
-mean(WS100bif24)
- cont.WS_0.100bif_24 = (sum(WS0bif24<WS100bif24) / length(WS0bif24)) 
- cont.WS_0.100bif_24 #100% prob that 100 is more than 0
-mean(WS500bif24)
- cont.WS_0.500bif_24 = (sum(WS0bif24<WS500bif24) / length(WS0bif24)) 
- cont.WS_0.500bif_24 #55% prob that 500 is more than 0
-mean(WS1000bif24)
- cont.WS_0.1000bif_24 = (sum(WS0bif24<WS1000bif24) / length(WS0bif24)) 
- cont.WS_0.1000bif_24 #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
-mean(WS2000bif24)
- cont.WS_0.2000bif_24 = (sum(WS0bif24<WS2000bif24) / length(WS0bif24)) 
- cont.WS_0.2000bif_24 #0% prob that 2000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
+mean(WS0bif24cent)
+mean(WS5bif24cent)
+ cont.WS_0.5bif_24cent = (sum(WS0bif24cent<WS5bif24cent) / length(WS0bif24cent)) 
+ cont.WS_0.5bif_24cent #100% prob that 5 is more than 0
+mean(WS100bif24cent)
+ cont.WS_0.100bif_24cent = (sum(WS0bif24cent<WS100bif24cent) / length(WS0bif24cent)) 
+ cont.WS_0.100bif_24cent #100% prob that 100 is more than 0
+mean(WS500bif24cent)
+ cont.WS_0.500bif_24cent = (sum(WS0bif24cent<WS500bif24cent) / length(WS0bif24cent)) 
+ cont.WS_0.500bif_24cent #55% prob that 500 is more than 0
+mean(WS1000bif24cent)
+ cont.WS_0.1000bif_24cent = (sum(WS0bif24cent<WS1000bif24cent) / length(WS0bif24cent)) 
+ cont.WS_0.1000bif_24cent #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
+mean(WS2000bif24cent)
+ cont.WS_0.2000bif_24cent = (sum(WS0bif24cent<WS2000bif24cent) / length(WS0bif24cent)) 
+ cont.WS_0.2000bif_24cent #0% prob that 2000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
  
-WS24.plot = ggplot() + geom_density(aes(x=WS0bif24), color="black") + 
-  geom_density(aes(x=WS5bif24), color="green3") + 
-  geom_density(aes(x=WS100bif24), color="goldenrod") + 
-  geom_density(aes(x=WS500bif24), color="red3") + 
-  geom_density(aes(x=WS1000bif24), color="pink") + 
-  geom_density(aes(x=WS2000bif24), color="steelblue3") + 
+WS24cent.plot = ggplot() + geom_density(aes(x=WS0bif24cent), color="black") + 
+  geom_density(aes(x=WS5bif24cent), color="green3") + 
+  geom_density(aes(x=WS100bif24cent), color="goldenrod") + 
+  geom_density(aes(x=WS500bif24cent), color="red3") + 
+  geom_density(aes(x=WS1000bif24cent), color="pink") + 
+  geom_density(aes(x=WS2000bif24cent), color="steelblue3") + 
   scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
                      values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
                               "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
                      labels=c("0 ng/L", "5 ng/L", "100ng/L", 
                               "500ng/L", "1000ng/L", "2000 ng/L") ) + 
-  xlab("Distance moved (WS @ 24hr)")+
+  xlab("Log Proportion of Detections in Central Zone (WS @ 24hr)")+
+  xlim(c(-5,2))+
   theme_bw()
 
 
 # repeat for white sturgeon, 96hr
 
 
-WS0bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2) +
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2)
-WS5bif96 = postdist$a + postdist$bs + postdist$be + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2) +
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)
-WS100bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2) +
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)
-WS500bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2) +
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)
-WS1000bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
-  postdist$bt2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2) +
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
-  postdist$bts2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)
-WS2000bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2) +
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)
+WS0bif96cent = postcent$a + postcent$bs + postcent$be + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2) +
+  postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2)
+WS5bif96cent = postcent$a + postcent$bs + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2) +
+  postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)
+WS100bif96cent = postcent$a + postcent$bs + postcent$be +
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2) +
+  postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)
+WS500bif96cent = postcent$a + postcent$bs + postcent$be +  
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2) +
+  postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)
+WS1000bif96cent = postcent$a + postcent$bs + postcent$be + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
+  postcent$bt2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2) +
+  postcent$bt2s* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)
+WS2000bif96cent = postcent$a + postcent$bs + postcent$be + 
+  postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
+  postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2) +
+  postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)
 
-mean(WS0bif96)
-mean(WS5bif96)
- cont.WS_0.5bif_96 = (sum(WS0bif96<WS5bif96) / length(WS0bif96)) 
- cont.WS_0.5bif_96 #100% prob that 5 is more than 0
-mean(WS100bif96)
- cont.WS_0.100bif_96 = (sum(WS0bif96<WS100bif96) / length(WS0bif96)) 
- cont.WS_0.100bif_96 #100% prob that 100 is more than 0
-mean(WS500bif96)
- cont.WS_0.500bif_96 = (sum(WS0bif96<WS500bif96) / length(WS0bif96)) 
- cont.WS_0.500bif_96 #55.0% prob that 500 is more than 0
-mean(WS1000bif96)
- cont.WS_0.1000bif_96 = (sum(WS0bif96<WS1000bif96) / length(WS0bif96)) 
- cont.WS_0.1000bif_96 #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
-mean(WS2000bif96)
- cont.WS_0.2000bif_96 = (sum(WS0bif96<WS2000bif96) / length(WS0bif96)) 
- cont.WS_0.2000bif_96 #0% prob that 2000 is more than 0 (i.e. 100% prob that 2000 is less than 0)
+mean(WS0bif96cent)
+mean(WS5bif96cent)
+ cont.WS_0.5bif_96cent = (sum(WS0bif96cent<WS5bif96cent) / length(WS0bif96cent)) 
+ cont.WS_0.5bif_96cent #100% prob that 5 is more than 0
+mean(WS100bif96cent)
+ cont.WS_0.100bif_96cent = (sum(WS0bif96cent<WS100bif96cent) / length(WS0bif96cent)) 
+ cont.WS_0.100bif_96cent #100% prob that 100 is more than 0
+mean(WS500bif96cent)
+ cont.WS_0.500bif_96cent = (sum(WS0bif96cent<WS500bif96cent) / length(WS0bif96cent)) 
+ cont.WS_0.500bif_96cent #55.0% prob that 500 is more than 0
+mean(WS1000bif96cent)
+ cont.WS_0.1000bif_96cent = (sum(WS0bif96cent<WS1000bif96cent) / length(WS0bif96cent)) 
+ cont.WS_0.1000bif_96cent #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
+mean(WS2000bif96cent)
+ cont.WS_0.2000bif_96cent = (sum(WS0bif96cent<WS2000bif96cent) / length(WS0bif96cent)) 
+ cont.WS_0.2000bif_96cent #0% prob that 2000 is more than 0 (i.e. 100% prob that 2000 is less than 0)
 
-WS96.plot = ggplot() + geom_density(aes(x=WS0bif96), color="black") + 
-  geom_density(aes(x=WS5bif96), color="green3") + 
-  geom_density(aes(x=WS100bif96), color="goldenrod") + 
-  geom_density(aes(x=WS500bif96), color="red3") + 
-  geom_density(aes(x=WS1000bif96), color="pink") + 
-  geom_density(aes(x=WS2000bif96), color="steelblue3") + 
+WS96cent.plot = ggplot() + geom_density(aes(x=WS0bif96cent), color="black") + 
+  geom_density(aes(x=WS5bif96cent), color="green3") + 
+  geom_density(aes(x=WS100bif96cent), color="goldenrod") + 
+  geom_density(aes(x=WS500bif96cent), color="red3") + 
+  geom_density(aes(x=WS1000bif96cent), color="pink") + 
+  geom_density(aes(x=WS2000bif96cent), color="steelblue3") + 
   scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
                      values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
                               "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
                      labels=c("0 ng/L", "5 ng/L", "100ng/L", 
                               "500ng/L", "1000ng/L", "2000 ng/L") ) + 
-  xlab("Distance moved (WS @ 96hr)")+
+  xlab("Log Proportion of Detections in Central Zone (WS @ 96hr)")+
+  xlim(c(-5,2))+
   theme_bw()
 
-GS24.plot + GS96.plot + WS24.plot + WS96.plot
+GS24cent.plot + GS96cent.plot + WS24cent.plot + WS96cent.plot
 
-predgroups = list(GS0bif24, GS5bif24,GS100bif24,GS500bif24,GS1000bif24,GS2000bif24,
-                  GS0bif96, GS5bif96,GS100bif96,GS500bif96,GS1000bif96,GS2000bif96,
-                  WS0bif24, WS5bif24,WS100bif24,WS500bif24,WS1000bif24,WS2000bif24,
-                  WS0bif96, WS5bif96,WS100bif96,WS500bif96,WS1000bif96,WS2000bif96)
-PredGroupNames =  as.character(expression(GS0bif24,GS5bif24,GS100bif24,GS500bif24,
-                                          GS1000bif24,GS2000bif24,
-                   GS0bif96, GS5bif96,GS100bif96,GS500bif96,GS1000bif96,GS2000bif96,
-                   WS0bif24, WS5bif24,WS100bif24,WS500bif24,WS1000bif24,WS2000bif24,
-                   WS0bif96, WS5bif96,WS100bif96,WS500bif96,WS1000bif96,WS2000bif96))
+predgroups = list(GS0bif24cent, GS5bif24cent, GS100bif24cent,
+                  GS500bif24cent, GS1000bif24cent, GS2000bif24cent,
+                  GS0bif96cent, GS5bif96cent, GS100bif96cent,
+                  GS500bif96cent, GS1000bif96cent, GS2000bif96cent,
+                  WS0bif24cent, WS5bif24cent, WS100bif24cent,
+                  WS500bif24cent, WS1000bif24cent, WS2000bif24cent,
+                  WS0bif96cent, WS5bif96cent, WS100bif96cent,
+                  WS500bif96cent, WS1000bif96cent, WS2000bif96cent)
+PredGroupNames =  as.character(expression(GS0bif24cent, GS5bif24cent, GS100bif24cent, 
+                                          GS500bif24cent, GS1000bif24cent, GS2000bif24cent, 
+                                          GS0bif96cent, GS5bif96cent, GS100bif96cent, 
+                                          GS500bif96cent, GS1000bif96cent, GS2000bif96cent,
+                                          WS0bif24cent, WS5bif24cent, WS100bif24cent, 
+                                          WS500bif24cent, WS1000bif24cent, WS2000bif24cent, 
+                                          WS0bif96cent, WS5bif96cent, WS100bif96cent,
+                                          WS500bif96cent, WS1000bif96cent, WS2000bif96cent))
 posterior.preds = data.frame(PredGroupNames = PredGroupNames, 
                              PredMeans = sapply(predgroups, mean),
                              Pred95CIl = sapply(predgroups, quantile, 0.05),
@@ -1725,91 +2084,81 @@ posterior.preds = data.frame(PredGroupNames = PredGroupNames,
 #### if use this in a paper, recolor to a more intuitive gradient and add legend
  
  
-```{r distance multi-level model time and spp contrasts, echo=F}
+```{r center zone  multi-level model time and spp contrasts, echo=F}
 # this uses the predicted posteriors for distance moved, calculated above
 
 # GS vs WS
-cont.GS.WS_0bif_24 = sum(GS0bif24<WS0bif24) / length(GS0bif24)
- cont.GS.WS_0bif_24 # 100% probability that GS will move less than WS
+cont.GS.WS_0bif_24cent = sum(GS0bif24cent<WS0bif24cent) / length(GS0bif24cent)
+ cont.GS.WS_0bif_24cent # 100% probability that GS will move less than WS
 
- cont.GS.WS_0bif_96 = sum(GS0bif96<WS0bif96) / length(GS0bif96)
- cont.GS.WS_0bif_96 # 100% probability that GS will move less than WS
-cont.GS.WS_2000bif_96 = sum(GS2000bif96<WS2000bif96) / length(GS2000bif96)
- cont.GS.WS_2000bif_96 # 99.89% probability that GS will move less than WS
+ cont.GS.WS_0bif_96cent = sum(GS0bif96cent<WS0bif96cent) / length(GS0bif96cent)
+ cont.GS.WS_0bif_96cent # 100% probability that GS will move less than WS
+cont.GS.WS_2000bif_96cent = sum(GS2000bif96cent<WS2000bif96cent) / length(GS2000bif96cent)
+ cont.GS.WS_2000bif_96cent # 99.89% probability that GS will move less than WS
 
 
 # Green Sturgeon, Exposure Hr
-cont.GS0bif_96.24 = (sum(GS0bif96<GS0bif24) / length(GS0bif96)) 
-# cont.GS5bif_96.24 = (sum(GS5bif96<GS5bif24) / length(GS5bif96))
-# cont.GS100bif_96.24 = (sum(GS100bif96<GS100bif24) / length(GS100bif96))
-# cont.GS500bif_96.24 = (sum(GS500bif96<GS500bif24) / length(GS500bif96))
-# cont.GS1000bif_96.24 = (sum(GS1000bif96<GS1000bif24) / length(GS1000bif96))
-# cont.GS2000bif_96.24 = (sum(GS2000bif96<GS2000bif24) / length(GS2000bif96))
+cont.GS0bif_96.24cent = (sum(GS0bif96cent<GS0bif24cent) / length(GS0bif96cent)) 
+# cont.GS5bif_96.24cent = (sum(GS5bif96cent<GS5bif24cent) / length(GS5bif96cent))
+# cont.GS100bif_96.24cent = (sum(GS100bif96cent<GS100bif24cent) / length(GS100bif96cent))
+# cont.GS500bif_96.24cent = (sum(GS500bif96cent<GS500bif24cent) / length(GS500bif96cent))
+# cont.GS1000bif_96.24cent = (sum(GS1000bif96cent<GS1000bif24cent) / length(GS1000bif96cent))
+# cont.GS2000bif_96.24cent = (sum(GS2000bif96cent<GS2000bif24cent) / length(GS2000bif96cent))
 
-cont.GS0bif_96.24
-# ; cont.GS5bif_96.24; cont.GS100bif_96.24; cont.GS500bif_96.24; cont.GS1000bif_96.24; cont.GS2000bif_96.24
+cont.GS0bif_96.24cent
+# ; cont.GS5bif_96.24cent; cont.GS100bif_96.24cent; cont.GS500bif_96.24cent; cont.GS1000bif_96.24cent; cont.GS2000bif_96.24cent
 
 # ha! they're all the same, because there's no interaction of exposure time and treatment. 
  # 4.8% of the samples from the posterior showed less distance moved at 96 than 24; so most likely that movement is greater at 96 than 24 (95.2%)
 
-GS0bif_96.24.plot = ggplot() + geom_density(aes(x=GS0bif96), color="steelblue3") + 
-  geom_density(aes(x=GS0bif24), color="green3") + 
+GS0bif_96.24cent.plot = ggplot() + geom_density(aes(x=GS0bif96cent), color="steelblue3") + 
+  geom_density(aes(x=GS0bif24cent), color="green3") + 
   xlab("Distance moved - GS @ 0 ng/L bifenthrin\n24 vs 96 hrs)") +
   theme_bw()
-# GS5bif_96.24.plot = ggplot() + geom_density(aes(x=GS5bif96), color="steelblue3") + 
-#   geom_density(aes(x=GS5bif24), color="green3") + 
+# GS5bif_96.24cent.plot = ggplot() + geom_density(aes(x=GS5bif96cent), color="steelblue3") + 
+#   geom_density(aes(x=GS5bif24cent), color="green3") + 
 #   xlab("Distance moved - GS @ 5 ng/L bifenthrin\n24 vs 96 hrs)") +
 #   theme_bw()
-# GS100bif_96.24.plot = ggplot() + geom_density(aes(x=GS100bif96), color="steelblue3") + 
-#   geom_density(aes(x=GS100bif24), color="green3") + 
+# GS100bif_96.24cent.plot = ggplot() + geom_density(aes(x=GS100bif96cent), color="steelblue3") + 
+#   geom_density(aes(x=GS100bif24cent), color="green3") + 
 #   xlab("Distance moved - GS @ 100 ng/L bifenthrin\n24 vs 96 hrs)") +
 #   theme_bw()
-# GS500bif_96.24.plot = ggplot() + geom_density(aes(x=GS500bif96), color="steelblue3") + 
-#   geom_density(aes(x=GS500bif24), color="green3") + 
+# GS500bif_96.24cent.plot = ggplot() + geom_density(aes(x=GS500bif96cent), color="steelblue3") + 
+#   geom_density(aes(x=GS500bif24cent), color="green3") + 
 #   xlab("Distance moved - GS @ 500 ng/L bifenthrin\n24 vs 96 hrs)") +
 #   theme_bw()
-# GS1000bif_96.24.plot = ggplot() + geom_density(aes(x=GS1000bif96), color="steelblue3") + 
-#   geom_density(aes(x=GS1000bif24), color="green3") + 
+# GS1000bif_96.24cent.plot = ggplot() + geom_density(aes(x=GS1000bif96cent), color="steelblue3") + 
+#   geom_density(aes(x=GS1000bif24cent), color="green3") + 
 #   xlab("Distance moved - GS @ 1000 ng/L bifenthrin\n24 vs 96 hrs)") +
 #   theme_bw()
-# GS2000bif_96.24.plot = ggplot() + geom_density(aes(x=GS2000bif96), color="steelblue3") + 
-#   geom_density(aes(x=GS2000bif24), color="green3") + 
+# GS2000bif_96.24cent.plot = ggplot() + geom_density(aes(x=GS2000bif96cent), color="steelblue3") + 
+#   geom_density(aes(x=GS2000bif24cent), color="green3") + 
 #   xlab("Distance moved - GS @ 2000 ng/L bifenthrin\n24 vs 96 hrs)") +
 #   theme_bw()
 
 # use patchwork grammar to plot multiple plots
-GS0bif_96.24.plot
-#(GS0bif_96.24.plot|GS5bif_96.24.plot|GS100bif_96.24.plot)/(GS500bif_96.24.plot|GS1000bif_96.plot|GS2000bif_96.plot)
+GS0bif_96.24cent.plot
+#(GS0bif_96.24cent.plot|GS5bif_96.24cent.plot|GS100bif_96.24cent.plot)/(GS500bif_96.24cent.plot|GS1000bif_96.24cent.plot|GS2000bif_96.24cent.plot)
 
-cont.GS0bif_96.24 # 4.8% chance that GS move less at 96hrs than 24hrs (ie: move more with age)
-# cont.GS5bif_96.24
-# cont.GS100bif_96.24
-# cont.GS500bif_96.24
-# cont.GS1000bif_96.24
-# cont.GS2000bif_96.24
+cont.GS0bif_96.24cent # 4.8% chance that GS move less at 96hrs than 24hrs (ie: move more with age)
+# cont.GS5bif_96.24cent
+# cont.GS100bif_96.24cent
+# cont.GS500bif_96.24cent
+# cont.GS1000bif_96.24cent
+# cont.GS2000bif_96.24cent
 
 
 
 # White Sturgeon: probability of a difference between 24 and 96 hours, at each treatment level
-cont.WS0bif_96.24 = (sum(WS0bif96<WS0bif24) / length(WS0bif96)) 
-cont.WS0bif_96.24
+cont.WS0bif_96.24cent = (sum(WS0bif96cent<WS0bif24cent) / length(WS0bif96cent)) 
+cont.WS0bif_96.24cent
 # 4.8% of the samples from the posterior showed less distance moved at 96 than 24; so most likely that movement is greater at 96 than 24 (95.2%)
 
-WS0bif_96.24.plot = ggplot() + geom_density(aes(x=WS0bif96), color="steelblue3") + 
-  geom_density(aes(x=WS0bif24), color="green3") + 
+WS0bif_96.24cent.plot = ggplot() + geom_density(aes(x=WS0bif96cent), color="steelblue3") + 
+  geom_density(aes(x=WS0bif24cent), color="green3") + 
   xlab("Distance moved - WS @ 0 ng/L bifenthrin\n24 vs 96 hrs)") +
   theme_bw()
-WS0bif_96.24.plot
+WS0bif_96.24cent.plot
 
 
 ```
-
-#### well, these plots all look about the same, as they should since there's no interaction for concentration * exposure time; which fits the contrast value - it is 95.2% likely (for all comparisons of concentation, because there isn't an interaction) that for Green Sturgeon the distance moved at 96hrs (7ph) is greater than the distance moved at 24hrs (4 dph). But for white sturgeon, it's a 100% chance that there is less movement at 96hrs than at 24hrs exposure. 
-
-
-
-
-
-
- 
-     
