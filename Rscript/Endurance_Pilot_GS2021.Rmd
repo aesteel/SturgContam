@@ -1,0 +1,865 @@
+---
+title: "Endurance_GS2021_PilotData"
+author: "Anna Steel"
+date: "11/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+library(tidyverse)
+library(chron)
+library(car)
+library(lubridate)
+library(lme4)
+
+library(rethinking)
+
+```
+
+
+
+# *Green Sturgeon* #
+
+### Read data
+```{r read data, echo=FALSE}
+endat = read.csv("rawdata/EnduranceGS2021.csv")
+```
+
+### Clean data
+```{r clean, echo=FALSE}
+
+endat$trialDate = as.Date(endat$trialDate, format="%m/%d/%y")
+endat$hatchDate = as.Date(endat$hatchDate, format="%m/%d/%y")
+endat$startTime.time = hm(endat$startTime)
+endat$fatigueTimeSec = as.numeric(hms(endat$fatigueTime))
+ 
+
+```
+
+### Plot
+```{r plot expt conditions, echo=FALSE}
+
+## look at potential bias due to experimentally controlled variables ##
+
+# size by treatment (is there bais?)
+ggplot(data=endat[!is.na(endat$TLcm),],
+       aes(x=factor(nomconc), y=TLcm, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))  
+
+ggplot(data=endat[!is.na(endat$weightg),],
+       aes(x=factor(nomconc), y=weightg, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))  
+
+# run temp by treatment (is there bias?)
+ggplot(data=endat[!is.na(endat$startTemp),],
+       aes(x=factor(nomconc), y=startTemp, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))  
+
+# temp change by treatment (is there bias?)
+ggplot(data=endat[!is.na(endat$startTemp) & !is.na(endat$endTemp),],
+       aes(x=factor(nomconc), y=(endTemp - startTemp), fill=factor(nomconc), group=factor(nomconc)))+
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))  
+
+# start time by treatment (is there bias?)
+ggplot(data=endat,
+       aes(x=factor(nomconc), y=(as.numeric(startTime.time))/3600, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_boxplot() + theme_bw() + ylab("time of day (hrs)")+
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))  
+### nothing looks concerning. 
+```
+```{r data distns, echo=F}
+hist(endat$fatigueTimeSec, breaks=25)
+hist(log(endat$fatigueTimeSec), breaks=25)
+
+```
+```{r plot data, echo=F}
+## look at results ##
+
+# fatigue time by treatment
+ggplot(data = endat[!is.na(endat$nomconc),], 
+       aes(x=factor(nomconc), y=fatigueTimeSec, 
+           group=factor(nomconc), fill=factor(nomconc))) + 
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))
+
+# fatigue time by treatment, if swam > 1min
+ggplot(data = endat[!is.na(endat$nomconc) & endat$fatigueTimeSec>1*60,], 
+       aes(x=factor(nomconc), y=fatigueTimeSec, 
+           group=factor(nomconc), fill=factor(nomconc))) + 
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))
+
+# fatigue time by treatment, if swam > 3min #likely cuttoff for WS participation; here this removes 27 of 164 fish (16.5%)
+ggplot(data = endat[!is.na(endat$nomconc) & endat$fatigueTimeSec>3*60,], 
+       aes(x=factor(nomconc), y=fatigueTimeSec, 
+           group=factor(nomconc), fill=factor(nomconc))) + 
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))
+
+# fatigue time by treatment, if swam > 5min
+ggplot(data = endat[!is.na(endat$nomconc) & endat$fatigueTimeSec>5*60,], 
+       aes(x=factor(nomconc), y=fatigueTimeSec, 
+           group=factor(nomconc), fill=factor(nomconc))) + 
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))
+
+
+# fatigue by length, scatter plot, show those that swam the full trial
+ggplot(data=endat[!is.na(endat$TLcm),],
+       aes(x=TLcm, y=fatigueTimeSec, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_point(pch=21, size=3) + theme_bw() + 
+  geom_point(data=endat[!is.na(endat$TLcm) & !is.na(endat$nomconc) & endat$fatigueTimeSec==7200,], pch=16, size=3) + scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue")) + geom_smooth(span=1.5, color="black", lwd=.4) + 
+  facet_wrap(~nomconc)
+
+# fatigue by mass, scatter plot
+ggplot(data=endat[!is.na(endat$weightg) & !is.na(endat$nomconc),],
+       aes(x=weightg, y=fatigueTimeSec, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_point(pch=21, size=3) + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue")) + geom_smooth(span=1.5, color="black", lwd=.4) + 
+  facet_wrap(~nomconc)
+
+# fatigue by temp, scatter plot
+ggplot(data=endat[!is.na(endat$startTemp) & !is.na(endat$nomconc),],
+       aes(x=startTemp, y=fatigueTimeSec, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_point(pch=21, size=3) + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue")) + geom_smooth(span=1.5, color="black", lwd=.4) + 
+  facet_wrap(~nomconc)
+
+
+```
+
+### Stats Models
+```{r stats}
+
+moddat = endat[,c("fatigueTimeSec", "nomconc", "trialRound", 
+                  "startTemp", "TLcm", "weightg")]
+ moddat = moddat[!is.na(moddat$nomconc),]
+moddat$lnsec = log(moddat$fatigueTimeSec)
+moddat$lnConc = log(moddat$nomconc+1)
+moddat$lnConcC = as.numeric(scale(moddat$lnConc, scale=F))
+moddat$startTempC = as.numeric(scale(moddat$startTemp, scale=F))
+moddat$TLcmC = as.numeric(scale(moddat$TLcm, scale=F))
+moddat$weightgC = as.numeric(scale(moddat$weightg, scale=F))
+ # don't have actual concentraqtions yet, so add measured conc when we get them
+
+moddat3min = moddat[moddat$fatigueTimeSec>(3*60),]
+moddat3min$lnConcC = as.numeric(scale(moddat3min$lnConc, scale=F))
+moddat3min$startTempC = as.numeric(scale(moddat3min$startTemp, scale=F))
+moddat3min$TLcmC = as.numeric(scale(moddat3min$TLcm, scale=F))
+moddat3min$weightgC = as.numeric(scale(moddat3min$weightg, scale=F))
+
+
+gs.end.nlt = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bn*lnConcC + bl*TLcmC + bt*startTemp,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bn ~ dnorm(0,10),
+        bl ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddat, iter = 2000, warmup = 500, chains = 4)
+  # trace plots look pretty wiggly for a_rnd and bt
+  # neff low, esp for a and bt
+
+
+gs.end.nlt3 = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bn*lnConcC + bl*TLcmC + bt*startTemp,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bn ~ dnorm(0,10),
+        bl ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddat3min, iter = 2000, warmup = 500, chains = 4)
+  # trace plots look pretty wiggly for a_rnd and bt
+  # neff low, esp for a and bt
+    
+
+gs.end.l = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bl*TLcmC,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bl ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddat, iter = 2000, warmup = 500, chains = 4)
+  # trace plots look good
+  # neff/Rhat look good
+
+    
+
+gs.end.n = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bn*lnConcC,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bn ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddat, iter = 2000, warmup = 500, chains = 4)
+ # trace plots look good
+ # neff/Rhat good
+    
+
+gs.end.t = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bt*startTemp,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bt ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddat, iter = 2000, warmup = 500, chains = 4)
+  # trace plots look pretty wiggly for a_rnd and bt
+  # neff low and Rhat high (1.04)
+    
+
+gs.end.nl = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bn*lnConcC + bl*TLcmC,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bn ~ dnorm(0,10),
+        bl ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddat, iter = 2000, warmup = 500, chains = 4)
+  # trace plots look good
+  # neff/Rhat good
+    
+
+gs.end.nl3 = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bn*lnConcC + bl*TLcmC,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bn ~ dnorm(0,10),
+        bl ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddat3min, iter = 2000, warmup = 500, chains = 4)
+ # trace plots look good
+  # neff/Rhat good
+    
+
+gs.end.lt = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound]  + bl*TLcmC + bt*startTemp,
+       a_rnd[trialRound] ~ dnorm(a,a_sig), 
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+       bl ~ dnorm(0,10),
+       bt ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddat, iter = 2000, warmup = 500, chains = 4)
+  # trace plots look pretty wiggly for a_rnd and bt
+  # neff low and Rhat high (1.04)
+
+gs.end.anlt = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a + bn*lnConcC + bl*TLcmC + bt*startTemp,
+       a ~ dnorm(0,10),
+       bn ~ dnorm(0,10),
+       bl ~ dnorm(0,10),
+       bt ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddat, iter = 2000, warmup = 500, chains = 4)
+  # trace plots look good
+  # neff/Rhat good
+
+   plot(compare(gs.end.nlt, gs.end.l, gs.end.n, gs.end.t, gs.end.nl, gs.end.lt, gs.end.anlt))
+   plot(compare(gs.end.nlt3, gs.end.nl3))
+```
+## Models with a random effect for trial round and an effect for temperature don't mix very well. Likely because the temperature is the same for all fish in a round, and thus the effect of each is hard to differentiate. But the model that includes temp and not a random effect for round doesn't perform as well as the one with the random effect, according to WAIC. All models that include nominal concentration perform worse than those that do not include it - in other words, nomconc is not a useful predictor, and both water temperature and fish length are better predictors, when the clustering by round is accounted for. 
+## I will select nl (or nl3) as the model to intepret, so I can discuss the small effect of nomconc in relation to size, and can highlight the effect of temperature through the grouping variable. I'll ask Zack if the trace plots are good enough to use temp as a predictor, but I expect not. 
+
+
+```{r predict from model nl and nl3}
+
+# pull posterior from model:
+set.seed(42)
+post = extract.samples(gs.end.nl)
+post3 = extract.samples(gs.end.nl3)
+
+# set up dataframe to plot posterior predictions at the average fish length
+preddat = data.frame(expand_grid(conc=seq(0, 1000, 2), 
+              TLcm = mean(moddat3min$TLcm), 
+              trialRound = 1))
+ preddat$TLcmC = preddat$TLcm -  mean(moddat3min$TLcm)
+ preddat$lnConc = log(preddat$conc+1)
+ preddat$lnConcC= preddat$lnConc - mean(moddat3min$lnConc) 
+ 
+
+# replace individual fish estimates with global estimate; this should predict to the average individual in a population...so since I want to get at the population level response this seems more appropriate.
+a_global = matrix(post$a,6000,19)
+
+# use link to predict to mean only
+link.gs.end.nl <- link(gs.end.nl, n=1000, data= preddat, 
+                         replace = list(a_rnd = a_global) )
+link.gs.end.nl3 <- link(gs.end.nl3, n=1000, data= preddat, 
+                         replace = list(a_rnd = a_global) )
+
+preddat.df <- preddat
+  #data.frame(sapply(preddat,c)) # thanks stack overflow! https://stackoverflow.com/questions/4227223/convert-a-list-to-a-data-frame
+
+preddat.df$link_mu_mn <- apply(link.gs.end.nl3, 2, mean) 
+preddat.df$link_PI05 = apply(link.gs.end.nl3, 2, PI, .95)[1,] 
+preddat.df$link_PI95 = apply(link.gs.end.nl3, 2, PI, .95)[2,] 
+
+
+gs.end.transf3 = ggplot() + 
+  geom_point(data=moddat3min,
+             aes(x=(lnConcC),                          
+                 y=lnsec)) + 
+  geom_ribbon(data = preddat.df, aes(x=(lnConcC), 
+              ymin=link_PI05, ymax=link_PI95), 
+              alpha=.4, col="grey70")+
+  geom_line(data = preddat.df, aes(x=(lnConcC), y=link_mu_mn), lwd=.2)+
+    ylab("ln(Seconds to Fatigue)") + #ylim(c(3.5, 8.5)) + 
+    scale_x_continuous(name="ln(Nominal Fipronil Concentration (ug/L))") + 
+    theme_bw()
+gs.end.transf
+
+
+gs.end.orig3 = ggplot() + 
+  geom_point(data=moddat3min,
+             aes(x=(nomconc),                          
+                 y=fatigueTimeSec)) + 
+  geom_ribbon(data = preddat.df, aes(x=(conc), 
+              ymin=exp(link_PI05), ymax=exp(link_PI95)), 
+              alpha=.4, col="grey70")+
+  geom_line(data = preddat.df, aes(x=(conc), y=exp(link_mu_mn)), lwd=.2)+
+  ylab("Time to Fatigue (s)") + 
+  scale_x_continuous(name="Fipronil Concentration (ug/L)") +
+  theme_bw()
+
+gs.end.transf3
+gs.end.orig3
+
+tiff("figures/GS_endurance_Fip2021_modelpredictions.tiff", width=165, height=100, units="mm", res=300)
+gs.end.orig3
+dev.off()
+```
+
+```{r contrasts from model nl3}
+set.seed(1983) 
+postdist = extract.samples(gs.end.nl3)  
+
+# calculate differences between control and treatment at each time point for each species (20 contrasts)
+GS0 = postdist$a +
+  postdist$bn*unique(subset(moddat3min, nomconc==0)$lnConcC) +
+  postdist$bl*mean(moddat3min$TLcmC)
+GS1 = postdist$a + 
+  postdist$bn*unique(subset(moddat3min, nomconc==1)$lnConcC) +
+  postdist$bl*mean(moddat3min$TLcmC)
+GS10 = postdist$a + 
+  postdist$bn*unique(subset(moddat3min, nomconc==10)$lnConcC) +
+  postdist$bl*mean(moddat3min$TLcmC)
+GS100 = postdist$a + 
+  postdist$bn*unique(subset(moddat3min, nomconc==100)$lnConcC) +
+  postdist$bl*mean(moddat3min$TLcmC)
+GS500 = postdist$a +
+  postdist$bn*unique(subset(moddat3min, nomconc==500)$lnConcC) +
+  postdist$bl*mean(moddat3min$TLcmC)
+GS1000 = postdist$a + 
+  postdist$bn*unique(subset(moddat3min, nomconc==1000)$lnConcC) +
+  postdist$bl*mean(moddat3min$TLcmC)
+
+CI95func = function(x) {
+  line = c(CI95L=quantile(x,.025), 
+                  Median=median(x), 
+                  Mean=mean(x), 
+                  CI96U=quantile(x,.0975)) 
+  print(line)}
+
+CI95func(GS0)
+CI95func(GS1)
+CI95func(GS10)
+CI95func(GS100)
+CI95func(GS500)
+CI95func(GS1000)
+
+ cont.GS0.1 = (sum(GS0<GS1) / length(GS0)) 
+ cont.GS0.1 #46.7% prob that 1 has longer swim time than 0
+
+ cont.GS0.10 = (sum(GS0<GS10) / length(GS0)) 
+ cont.GS0.10 #46.7% prob that 10 has longer swim time than 0
+ 
+ cont.GS0.100 = (sum(GS0<GS100) / length(GS0)) 
+ cont.GS0.100 #46.7% prob that 100 has longer swim time than 0
+ 
+ cont.GS0.500 = (sum(GS0<GS500) / length(GS0)) 
+ cont.GS0.500 #46.7% prob that 500 has longer swim time than 0
+ 
+ cont.GS0.1000 = (sum(GS0<GS1000) / length(GS0)) 
+ cont.GS0.1000 #46.7% prob that 1000 has longer swim time than 0
+ 
+# they're all identical? To the 7th decimal place? Is that right? Yes. The estimate for bn is 0 (-0.04 to 0.02). Amazing. 
+```
+
+
+
+
+
+# *White Sturgeon* #
+
+
+
+### Read data
+```{r ws read data, echo=FALSE}
+endatws = read.csv("rawdata/EnduranceWS2021.csv")
+```
+
+### Clean data
+```{r ws clean, echo=FALSE}
+
+endatws$trialDate = as.Date(endatws$trialDate, format="%m/%d/%y")
+endatws$hatchDate = as.Date(endatws$hatchDate, format="%m/%d/%y")
+endatws$startTime.time = hm(endatws$startTime)
+endatws$fatigueTimeSec = as.numeric(hms(endatws$fatigueTime))
+ 
+
+```
+
+### Plot
+```{r ws plot expt conditions, echo=FALSE}
+
+## look at potential bias due to experimentally controlled variables ##
+
+# size by treatment (is there bais?)
+ggplot(data=endatws[!is.na(endatws$TLcm),],
+       aes(x=factor(nomconc), y=TLcm, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))  
+
+ggplot(data=endatws[!is.na(endatws$weightg),],
+       aes(x=factor(nomconc), y=weightg, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))  
+
+# run temp by treatment (is there bias?)
+ggplot(data=endatws[!is.na(endatws$startTemp),],
+       aes(x=factor(nomconc), y=startTemp, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))  
+
+# temp change by treatment (is there bias?)
+ggplot(data=endatws[!is.na(endatws$startTemp) & !is.na(endatws$endTemp),],
+       aes(x=factor(nomconc), y=(endTemp - startTemp), fill=factor(nomconc), group=factor(nomconc)))+
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))  
+
+# start time by treatment (is there bias?)
+ggplot(data=endatws,
+       aes(x=factor(nomconc), y=(as.numeric(startTime.time))/3600, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_boxplot() + theme_bw() + ylab("time of day (hrs)")+
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))  
+
+
+# look at those that refused to swim
+ggplot(data = endatws, aes(x=fatigueTimeSec, group=Refused, fill=Refused)) + geom_histogram(alpha=0.4, position="identity") + xlim(c(0,500)) + theme_bw()
+
+ggplot(data = endatws[endatws$fatigueTimeSec>3*60 & endatws$weightg<3,], aes(x=fatigueTimeSec, group=Refused, fill=Refused)) + geom_histogram(alpha=0.4) + facet_wrap(~Refused, scales="free") 
+ # the 'refused to swim' metric was valuable even after filtering by time > 3min. Bummer we don't have it for the GS. talk to Vanessa again.
+
+
+
+### nothing looks concerning. Perhaps pink was swam at colder temps
+```
+```{r ws data distns, echo=F}
+hist(endatws$fatigueTimeSec, breaks=25)
+hist(log(endatws$fatigueTimeSec), breaks=25)
+
+# issues with fish swimming to end of trial
+```
+```{r ws plot data, echo=F}
+## look at results ##
+
+# fatigue time by treatment
+ggplot(data = endatws[!is.na(endatws$nomconc),], 
+       aes(x=factor(nomconc), y=fatigueTimeSec, 
+           group=factor(nomconc), fill=factor(nomconc))) + 
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))
+
+# fatigue time by treatment, if swam > 1min
+ggplot(data = endatws[!is.na(endatws$nomconc) & endatws$fatigueTimeSec>1*60,], 
+       aes(x=factor(nomconc), y=fatigueTimeSec, 
+           group=factor(nomconc), fill=factor(nomconc))) + 
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))
+
+# fatigue time by treatment, if swam > 3min
+ggplot(data = endatws[!is.na(endatws$TLcm) & endatws$fatigueTimeSec>3*60 ,], 
+       aes(x=factor(nomconc), y=fatigueTimeSec, 
+           group=factor(nomconc), fill=factor(nomconc))) + 
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))
+
+# fatigue time by treatment, if swam > 5min
+ggplot(data = endatws[!is.na(endatws$nomconc) & endatws$fatigueTimeSec>5*60,], 
+       aes(x=factor(nomconc), y=fatigueTimeSec, 
+           group=factor(nomconc), fill=factor(nomconc))) + 
+  geom_boxplot() + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))
+
+
+# fatigue by length, scatter plot. Highlight those that swam the whole trial
+ggplot(data=endatws[!is.na(endatws$TLcm) & endatws$fatigueTimeSec>3*60 & !is.na(endatws$nomconc),], ## the shortest swim time for fish classified as participants was 3:07, while the longest time for fish classifies as non-participants was 4:53. Selecting a cut-off of 3 minutes
+       aes(x=TLcm, y=fatigueTimeSec, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_point(pch=21, size=3) + 
+  geom_point(data=endatws[!is.na(endatws$TLcm) & endatws$fatigueTimeSec==7200 & !is.na(endatws$nomconc),], pch=16, size=3) + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue")) + geom_smooth(span=1.5, color="black", lwd=.4) + 
+  facet_wrap(~nomconc)
+
+
+# fatigue by mass, scatter plot. Highlight those that swam the whole trial
+ggplot(data=endatws[!is.na(endatws$weightg) & endatws$fatigueTimeSec>3*60 & !is.na(endatws$nomconc),],
+       aes(x=weightg, y=fatigueTimeSec, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_point(pch=21, size=3) + 
+  geom_point(data=endatws[!is.na(endatws$weightg) & endatws$fatigueTimeSec==7200 & !is.na(endatws$nomconc),], pch=16, size=3) + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue")) + geom_smooth(span=1.5, color="black", lwd=.4) + 
+  facet_wrap(~nomconc)
+
+
+# fatigue relative to weight-length relationship
+ggplot(data=endatws[!is.na(endatws$weightg) &!is.na(endatws$TLcm) & endatws$fatigueTimeSec>3*60 & !is.na(endatws$nomconc),],
+       aes(y=weightg, x=TLcm, fill=fatigueTimeSec, group=fatigueTimeSec))+
+  geom_point(pch=21, size=3) + 
+  geom_point(data=endatws[!is.na(endatws$weightg) &!is.na(endatws$TLcm) & endatws$fatigueTimeSec==7200 & !is.na(endatws$nomconc),], pch=16, size=3, color="red") + theme_bw() + 
+ facet_wrap(~nomconc)
+
+
+# fatigue by temp, scatter plot. Highlight those that swam the whole trial
+ggplot(data=endatws[!is.na(endatws$startTemp) & endatws$fatigueTimeSec>3*60 & !is.na(endatws$nomconc),],
+       aes(x=startTemp, y=fatigueTimeSec, fill=factor(nomconc), group=factor(nomconc)))+
+  geom_point(pch=21, size=3) + geom_point(data=endatws[!is.na(endatws$weightg) &!is.na(endatws$TLcm) & endatws$fatigueTimeSec==7200 & !is.na(endatws$nomconc),], pch=16, size=3, color="red") + theme_bw() + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue")) + geom_smooth(span=1.5, color="black", lwd=.4) + 
+  facet_wrap(~nomconc)
+
+
+# filter out those that didn't participate, and that were >3g weightg (see less trend by size at this threshold)
+subdat = endatws[!is.na(endatws$TLcm)  & !is.na(endatws$nomconc) & endatws$weightg<3 & endatws$Refused=="n",]# endatws$fatigueTimeSec>5*60,]#& endatws$TLcm<9.5,]
+# TLcm<9.5 removes only 5 of 16 that swam the whole time. 
+# weightg<3 removed of 9 of 16 that swam the whole time; rest distributed somewhat evenly across treatments (3 control, 1 green, 1 yellow, 1 red, 1 pink).
+# think more on how to deal with these; if I need a cox model. =/
+ggplot(data = subdat, 
+       aes(x=factor(nomconc), y=fatigueTimeSec, 
+           group=factor(nomconc), fill=factor(nomconc))) + 
+  geom_boxplot(outlier.size=0.5) + theme_bw() + 
+  geom_point(pch=1, position="jitter") + 
+  scale_fill_manual(values=c("white","seagreen3","gold","firebrick2","pink","skyblue"))
+
+
+```
+
+### Stats Models
+```{r ws stats}
+
+moddatws = endatws[,c("fatigueTimeSec", "nomconc", "trialRound", 
+                  "startTemp", "TLcm", "weightg","Refused")]
+ moddatws = moddatws[!is.na(moddatws$nomconc),]
+ moddatws = moddatws[!is.na(moddatws$TLcm),]
+
+moddatws$lnsec = log(moddatws$fatigueTimeSec)
+moddatws$lnConc = log(moddatws$nomconc+1)
+moddatws$lnConcC = as.numeric(scale(moddatws$lnConc, scale=F))
+moddatws$startTempC = as.numeric(scale(moddatws$startTemp, scale=F))
+moddatws$TLcmC = as.numeric(scale(moddatws$TLcm, scale=F))
+moddatws$weightgC = as.numeric(scale(moddatws$weightg, scale=F)) 
+  
+moddatwspart = moddatws[moddatws$Refused=="n",]
+moddatwspart3g = moddatws[moddatws$Refused=="n" & moddatws$weightg<3,]
+
+moddatwspart3g$lnsec = log(moddatwspart3g$fatigueTimeSec)
+moddatwspart3g$lnConc = log(moddatwspart3g$nomconc+1)
+moddatwspart3g$lnConcC = as.numeric(scale(moddatwspart3g$lnConc, scale=F))
+moddatwspart3g$startTempC = as.numeric(scale(moddatwspart3g$startTemp, scale=F))
+moddatwspart3g$TLcmC = as.numeric(scale(moddatwspart3g$TLcm, scale=F))
+moddatwspart3g$weightgC = as.numeric(scale(moddatwspart3g$weightg, scale=F))
+ # don't have actual concentraqtions yet, so add measured conc when we get them
+
+ws.end.nlt.p = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bn*lnConcC + bl*TLcmC + bt*startTemp,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bn ~ dnorm(0,10),
+        bl ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddatwspart, iter = 2000, warmup = 500, chains = 4)
+  # trace plots look pretty wiggly for a_rnd and bt
+  # neff low, esp for a and bt
+    
+
+ws.end.nlt.p3 = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bn*lnConcC + bl*TLcmC + bt*startTemp,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bn ~ dnorm(0,10),
+        bl ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddatwspart3g, iter = 2000, warmup = 500, chains = 4)
+  # trace plots look pretty wiggly for a_rnd and bt
+  # neff low, esp for a and bt
+    
+
+ws.end.l.p = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bl*TLcmC,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bl ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddatwspart, iter = 2000, warmup = 500, chains = 4)
+  # trace plots look good
+  # neff/Rhat look good
+
+    
+
+ws.end.n.p = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bn*lnConcC,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bn ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddatwspart, iter = 2000, warmup = 500, chains = 4)
+ # trace plots look good
+ # neff/Rhat good
+    
+
+
+ws.end.n.p3 = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bn*lnConcC,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bn ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddatwspart3g, iter = 2000, warmup = 500, chains = 4)
+ # trace plots look good
+ # neff/Rhat good
+    
+
+ws.end.t.p = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bt*startTemp,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bt ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddatwspart, iter = 2000, warmup = 500, chains = 4)
+  # trace plots look pretty wiggly for a_rnd and bt
+  # neff low and Rhat high (1.04)
+    
+
+ws.end.nl.p = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bn*lnConcC + bl*TLcmC,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bn ~ dnorm(0,10),
+        bl ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddatwspart, iter = 2000, warmup = 500, chains = 4)
+  # trace plots look pretty good
+  # neff /Rhat good
+    
+
+ws.end.nl.p3 = map2stan(
+  alist(
+    lnsec ~ dnorm(mu, sigma),
+    mu  <- a_rnd[trialRound] + bn*lnConcC + bl*TLcmC,
+        a_rnd[trialRound] ~ dnorm(a,a_sig),
+           a ~ dnorm(0,10),
+           a_sig ~ dcauchy(0,10),
+        bn ~ dnorm(0,10),
+        bl ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = moddatwspart3g, iter = 2000, warmup = 500, chains = 4)
+ # trace plots look pretty good
+  # neff /Rhat good
+    
+
+   plot(compare(ws.end.nlt.p, ws.end.l.p, ws.end.n.p, ws.end.t.p, ws.end.nl.p))
+   plot(compare(ws.end.nlt.p3, ws.end.nl.p3, ws.end.n.p3))
+```
+## Models with a random effect for trial round and an effect for temperature don't mix very well. Likely because the temperature is the same for all fish in a round, and thus the effect of each is hard to differentiate. But the GS model that includes temp and not a random effect for round doesn't perform as well as the one with the random effect, according to WAIC. All models that include nominal concentration perform worse than those that do not include it - in other words, nomconc is not a useful predictor, and both water temperature and fish length are better predictors, when the clustering by round is accounted for. For WS the length predictor is the best one, which makes sense because the raw data plots show a clear trend by size. This trend for model performance holds when we remove all fish over 3g, but the size of the WAIC difference is smaller (14.6 vs 8.5)
+## I will select nl as the model to intepret, so I can discuss the small effect of nomconc in relation to size, and can highlight the effect of temperature through the grouping variable. For WS I'll drop all fish > 3. For both datasets I'll drop either the non-participants (WS) or the fish which swam less than 3 min (GS). 
+
+
+```{r ws predict from model nl}
+
+# pull posterior from model:
+set.seed(42)
+post = extract.samples(ws.end.nl.p3)
+
+# set up dataframe to plot posterior predictions at the average fish length
+preddat = data.frame(expand_grid(conc=seq(0, 1000, 2), 
+              TLcm = mean(moddatwspart3g$TLcm), 
+              trialRound = 1))
+ preddat$TLcmC = preddat$TLcm -  mean(moddatwspart3g$TLcm)
+ preddat$lnConc = log(preddat$conc+1)
+ preddat$lnConcC= preddat$lnConc - mean(moddatwspart3g$lnConc) 
+ 
+
+# replace individual fish estimates with global estimate; this should predict to the average individual in a population...so since I want to get at the population level response this seems more appropriate.
+a_global = matrix(post$a,6000,19)
+
+# use link to predict to mean only
+link.ws.end.nl.p3 <- link(ws.end.nl.p3, n=1000, data= preddat, 
+                         replace = list(a_rnd = a_global) )
+
+preddat.df <- preddat
+  #data.frame(sapply(preddat,c)) # thanks stack overflow! https://stackoverflow.com/questions/4227223/convert-a-list-to-a-data-frame
+
+preddat.df$link_mu_mn <- apply(link.ws.end.nl.p3, 2, mean) 
+preddat.df$link_PI05 = apply(link.ws.end.nl.p3, 2, PI, .95)[1,] 
+preddat.df$link_PI95 = apply(link.ws.end.nl.p3, 2, PI, .95)[2,] 
+
+
+ws.end.transf3 = ggplot() + 
+  geom_point(data=moddatwspart3g,
+             aes(x=(lnConcC),                          
+                 y=lnsec)) + 
+  geom_ribbon(data = preddat.df, aes(x=(lnConcC), 
+              ymin=link_PI05, ymax=link_PI95), 
+              alpha=.4, col="grey70")+
+  geom_line(data = preddat.df, aes(x=(lnConcC), y=link_mu_mn), lwd=.2)+
+    ylab("ln(Seconds to Fatigue)") + 
+    scale_x_continuous(name="ln(Nominal Fipronil Concentration (ug/L))") + ggtitle("White Sturgeon")+
+    theme_bw()
+ws.end.transf3
+
+
+ws.end.orig3 = ggplot() + 
+  geom_point(data=moddat,
+             aes(x=(nomconc),                          
+                 y=fatigueTimeSec)) + 
+  geom_ribbon(data = preddat.df, aes(x=(conc), 
+              ymin=exp(link_PI05), ymax=exp(link_PI95)), 
+              alpha=.4, col="grey70")+
+  geom_line(data = preddat.df, aes(x=(conc), y=exp(link_mu_mn)), lwd=.2)+
+  ylab("Time to Fatigue (s)") + ggtitle("White Sturgeon")+
+  scale_x_continuous(name="Fipronil Concentration (ug/L)") +
+  theme_bw()
+
+ws.end.transf3
+ws.end.orig3
+
+tiff("figures/WS_endurance_Fip2021_modelpredictions.tiff", width=165, height=100, units="mm", res=300)
+ws.end.orig3
+dev.off()
+```
+
+```{r ws contrasts from model nl.p3}
+set.seed(1983) 
+postdist = extract.samples(ws.end.nl.p3)  
+
+# calculate differences between control and treatment
+WS0 = postdist$a +
+  postdist$bn*unique(subset(moddatwspart3g, nomconc==0)$lnConcC) +
+  postdist$bl*mean(moddatwspart3g$TLcmC)
+WS1 = postdist$a + 
+  postdist$bn*unique(subset(moddatwspart3g, nomconc==1)$lnConcC) +
+  postdist$bl*mean(moddatwspart3g$TLcmC)
+WS10 = postdist$a + 
+  postdist$bn*unique(subset(moddatwspart3g, nomconc==10)$lnConcC) +
+  postdist$bl*mean(moddatwspart3g$TLcmC)
+WS100 = postdist$a + 
+  postdist$bn*unique(subset(moddatwspart3g, nomconc==100)$lnConcC) +
+  postdist$bl*mean(moddatwspart3g$TLcmC)
+WS500 = postdist$a +
+  postdist$bn*unique(subset(moddatwspart3g, nomconc==500)$lnConcC) +
+  postdist$bl*mean(moddatwspart3g$TLcmC)
+WS1000 = postdist$a + 
+  postdist$bn*unique(subset(moddatwspart3g, nomconc==1000)$lnConcC) +
+  postdist$bl*mean(moddatwspart3g$TLcmC)
+
+CI95func = function(x) {
+  line = c(CI95L=quantile(x,.025), 
+                  Median=median(x), 
+                  Mean=mean(x), 
+                  CI96U=quantile(x,.0975)) 
+  print(line)}
+
+CI95func(WS0)
+CI95func(WS1)
+CI95func(WS10)
+CI95func(WS100)
+CI95func(WS500)
+CI95func(WS1000)
+
+ cont.WS0.1 = (sum(WS0<WS1) / length(WS0)) 
+ cont.WS0.1 #38.5% prob that 1 has longer swim time than 0 (more likely that 0 is longer than 1)
+
+ cont.WS0.10 = (sum(WS0<WS10) / length(WS0)) 
+ cont.WS0.10 #38.5% prob that 10 has longer swim time than 0
+ 
+ cont.WS0.100 = (sum(WS0<WS100) / length(WS0)) 
+ cont.WS0.100 #38.5% prob that 100 has longer swim time than 0
+ 
+ cont.WS0.500 = (sum(WS0<WS500) / length(WS0)) 
+ cont.WS0.500 #38.5% prob that 500 has longer swim time than 0
+ 
+ cont.WS0.1000 = (sum(WS0<WS1000) / length(WS0)) 
+ cont.WS0.1000 #38.5% prob that 1000 has longer swim time than 0
+ 
+# they're all identical again? To the 7th decimal place? Is that right? Yes. The estimate for WS bn is -0.02 (-0.10 to 0.05). Hm. 
+```
