@@ -44,13 +44,18 @@ plotdat = Grow2021[Grow2021$dph<100,]
 
 ggplot(data = plotdat, aes(x=dph, y=mass_g, group=spp, color=spp)) + geom_point() +
  # facet_wrap(~spp) + 
-#  facet_wrap(~nomconclab, scales="free_y") + 
+ facet_wrap(~nomconclab)+#, scales="free_y") + 
 #  geom_smooth(method = "lm") +
   theme_bw()
 
 ggplot(data = plotdat, aes(x=nomconclab, y=mass_g, group=spp, color=spp)) + geom_point() +
   facet_wrap(~dph) + 
   theme_bw()
+
+ggplot(data = plotdat, aes(x=nomconclab, y=mass_g, group=spp, color=spp)) + geom_point() +
+  facet_wrap(~dph) + 
+  theme_bw()
+
 
 ```
 

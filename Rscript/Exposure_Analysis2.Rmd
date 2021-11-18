@@ -270,14 +270,23 @@ DataSumChg.Vel = DataSum2496.vel %>%
 ## Summarize meander and turn angle
 DataSum2496.meand = DataSum2496 %>%
   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID) %>%
-  summarize(MnMeander = mean(Meander, na.rm=T), MnTurnAngle = mean(TurnAngle, na.rm=T)) %>%
+  summarize(MnMeander = mean(Meander_degmin, na.rm=T), MnTurnAngle = mean(TurnAngle_deg, na.rm=T)) %>%
   ungroup()  %>%
   data.frame()
 
-
+#keep raw data but remove missing points
+DataSum2496.mraw = DataSum2496[!is.na(DataSum2496$TurnAngle_deg),]
 ```
 
 ```{r meander/turn angle plots, echo=F}
+Meanderraw = ggplot(DataSum2496, aes(fill=factor(Treatment)))+ #, y=Meander_degmin, x=factor(Treatment) ) ) + 
+  #geom_violin(outlier.size = .75) + 
+  geom_histogram(aes(x=Meander_degmin))+#, y=factor(Treatment)) ) + 
+  facet_wrap(~Treatment) +
+  ylab("Frequency") + 
+  xlab ("Degrees/minute (0 degrees = straight)") + 
+  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") 
+
 meanMeander.plot = ggplot(DataSum2496.meand, 
                            aes(fill=factor(Treatment), y=MnMeander, 
                                x=factor(ExposureHrs) ) ) + geom_boxplot(outlier.size = .75) + 
@@ -287,6 +296,17 @@ meanMeander.plot = ggplot(DataSum2496.meand,
   scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
   theme_bw()
 
+
+DataSum2496.mraw$TurnAngle_deg2 = DataSum2496.mraw$TurnAngle_deg
+DataSum2496.mraw[DataSum2496.mraw$TurnAngle_deg<0,"TurnAngle_deg2"] <-  DataSum2496.mraw[DataSum2496.mraw$TurnAngle_deg<0,"TurnAngle_deg"] + 360 
+
+TurnAngleraw = ggplot(DataSum2496.mraw, aes(fill=factor(Treatment)))+ #, y=Meander_degmin, x=factor(Treatment) ) ) + 
+  #geom_violin(outlier.size = .75) + 
+  geom_histogram(aes(x=TurnAngle_deg2))+#, y=factor(Treatment)) ) + 
+  facet_wrap(~Treatment) +
+  ylab("Frequency") + 
+  xlab ("Degrees (degrees to R)") + 
+  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") 
 
 mnTurnangle.plot = ggplot(DataSum2496.meand, 
                            aes(fill=factor(Treatment), y=MnTurnAngle, 
@@ -303,6 +323,8 @@ mnTurnangle.plot = ggplot(DataSum2496.meand,
 meanMeander.plot
 mnTurnangle.plot
 
+TurnAngleraw
+Meanderraw
 ```
 ### modelling for meander is in ExposureAnalysis3.rmd
 

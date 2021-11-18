@@ -933,6 +933,7 @@ velspp.lmm = lmer(MnVel ~ factor(Spp)*factor(Treatment)*factor(ExposureHrs)+ (1|
 
 
 ## Meander Models - issues because it's circular data; review with +/- turn data #####
+## go back to old branch with turn angle work (I think?)
 ```{r meander data, echo=F}
 ## Add transformations of concentrations, exposure hours, and meander
  

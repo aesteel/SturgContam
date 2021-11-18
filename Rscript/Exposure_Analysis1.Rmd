@@ -47,7 +47,7 @@ The data used here were tracked with the filter "MDM2 02 7,5 mm" in ethovision p
 #### Read in metadata 
 ```{r read metadata}
 # read in exported files
-GSfilelist = list.files(path="/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_GS2020", pattern=".txt")
+GSfilelist = list.files(path="/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_GS2020/GSmeanderTArelative", pattern=".txt")
   
 WSfilelist = list.files(path="/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_WS2020", pattern="Track") 
   
@@ -67,8 +67,10 @@ WStriallist = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Et
                     "InZoneB","InZoneC","Meander_degmin","TurnAngle_deg","ActivPerc",
                     "ActivState","X", "X1")
 
+
+
 # set directory where .txt files are for each species
-    GSdatadir = "/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_GS2020/"
+    GSdatadir = "/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_GS2020/GSmeanderTArelative/"
     WSdatadir = "/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_WS2020/"
   
  
@@ -90,6 +92,7 @@ WStriallist = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Et
       
       trialidat2 = merge(trialidat, triallist, by="index", all.x=T)
       
+      print(subfilei) # check point to make sure it's working correctly; can comment out if it is
       return(trialidat2) 
     }
     
