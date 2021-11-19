@@ -46,4 +46,4 @@ vignettes/*.pdf
 /figures
 /outputData/Bursts_Outputdata/**. # may remove this if need to update these files
 # Mac files
-.DS_Store
+*.DS_Store
