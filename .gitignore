@@ -44,6 +44,8 @@ vignettes/*.pdf
 # folders that do not need to be version controlled
 /wordDocs
 /figures
+/rawdata
+/intermedData
 /outputData/Bursts_Outputdata/**. # may remove this if need to update these files
 # Mac files
-.DS_Store
+*.DS_Store
