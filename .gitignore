@@ -42,10 +42,10 @@ vignettes/*.pdf
 *_REMOTE_*.txt
 ### AES custom additions
 # folders that do not need to be version controlled
-/wordDocs
-/figures
-/rawdata
-/intermedData
+/wordDocs/
+/figures/
+/rawdata/
+/intermedData/
 /outputData/Bursts_Outputdata/**. # may remove this if need to update these files
 # Mac files
 *.DS_Store
