@@ -13,6 +13,7 @@ library(readtext) # need this because the ethovision output .txt files have unus
 library(lme4)
 library(rethinking)
 library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
+library(CircStats) # for turn angle analysis
 
 knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
 ```
@@ -30,6 +31,14 @@ nstep = function(t2,t1, interv=0.2) {
   }
 
 
+circ.mean.na = function(x) {
+  x2 = x[!is.na(x)]
+  sinr <- sum(sin(x2))
+  cosr <- sum(cos(x2))
+  circmean <- atan2(sinr, cosr)
+  return(circmean)
+}
+
 
 ```
 
@@ -46,11 +55,34 @@ The data used here were tracked with the filter "MDM2 02 7,5 mm" in ethovision p
   
 #### Read in metadata 
 ```{r read metadata}
+# used this code to write from .xlsx to .csv files when I accidentally exported them in the wrong format
+          # library(readxl)
+          # 
+          # setwd("/Volumes/5TB Contam/2020 Bif Contam Pilot/Ethovision/Exposure_WS_Pilot/Export Files/MDM2 02 75 mm AbsRelTA")
+          # 
+          # listxlsx = dir(pattern="xlsx")
+          # 
+          # genericnames = excel_sheets(listxlsx[1])
+          # counter=0
+          # 
+          # for(i in 1:length(listxlsx)) {
+          #   for(j in 1:length(genericnames)) {
+          #     counter = counter+1
+          #     print(counter)
+          #       workbookij = read_excel(listxlsx[i], sheet=genericnames[j])
+          #       csvfilename = paste0("Track-",substr(listxlsx[i], 10, 38),
+          #                                substr(genericnames[j], 6,18), ".csv")
+          #       write.csv(workbookij, csvfilename, row.names=F)
+          #   }
+          # }
+
 # read in exported files
-GSfilelist = list.files(path="/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_GS2020", pattern=".txt")
+GSfilelist = list.files(path="/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_GS2020/MDM2_02_75mmAllEditsAbsRelTA", pattern=".txt")
   
-WSfilelist = list.files(path="/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_WS2020", pattern="Track") 
-  
+WSfilelist = list.files(path="/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_WS2020/MDM2_02_75mmAbsRelTA", pattern=".txt") 
+
+# WSfilelist = list.files(path="/Volumes/5TB Contam/2020 Bif Contam Pilot/Ethovision/Exposure_WS_Pilot/Export Files/MDM2 02 75 mm AbsRelTA", pattern=".txt")
+
 # read in hand-made triallist to add experimental data to movement file    
 GStriallist = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/Ethovision Trial List GS2020 Exposure.csv")
     GStriallist$index = paste(GStriallist$Trial, GStriallist$Arena, sep="-")
@@ -62,18 +94,22 @@ WStriallist = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Et
 #### Read in data
 ```{r read data}
 # prep column names for datafiles (buried in .txt header)
-    datcolNames = c("TrialTime_s","RecTime_s","Xcent_mm","Ycent_mm",
+    datcolNamesGS = c("TrialTime_s","RecTime_s","Xcent_mm","Ycent_mm",
                     "Area_mm2","AreaChange_mm2","Elong","DistMoved_mm","Vel_mms",
-                    "InZoneB","InZoneC","Meander_degmin","TurnAngle_deg","ActivPerc",
-                    "ActivState","X", "X1")
-
+                    "InZoneB","InZoneC","Meander_degmmabs","TurnAngle_degabs",
+                    "ActivPerc","ActivState","TurnAngle_degrel","Meander_degmmrel","X", "X1")
+    datcolNamesWS = c("TrialTime_s","RecTime_s","Xcent_mm","Ycent_mm",
+                    "Area_mm2","AreaChange_mm2","Elong","DistMoved_mm","Vel_mms",
+                    "InZoneB","InZoneC","Meander_degmmabs","TurnAngle_degabs",
+                    "ActivPerc","ActivState","Meander_degmmrel","TurnAngle_degrel","X")
+    
 # set directory where .txt files are for each species
-    GSdatadir = "/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_GS2020/"
-    WSdatadir = "/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_WS2020/"
-  
+    GSdatadir = "/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_GS2020/MDM2_02_75mmAllEditsAbsRelTA/"
+    WSdatadir = "/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_WS2020/MDM2_02_75mmAbsRelTA/"
+    # WSdatadir = "/Volumes/5TB Contam/2020 Bif Contam Pilot/Ethovision/Exposure_WS_Pilot/Export Files/MDM2 02 75 mm AbsRelTA/"
  
 # function to read and ammend ethovision files to compile later     
-    readTrialDat.func =function(datadir, triallist, x) {
+     readTrialDat.func = function(datadir, triallist, datcolNames, x) {
       trialidat = read.csv(paste0(datadir, x), sep=",", skip=40, header=F, fileEncoding="UTF-16")
       names(trialidat) = datcolNames
       trialidat$X <-NULL
@@ -93,16 +129,18 @@ WStriallist = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Et
       return(trialidat2) 
     }
     
+      
+    
     
 # do.call function to use above function to read and then rbind all the trial datafiles into one df per species    
-  GSdata = do.call(rbind, lapply(GSfilelist, readTrialDat.func, datadir = GSdatadir, triallist= GStriallist) )
-    
-  WSdata = do.call(rbind, lapply(WSfilelist, readTrialDat.func, datadir = WSdatadir, triallist= WStriallist) )
-  
-  # Tried to merge these datafiles here, but the result is too large to work with; will combined after reduce through summarizing by time (into intervals of 0.2 seconds)
+  GSdata = do.call(rbind, lapply(GSfilelist, readTrialDat.func, datadir = GSdatadir, triallist= GStriallist, datcolNames = datcolNamesGS) )
+
+  WSdata = do.call(rbind, lapply(WSfilelist, readTrialDat.func, datadir = WSdatadir, triallist= WStriallist, datcolNames = datcolNamesWS) )
+  # Tried to merge these datafiles here, but the result is too large to work with; will combine after reduce through summarizing by time (into intervals of 0.2 seconds)
   #fulldat = rbind(GSdata, WSdata)  
   # nrows = 9,953,850
     
+
 ```
 
 #### as I reviewed the data I found a few more edits I hadn't made in ethovision; corrected here 
@@ -126,7 +164,15 @@ summarize(group_by(WSdata, Trial, Replicate, ExposureHrs, Treatment), max(TrialT
 #### Also add datacolumn for distanced moved where NA is replaced with 0 
 
 ```{r cut data}
-GSdatasub = GSdata[,c("index","Trial","Arena","Replicate","ExposureHrs","Treatment","Spp","Contaminant","TrialTime_s","Xcent_mm","Ycent_mm","DistMoved_mm","Vel_mms","Meander_degmin","TurnAngle_deg","InZoneB","InZoneC"),]
+GSdatasub = GSdata[,c("index","Trial","Arena","Replicate","ExposureHrs","Treatment","Spp","Contaminant","TrialTime_s","Xcent_mm","Ycent_mm","DistMoved_mm","Vel_mms","Meander_degmmabs","TurnAngle_degabs","Meander_degmmrel","TurnAngle_degrel","InZoneB","InZoneC"),]
+
+
+GSdatasub$TurnAngle_degrel2 = GSdatasub$TurnAngle_degrel
+GSdatasub$TurnAngle_degrel2[GSdatasub$TurnAngle_degrel<0 & 
+                              !is.na(GSdatasub$TurnAngle_degrel)] <- 
+  GSdatasub$TurnAngle_degrel[GSdatasub$TurnAngle_degrel<0 & 
+                               !is.na(GSdatasub$TurnAngle_degrel)] +360
+
 
 GSdatasub$DistMoved_mm.NA0 = GSdatasub$DistMoved_mm
  GSdatasub$DistMoved_mm.NA0[is.na(GSdatasub$DistMoved_mm)] <- 0
@@ -143,16 +189,28 @@ GSdatasum = GSdatasub %>%
             MnDistMoved.NA0 = mean(DistMoved_mm.NA0, na.rm=T),
             SumDistMoved = sum(DistMoved_mm, na.rm=T),
             MnVel = mean(Vel_mms, na.rm=T),
-            Meander = mean(Meander_degmin, na.rm=T),
-            TurnAngle = mean(TurnAngle_deg, na.rm=T),
+            #Meander = mean(Meander_degmm, na.rm=T),
+            TurnAngleCirc = deg(circ.mean.na(rad(TurnAngle_degrel2))),
             InZoneB = max(InZoneB), 
             InZoneC = max(InZoneC) ) %>%
   ungroup() %>%
   data.frame()
 
+# rather than summarize the meander at each step, recalculate it at these summaruzed steps by taking the mean heading (turn angle over the 0.2 secs) and divide it by the total distance moved in that same period, following the calculations made by Ethovision to calculate meander. 
+GSdatasum$MeanderCirc = GSdatasum$TurnAngleCirc/GSdatasum$SumDistMoved
 
 
-WSdatasub = WSdata[,c("index","Trial","Arena","Replicate","ExposureHrs","Treatment","Spp","Contaminant","TrialTime_s","Xcent_mm","Ycent_mm","DistMoved_mm","Vel_mms","Meander_degmin","TurnAngle_deg","InZoneB","InZoneC"),]#,"ActivPerc","ActivState"),] # active removed because it's defined as the % of pixels moving in a dish at each time step. But with GS most of the movement was refletions not fish,so this isn't a useful netric this year. 
+
+WSdatasub = WSdata[,c("index","Trial","Arena","Replicate","ExposureHrs","Treatment","Spp","Contaminant","TrialTime_s","Xcent_mm","Ycent_mm","DistMoved_mm","Vel_mms","Meander_degmmabs","TurnAngle_degabs","Meander_degmmrel","TurnAngle_degrel","InZoneB","InZoneC"),]#,"ActivPerc","ActivState"),] # active removed because it's defined as the % of pixels moving in a dish at each time step. But with GS most of the movement was refletions not fish,so this isn't a useful netric this year. 
+
+WSdatasub$TurnAngle_degrel2 = WSdatasub$TurnAngle_degrel
+WSdatasub$TurnAngle_degrel2[WSdatasub$TurnAngle_degrel<0 & 
+                              !is.na(WSdatasub$TurnAngle_degrel)] <- 
+  WSdatasub$TurnAngle_degrel[WSdatasub$TurnAngle_degrel<0 & 
+                               !is.na(WSdatasub$TurnAngle_degrel)] +360
+
+#WSdatasub$TurnAngle_degrel2rad = rad(WSdatasub$TurnAngle_degrel2)
+
 WSdatasub$DistMoved_mm.NA0 = WSdatasub$DistMoved_mm
  WSdatasub$DistMoved_mm.NA0[is.na(WSdatasub$DistMoved_mm)] <- 0
 
@@ -167,12 +225,15 @@ WSdatasum = WSdatasub %>%
             MnDistMoved.NA0 = mean(DistMoved_mm.NA0, na.rm=T),
             SumDistMoved = sum(DistMoved_mm, na.rm=T),
             MnVel = mean(Vel_mms, na.rm=T),
-            Meander = mean(Meander_degmin, na.rm=T),
-            TurnAngle = mean(TurnAngle_deg, na.rm=T),
+            #Meander = mean(Meander_degmm, na.rm=T),
+            TurnAngleCirc = deg(circ.mean.na(rad(TurnAngle_degrel2))),
             InZoneB = max(InZoneB), 
             InZoneC = max(InZoneC) ) %>%
   ungroup() %>%
   data.frame()
+
+# rather than summarize the meander at each step, recalculate it at these summaruzed steps by taking the mean heading (turn angle over the 0.2 secs) and divide it by the total distance moved in that same period, following the calculations made by Ethovision to calculate meander. 
+WSdatasum$MeanderCirc = WSdatasum$TurnAngleCirc/WSdatasum$SumDistMoved
 ```
 
 #### combine WS and GS data
@@ -206,7 +267,7 @@ DataSum2496nom$lineID = 1:nrow(DataSum2496nom)
 #### add measured concentrations (versus nominal)
 ```{r chem analysis results}
 chemcsv = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Bifenthrin_20200725_Summary.csv")
- chemcsv <- chemcsv %>% select(spp, nomconc, calcConc)
+ chemcsv <- chemcsv[, c("spp", "nomconc", "calcConc")]
  
 DataSum2496 <- merge(DataSum2496nom, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
 ```
