@@ -912,92 +912,349 @@ velspp.lmm = lmer(MnVel ~ factor(Spp)*factor(Treatment)*factor(ExposureHrs)+ (1|
 
 ## TurnAngle Models #####
 ```{r turnangle data, echo=F}
-## transform turn angle into two variables; forward and backward (< or > 90) and flop the angle to be between 0-90 to create a single mode. Without transformation it's bimodal
-DataSum2496.TAonly = DataSum2496[!is.na(DataSum2496$TurnAngle),]
 
-DataSum2496.TAonly$TurnAngleTrans = DataSum2496.TAonly$TurnAngle
-DataSum2496.TAonly$TurnAngleDir[DataSum2496.TAonly$TurnAngle<=90] <- "forward"
-DataSum2496.TAonly$TurnAngleDir[DataSum2496.TAonly$TurnAngle>90] <- "back"
+DataSum2496.TAonly = DataSum2496[!is.na(DataSum2496$cmn.TurnAngle.rel),]
 
-DataSum2496.TAonly$TurnAngleTrans[DataSum2496.TAonly$TurnAngle>90] <- 180 - 
-  DataSum2496.TAonly$TurnAngle[DataSum2496.TAonly$TurnAngle>90]
-### still has a peak at zero, maybe because I didn't have left and right information about the turns. Check out ethovision again and see if there is a turn angle otuput that preserves this aspect too
+# add absolute turn angle, because don't care about directinality unless we're summarizing the data further
+DataSum2496.TAonly$cmnTurnAngleRelAbs = abs(DataSum2496.TAonly$cmn.TurnAngle.rel)
 
+# remove dots from column headings for Stan later
+DataSum2496.TAonly$cmnTurnAngleRel = DataSum2496.TAonly$cmn.TurnAngle.rel
 
-## don't summarize by fish-video, as we did for distance, because we want to keep the variability within fish as part of the dataset
+## try models prior to summarizing data by fish-video, as we did for distance, because we want to keep the variability within fish as part of the dataset
 DataSum2496.ta = DataSum2496.TAonly %>%
-  #group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
-  #summarize(MnTurnAngle = mean(TurnAngleTrans, na.rm=T)) %>%
-  #ungroup()  %>%
-
   mutate(lnCalcConc = log(calcConc+1)) %>%
   mutate(lnCalcConcC= scale(lnCalcConc, scale=FALSE)) %>%
   mutate(lnCalcConcC2 = lnCalcConcC^2 ) %>% 
    # order of transformations matters (log then scale then square)
-
   mutate(ExposureHrsC = scale(ExposureHrs, scale=FALSE)) %>%
   data.frame()
 
+## if full dataset not manegeable, try summarized information
+## Summarize meander and turn angle
+DataSum2496.meand = DataSum2496 %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, calcConc, RepID) %>%
+  summarize(MnTurnAngle = deg(circ.mean.na(rad(cmn.TurnAngle.rel))), 
+            #sdTurnAngle = 
+            MnMeander = mean(cmn.Meander.rel, na.rm=T) ) %>%  
+  ungroup()  %>%
+  data.frame()
+
+DataSum2496.tasum2 = DataSum2496.meand %>%
+  mutate(lnCalcConc = log(calcConc+1)) %>%
+  mutate(lnCalcConcC= scale(lnCalcConc, scale=FALSE)) %>%
+  mutate(lnCalcConcC2 = lnCalcConcC^2 ) %>% 
+   # order of transformations matters (log then scale then square)
+  mutate(ExposureHrsC = scale(ExposureHrs, scale=FALSE)) %>%
+  data.frame()
 
 ```
 
 
-```{r turn angle single-level Bayesmodels selection, echo=F, eval=F}
-# try setting up the linear model in a bayesian form, same as frequentist model above
+```{r turn angle Bayesmodels selection, echo=F, eval=F}
 
-DSta_bmoddat = DataSum2496.ta[,c("TurnAngleTrans","TurnAngleDir","lnCalcConcC","lnCalcConcC2",
-                                     "ExposureHrs","Spp","RepID")]
+# full dataset
+DSta_bmoddat = DataSum2496.ta[,c("cmnTurnAngleRel","cmnTurnAngleRelAbs","lnCalcConcC","lnCalcConcC2", "ExposureHrs","Spp","RepID")]
 DSta_bmoddat$lnCalcConcC = as.numeric(DSta_bmoddat$lnCalcConcC) 
 DSta_bmoddat$lnCalcConcC2 = as.numeric(DSta_bmoddat$lnCalcConcC2) 
 DSta_bmoddat$SppDummy <- ifelse(DSta_bmoddat$Spp=="GS", 0,1)
 DSta_bmoddat$ExposeDummy <- ifelse(DSta_bmoddat$ExposureHrs=="24", 0,1)
-DSta_bmoddat$TADirDummy <- ifelse(DSta_bmoddat$TurnAngleDir=="forward", 0,1)
 
 # remove fish with only one timepoint of detection, because cant add random slope with one timepoint
 DSta_bmoddat = DSta_bmoddat[!(DSta_bmoddat$RepID %in% paste0(c(0,5,100,500,1000,2000), "-WS-4")),]
 DSta_bmoddat$RepID = as.factor(as.character(DSta_bmoddat$RepID))
 
 
-taspp.blm_int1 = map2stan(
+# summarized dataset
+DSumta_bmoddat = DataSum2496.tasum2[,c("MnTurnAngle","lnCalcConc","lnCalcConcC","lnCalcConcC2", "ExposureHrs","Spp","RepID")]
+DSumta_bmoddat$lnCalcConcC = as.numeric(DSumta_bmoddat$lnCalcConcC) 
+DSumta_bmoddat$lnCalcConcC2 = as.numeric(DSumta_bmoddat$lnCalcConcC2) 
+DSumta_bmoddat$SppDummy <- ifelse(DSumta_bmoddat$Spp=="GS", 0,1)
+DSumta_bmoddat$ExposeDummy <- ifelse(DSumta_bmoddat$ExposureHrs=="24", 0,1)
+DSumta_bmoddat$MnTurnAngleAbs <- abs(DSumta_bmoddat$MnTurnAngle)
+
+
+
+# check two distributions using full dataset
+trashmod_norm = map2stan(
   alist(
-    TurnAngleTrans ~ dnorm(mu, sigma), # data had a long right tail and are bounded by 0 and 90.
-      mu  <-  a + 
-              bd*TADirDummy + 
+    cmnTurnAngleRel~ dnorm(mu, sigma), 
+      mu  <-  a ,
+            a ~ dnorm(0,10),
+            sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSta_bmoddat, iter = 1000, warmup = 500, chains = 4)
+
+trashmod_exp = map2stan(
+  alist(
+    cmnTurnAngleRelAbs ~ dexp(lambda), 
+      lambda <-  a ,
+            a ~ dnorm(0.1,10)
+    ) ,
+  data = DSta_bmoddat, iter = 1000, warmup = 500, chains = 4)
+
+# do either of these fit faster or match the data better?
+# norm estimated 52.04 sec/1000 transitions
+# exp estimated  86.05 sec/1000 transitions
+
+
+#test dataset that's a reduced size to explore some of the potential models in less time
+subsetRepID = paste(rep(c("0","5","100","500","1000","2000"),3), "WS", rep(5:7, each=6), sep="-")
+testdat = DSta_bmoddat[DSta_bmoddat$RepID %in% subsetRepID,]
+ testdat$RepID = factor(as.character(testdat$RepID))
+
+taspp.blm_norm2 = map2stan(
+  alist(
+    cmnTurnAngleRel ~ dnorm(mu, sigma), 
+      mu  <-  a + #_fish[RepID] + 
               be*ExposeDummy + 
-              bs*SppDummy + 
+              #bs*SppDummy + 
               bt*(lnCalcConcC) +
               bt2*(lnCalcConcC2),
-        #a ~ unif(0,90), # is this the right way to deal with the bounds?
-        a ~ dunif(0,90),
-        bd ~ dnorm(0,10),
+        #a_fish[RepID] ~ dnorm(a,sigma_fish),
+            a ~ dnorm(0,10),
+            #sigma_fish ~ dcauchy(0,10),
         be ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
+        #bs ~ dnorm(0,10),
         bt ~ dnorm(0,10),
         bt2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSta_bmoddat, iter = 1000, warmup = 500, chains = 1)
-## these models take a very long time to fit, due to high amount of data since we didn't summarize by trial. May need to subsample from dataset for model selection process? 
+  data = testdat, iter = 1000, warmup = 500, chains = 4)
+ # estimated time for 1000 iterations = 168.94s (only a, be, bt)
+ # estimated time for 1000 iterations = 283.61s (add bt2)
 
 
-### none of these tested yet (Oct 15 2021)
-taspp.blm_int2 = map2stan(
+taspp.blm_norm2.ri = map2stan(
   alist(
-    MnTurnAngle ~ dnorm(mu, sigma), # data don't look normal; bimodal
-      mu  <-  a + 
+    cmnTurnAngleRel ~ dnorm(mu, sigma), 
+      mu  <-  a_fish[RepID] + 
               be*ExposeDummy + 
-              bs*SppDummy + 
-              bt*(lnCalcConcC) + 
+              #bs*SppDummy + 
+              bt*(lnCalcConcC) +
+              bt2*(lnCalcConcC2),
+        a_fish[RepID] ~ dnorm(a,sigma_fish),
+            a ~ dnorm(0,10),
+            sigma_fish ~ dcauchy(0,10),
+        be ~ dnorm(0,10),
+        #bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = testdat, iter = 1000, warmup = 500, chains = 4)
+ # estimated time for 1000 iterations = 168.94s (only a, be, bt)
+ # estimated time for 1000 iterations = 283.61s (add bt2)
+
+
+taspp.blm_exp2 = map2stan(
+  alist(
+    cmnTurnAngleRelAbs ~ dexp(lambda), 
+      lambda  <-  a + #_fish[RepID] + 
+              be*ExposeDummy + 
+              #bs*SppDummy + 
+              bt*(lnCalcConcC) +
+              bt2*(lnCalcConcC2),
+        #a_fish[RepID] ~ dnorm(a,sigma_fish),
+            a ~ dcauchy(0,10), # trying a different prior that is constrained to >0; dhcauchy is in package 'extraDistr' but I beleive McElreath's dcauchy is actually a half too?
+            #sigma_fish ~ dcauchy(0,10),
+        be ~ dnorm(0,10),
+        #bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10)
+    #sigma ~ dcauchy(0,10)
+    ) ,
+  data = testdat, iter = 1000, warmup = 500, chains = 4)
+  # estimated time for 1000 iterations = 203; cauchy for a makes a difference I think
+  # estimated time for 1000 iterations = 306 with quadratic; cauchy for a makes a difference I think
+
+
+taspp.blm_exp2.ri = map2stan(
+  alist(
+    cmnTurnAngleRelAbs ~ dexp(lambda), 
+      lambda  <-  a_fish[RepID] + 
+              be*ExposeDummy + 
+              #bs*SppDummy + 
+              bt*(lnCalcConcC) +
+              bt2*(lnCalcConcC2),
+            a_fish[RepID] ~ dnorm(a,sigma_fish),
+            a ~ dcauchy(0,10), # trying a different prior that is constrained to >0; dhcauchy is in package 'extraDistr' but I beleive McElreath's dcauchy is actually a half too?
+            sigma_fish ~ dcauchy(0,10),
+        be ~ dnorm(0,10),
+        #bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10)
+    #sigma ~ dcauchy(0,10)
+    ) ,
+  data = testdat, iter = 1000, warmup = 500, chains = 4)
+ # the random effects were TERRIBLE. Don't use for exp model, at least. 
+
+
+
+# given poor performance of random effects, try summarizing to one point per fish per trial and evaluating that way (like distance)
+
+
+taspp.blm_exp2.sum = map2stan(
+  alist(
+    MnTurnAngleAbs ~ dexp(lambda), 
+      lambda  <-  a + 
+              be*ExposeDummy + 
+              #bs*SppDummy + 
+              bt*(lnCalcConcC) +
+              bt2*(lnCalcConcC2),
+        a ~ dcauchy(0,10), # this is deviating from tradition on purpose
+        be ~ dnorm(0,10),
+        #bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10)
+    #sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSumta_bmoddat, iter = 1000, warmup = 500, chains = 4)
+  # incredibly fast to run and good neff and Rhat, chains mixed well and had ample warm up, and estimates (se) seemed reasonable. 
+
+
+taspp.blm_norm2 = map2stan(
+  alist(
+    MnTurnAngle ~ dnorm(mu, sigma), 
+      mu  <-  a +
+              be*ExposeDummy + 
+              #bs*SppDummy + 
+              bt*(lnCalcConcC) +
               bt2*(lnCalcConcC2),
         a ~ dnorm(0,10),
         be ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
+        #bs ~ dnorm(0,10),
         bt ~ dnorm(0,10),
         bt2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSta_bmoddat, iter = 2000, warmup = 500, chains = 4)
+  data = DSumta_bmoddat, iter = 4000, warmup = 500, chains = 4)
+ # also fast, neff and Rhat look good, but chains didn't mix at all (iter=1000, warmup=500) nor were there any warnings. Looked like each chain got stuck somewhere and never left it's position. 
+ # tried again, with iter=4000 and warmup=100 (oops, gave warnings but workied?) then warmup=1000 which gave no warnings and worked just finr for neff, Rhat, chain mixing, estimates (se). And interestingly, the estimates didn't change *that* much. Hm. 
+ # just for fun, I tried 500 warm up again and it estimated just fine. Odd. 
 
+```{r turn angle predict from models}
+
+# pull posterior from model:
+set.seed(42)
+post.exp2 = extract.samples(taspp.blm_exp2.sum)
+
+# set up dataframe to plot posterior predictions
+preddat = list(CalcConc=rep(seq(0, 2250, 2), 4), 
+               lnCalcConc=log(rep(seq(0, 2250, 2),4)+1), 
+               lnCalcConcC=(log(rep(seq(0, 2250, 2),4)+1)) - 
+                 mean(DSumta_bmoddat$lnCalcConc, na.rm=T) ,
+               lnCalcConcC2=((log(rep(seq(0, 2250, 2),4)+1)) - 
+                 mean(DSumta_bmoddat$lnCalcConc))^2 ,               
+               ExposeDummy = rep(c(0,1), each=1126*2), 
+               SppDummy = rep(rep(c(0,1),each=1126),2)) 
+               #RepID = rep(2,4504))
+
+preddatdf <- data.frame(sapply(preddat,c)) # thanks stack overflow! https://stackoverflow.com/questions/4227223/convert-a-list-to-a-data-frame
+ preddatdf = preddatdf[preddatdf$SppDummy==1,]
+
+# use link to predict to mean only
+link.exp2 <- link(taspp.blm_exp2, n=1000, data = preddatdf)
+                   
+ 
+preddatdf$link_mu_mn <- apply(link.exp2, 2, mean) 
+preddatdf$link_PI05 = apply(link.exp2, 2, PI, .95)[1,] 
+preddatdf$link_PI95 = apply(link.exp2, 2, PI, .95)[2,] 
+
+                
+                   
+preddat.df = preddatdf
+  
+# plot back-transformed data
+  preddat.df$Spp <- ifelse(preddat.df$SppDummy==0,"GS","WS")
+  preddat.df$ExposureHrs <- ifelse(preddat.df$ExposeDummy==0,"24","96")
+                  
+                   
+                   ### left off here ###
+# to do next: 
+  
+# 2) look at model preductions for the simple additive models of norm2 and exp2 against actual data, and identify room for imporovement - there is tons. Something is going on with the line being too low. Is it an issue with the positive and negative turn angles somehow sneaking into the
+# 3) add additional interactions to one or the other model distributions to better fit data, if needed. Look at distance model and begin by emmulating those
+# 4) decide if these models from the summarized dataset (one point per fish-video) are robust enough to say anything. If not, will more data be better, or is the data just too messy to get anything?
+
+# 5) think critically about how or whether to run meander models instead
+
+# 6) get the rest of the GS data downloaded from ethovision, and clean up this script dramatically with full datasets (perhaps output all data for both spp inot one text file, and replace raw data with absolute TA/meander with relative TA/meander. Delete what I have and re-export improved data. 
+
+# 7) repeat above with GS data, and evaluate interactions with Spp and other parameters
+
+# 8) this is getting far down the road, but after those analysis steps have been completed compile the three final plots, write up a paragraph for each in the 'results section' and prep slides for the PWT presentation. 
+
+# 9) if this goes smoothly and quickly, run 2021 exposure data through the same models and add results to ppt. Don't have to be final models, but can compare the two years (24 and 96 only, for now). Later we can look at the multiple time points. 
+
+#10) and don't forget I still need to either re-develop the foraging assay or change the study design for 2022 to rely more heavily on physiological measures?
+   
+
+TAPred_transf_plot2 = ggplot() + 
+  geom_point(data=DataSum2496.tasum2,
+             aes(x=lnCalcConcC, 
+                 y=abs(MnTurnAngle)))+
+                 #color=factor(Spp))) + 
+  #geom_ribbon(data = preddat.df, aes(x=(lnCalcConcC), 
+  #            ymin=link_PI05, ymax=link_PI95), 
+  #            alpha=.4, col="grey70")+
+  geom_line(data = preddat.df, aes(x=(lnCalcConcC), y=abs(link_mu_mn)), lwd=2)+
+    facet_wrap(~ExposureHrs, scales="free", labeller = labeller(
+      ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure")))+
+   # facet_grid(Spp~ExposureHrs, scales="free", labeller = labeller(
+   #    ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure"),
+   #    Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
+    scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
+    ylab("Mean Trial Turn Angle (deg)") + 
+    scale_x_continuous(name="Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
+    theme_bw()
+
+
+
+trash = summarize(group_by(DataSum2496.tasum2, lnCalcConcC), meanMnTA = median(abs(MnTurnAngle)))
+
+ggplot() + 
+  geom_line(data = preddat.df, aes(x=(lnCalcConcC), y=abs(link_mu_mn)), lwd=2)+
+    facet_wrap(~ExposureHrs, scales="free", labeller = labeller(
+      ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure")))+
+  geom_point(data=DataSum2496.tasum2,
+             aes(x=(lnCalcConcC),                          
+                 y=abs(MnTurnAngle)))+
+geom_point(data=trash, aes(x=lnCalcConcC, y=meanMnTA), color="red", size=3, pch=16)
+
+
+
+
+TAPred_orig_plot2 = ggplot() + 
+  geom_point(data=DataSum2496.tasum2,
+             aes(x=(calcConc),                          
+                 y=abs(MnTurnAngle)))+ 
+                 #color=factor(Spp))) + 
+ # geom_ribbon(data = preddat.df, aes(x=(CalcConc), 
+ #              ymin=link_PI05, ymax=link_PI95), 
+ #              alpha=.4, col="grey70")+
+  geom_line(data = preddat.df, aes(x=(CalcConc), y=abs(link_mu_mn)), lwd=2)+
+  facet_wrap(~ExposureHrs, scales="free", labeller = labeller(
+    ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure")))+  # facet_grid(Spp~ExposureHrs, scales="free", labeller = labeller(
+  #   ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure"),
+  #   Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
+  scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
+  ylab("Mean Trial Turn Angle (deg)") + 
+  scale_x_continuous(name="Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
+  theme_bw()
+
+TAPred_transf_plot2
+TAPred_orig_plot2 
+
+```
+
+
+
+
+
+
+
+```{r more models to sort through, eval=F, echo=F}
 taspp.blm_int3 = map2stan(
   alist(
     MnTurnAngle ~ dnorm(mu, sigma), # data don't look normal; bimodal
@@ -1085,6 +1342,8 @@ taspp.blm_int6 = map2stan(
 
 compare(taspp.blm_int1, taspp.blm_int2, taspp.blm_int3, taspp.blm_int4, taspp.blm_int5, taspp.blm_int6)
 ```
+
+
 
 ```{r meander multi-level Baysemodels selection, echo=F, eval=F}
 
