@@ -30,6 +30,26 @@ nstep = function(t2,t1, interv=0.2) {
   return(nstep)
   }
 
+
+circ.mean.na = function(x) {
+  x2 = x[!is.na(x)]
+  sinr <- sum(sin(x2))
+  cosr <- sum(cos(x2))
+  circmean <- atan2(sinr, cosr)
+  return(circmean)
+}
+
+circ.disp.na = function(x) {
+  x2 = x[!is.na(x)]
+    n <- length(x2)
+    c <- sum(cos(x2))
+    s <- sum(sin(x2))
+    r <- sqrt(c^2 + s^2)
+    rbar <- r/n
+    var <- 1 - rbar
+    data.frame(n, r, rbar, var)
+}
+
 ```
 
 
@@ -269,8 +289,12 @@ DataSumChg.Vel = DataSum2496.vel %>%
 
 ## Summarize meander and turn angle
 DataSum2496.meand = DataSum2496 %>%
-  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID) %>%
-  summarize(MnMeander = mean(Meander_degmin, na.rm=T), MnTurnAngle = mean(TurnAngle_deg, na.rm=T)) %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, calcConc, RepID) %>%
+  summarize(MnTurnAngle = deg(circ.mean.na(rad(TurnAngleCirc))), 
+            VarTurnAngle = deg(circ.disp.na(rad(TurnAngleCirc))$var), # circular variance
+            MnMeander = mean(MeanderCirc, na.rm=T),
+            SDMeander = sd(MeanderCirc, na.rm=T),
+            CVMeander = sd(MeanderCirc, na.rm=T)/abs(mean(MeanderCirc, na.rm=T)))  %>%
   ungroup()  %>%
   data.frame()
 
@@ -279,52 +303,61 @@ DataSum2496.mraw = DataSum2496[!is.na(DataSum2496$TurnAngle_deg),]
 ```
 
 ```{r meander/turn angle plots, echo=F}
-Meanderraw = ggplot(DataSum2496, aes(fill=factor(Treatment)))+ #, y=Meander_degmin, x=factor(Treatment) ) ) + 
-  #geom_violin(outlier.size = .75) + 
-  geom_histogram(aes(x=Meander_degmin))+#, y=factor(Treatment)) ) + 
-  facet_wrap(~Treatment) +
-  ylab("Frequency") + 
-  xlab ("Degrees/minute (0 degrees = straight)") + 
-  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") 
-
 meanMeander.plot = ggplot(DataSum2496.meand, 
-                           aes(fill=factor(Treatment), y=MnMeander, 
+                           aes(fill=factor(Treatment), y=abs(MnMeander), 
                                x=factor(ExposureHrs) ) ) + geom_boxplot(outlier.size = .75) + 
   facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
-  ylab("Mean Meander (deg/min)") + 
+  ylab("Mean Meander (deg/mm)") + 
   xlab ("Exposure Hours") + 
   scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
   theme_bw()
-
-
-DataSum2496.mraw$TurnAngle_deg2 = DataSum2496.mraw$TurnAngle_deg
-DataSum2496.mraw[DataSum2496.mraw$TurnAngle_deg<0,"TurnAngle_deg2"] <-  DataSum2496.mraw[DataSum2496.mraw$TurnAngle_deg<0,"TurnAngle_deg"] + 360 
-
-TurnAngleraw = ggplot(DataSum2496.mraw, aes(fill=factor(Treatment)))+ #, y=Meander_degmin, x=factor(Treatment) ) ) + 
-  #geom_violin(outlier.size = .75) + 
-  geom_histogram(aes(x=TurnAngle_deg2))+#, y=factor(Treatment)) ) + 
-  facet_wrap(~Treatment) +
-  ylab("Frequency") + 
-  xlab ("Degrees (degrees to R)") + 
-  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") 
-
+  
 mnTurnangle.plot = ggplot(DataSum2496.meand, 
-                           aes(fill=factor(Treatment), y=MnTurnAngle, 
+                           aes(fill=factor(Treatment), y=abs(MnTurnAngle), 
                               x=factor(ExposureHrs) ) ) + 
   geom_boxplot(outlier.size = .75) + 
   #geom_violin(outlier.size = .75) + 
   facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
-  ylab("Mean Turn Angle per replicate trial (deg)") + 
+  ylab("Mean Turn Angle (deg)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+  theme_bw()
+  
+sdMeander.plot = ggplot(DataSum2496.meand, 
+                           aes(fill=factor(Treatment), y=(SDMeander), 
+                               x=factor(ExposureHrs) ) ) + geom_boxplot(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Standard Deviation of Meander (deg/mm)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+  theme_bw()
+
+CVMeander.plot = ggplot(DataSum2496.meand, 
+                           aes(fill=factor(Treatment), y=(CVMeander), 
+                               x=factor(ExposureHrs) ) ) + geom_boxplot(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Coef-Var of Meander (deg/mm)") + 
+  xlab ("Exposure Hours") + ylim(c(0,100))+
+  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+  theme_bw()
+
+VarTurnangle.plot = ggplot(DataSum2496.meand, 
+                           aes(fill=factor(Treatment), y=(VarTurnAngle), 
+                              x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  #geom_violin(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Circular Variance of Turn Angle (deg)") + 
   xlab ("Exposure Hours") + 
   scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
   theme_bw()
 
 
 meanMeander.plot
+sdMeander.plot # this plot seems to show the cleanest trends and the tightest boxes. why?
+CVMeander.plot
 mnTurnangle.plot
-
-TurnAngleraw
-Meanderraw
+VarTurnangle.plot
 ```
 ### modelling for meander is in ExposureAnalysis3.rmd
 
@@ -406,8 +439,7 @@ These are some pretty good plots for WS. I think I'll use the distance moved (mo
 
 ```{r presentation plots}
 totfishdist
-meanMeander.plot
-mnTurnangle.plot
+sdMeander.plot
 activefish
 CenterC.plot
 ```

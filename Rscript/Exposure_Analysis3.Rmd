@@ -932,14 +932,12 @@ velspp.lmm = lmer(MnVel ~ factor(Spp)*factor(Treatment)*factor(ExposureHrs)+ (1|
 
 
 
-## Meander Models - issues because it's circular data; review with +/- turn data #####
-## go back to old branch with turn angle work (I think?)
+## Meander Models  #####
 ```{r meander data, echo=F}
 ## Add transformations of concentrations, exposure hours, and meander
  
 DataSum2496 <- DataSum2496.raw %>%
-  mutate(MeanderLog = log(Meander)) %>%
-  mutate(TurnAngleCirc = as.circular(TurnAngle)) %>%
+  mutate(MeanderCircLog = log(abs(MeanderCirc)+1)) %>%
   mutate(lnCalcConc = log(calcConc+1)) %>%
   mutate(lnCalcConcC= scale(lnCalcConc, scale=FALSE)) %>%
   mutate(lnCalcConcC2 = lnCalcConcC^2 ) %>% 
@@ -947,17 +945,20 @@ DataSum2496 <- DataSum2496.raw %>%
   data.frame()
 
 ## Summarize meander and turn angle
-DataSum2496.meand <- DataSum2496 %>%
+
+## Summarize meander and turn angle
+DataSum2496.meand = DataSum2496 %>%
   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, 
            lnCalcConc, lnCalcConcC, lnCalcConcC2, Spp, RepID) %>%
-  summarize(MnMeander = mean(Meander, na.rm=T), 
-            MnMeanderLog = mean(MeanderLog, na.rm=T),
-            MnTurnAngle = mean(TurnAngle, na.rm=T),
-            MnTurnAngleCirc = as.numeric(mean(TurnAngleCirc, na.rm=T))
-            ) %>%
+  summarize(MnTurnAngle = deg(circ.mean.na(rad(TurnAngleCirc))), 
+            VarTurnAngle = deg(circ.disp.na(rad(TurnAngleCirc))$var), # circular variance
+            MnMeander = mean(MeanderCirc, na.rm=T),
+            SDMeander = sd(MeanderCirc, na.rm=T))  %>%
   ungroup()  %>%
   data.frame()
 
+#keep raw data but remove missing points
+#DataSum2496.mraw = DataSum2496[!is.na(DataSum2496$TurnAngle_deg),]
 # MeanMeand0 = DataSum2496.meand %>%
 #   subset(Treatment==0) %>%
 #   group_by(Spp, ExposureHrs) %>%
@@ -975,403 +976,200 @@ DataSum2496.meand <- DataSum2496 %>%
 ```{r meander single-level Bayesmodels selection, echo=F, eval=F}
 # try setting up the linear model in a bayesian form, same as frequentist model above
 # use all meander data points, not summarized data
-DSmeand_bmoddat = DataSum2496[,c(#"MnMeanderLog",
-                                      # "MnTurnAngleCirc",
-                                      "TurnAngleCirc",
-                                       "lnCalcConcC","lnCalcConcC2",
+DSmeand_bmoddat = DataSum2496.meand[,c("SDMeander","lnCalcConcC","lnCalcConcC2",
                                      "ExposureHrs","Spp","RepID")]
-DSmeand_bmoddat = DSmeand_bmoddat[!is.na(DSmeand_bmoddat$TurnAngleCirc),]
+DSmeand_bmoddat = DSmeand_bmoddat[!is.na(DSmeand_bmoddat$SDMeander),] # drops 26.1% of the data points when using full dataset; none if using summarized dataset 
 
 DSmeand_bmoddat$lnCalcConcC = as.numeric(DSmeand_bmoddat$lnCalcConcC) 
 DSmeand_bmoddat$lnCalcConcC2 = as.numeric(DSmeand_bmoddat$lnCalcConcC2) 
 DSmeand_bmoddat$SppDummy <- as.numeric(ifelse(DSmeand_bmoddat$Spp=="GS", 0,1))
 DSmeand_bmoddat$ExposeDummy <- as.numeric(ifelse(DSmeand_bmoddat$ExposureHrs=="24", 0,1))
-DSmeand_bmoddat$TurnAngleCirc = as.numeric(DSmeand_bmoddat$TurnAngleCirc) 
+#DSmeand_bmoddat$MeanderCircLog = as.numeric(DSmeand_bmoddat$MeanderCircLog) 
 
 # remove fish with only one timepoint of detection, because cant add random slope with one timepoint
 DSmeand_bmoddat = DSmeand_bmoddat[!(DSmeand_bmoddat$RepID %in% paste0(c(0,5,100,500,1000,2000), "-WS-4")),]
 DSmeand_bmoddat$RepID = as.factor(as.character(DSmeand_bmoddat$RepID))
 
-DSmeand_bmoddat = DSmeand_bmoddat[!is.na(DSmeand_bmoddat$TurnAngleCirc),]
-
+# let treatment effect and curve vary by species and exposure, and let exposure effect vary by species (all interactions, no multilevel)
 set.seed(1983)
-meandspp.blm_int1 = map2stan(
+meandspp.blm_1 = map2stan(
   alist(
-    TurnAngleCirc ~ dnorm(mu, sigma), 
+    SDMeander ~ dnorm(mu, sigma), 
+      mu  <-  a + 
+              be*ExposeDummy + 
+              bs*SppDummy + 
+              bse*(SppDummy)*(ExposeDummy) +
+              bt*(lnCalcConcC) +
+              bte*(ExposeDummy)*(lnCalcConcC) +
+              bts*(SppDummy)*(lnCalcConcC) +
+              bt2*(lnCalcConcC2) +
+              bt2e*(ExposeDummy)*(lnCalcConcC2) +
+              bt2s*(SppDummy)*(lnCalcConcC2) ,
+        a ~ dnorm(0,10),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bte ~ dnorm(0,10),
+        bts ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt2e ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 1000, warmup = 300, chains = 4)
+
+saveRDS(meandspp.blm_1, "meandspp.blm_1.Rds")
+
+
+# drop s*e
+set.seed(1983)
+meandspp.blm_2 = map2stan(
+  alist(
+    SDMeander ~ dnorm(mu, sigma), 
       mu  <-  a + 
               be*ExposeDummy + 
               bs*SppDummy + 
               bt*(lnCalcConcC) +
-              bts*(SppDummy)*(lnCalcConcC) ,
+              bte*(ExposeDummy)*(lnCalcConcC) +
+              bts*(SppDummy)*(lnCalcConcC) +
+              bt2*(lnCalcConcC2) +
+              bt2e*(ExposeDummy)*(lnCalcConcC2) +
+              bt2s*(SppDummy)*(lnCalcConcC2) ,
+        a ~ dnorm(0,10),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bte ~ dnorm(0,10),
+        bts ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt2e ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10),
+      sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 1000, warmup = 300, chains = 4)
+
+saveRDS(meandspp.blm_2, "meandspp.blm_2.Rds")
+## removing s*e improved model by 5.8 AIC points. Will keep it out
+
+
+# remove exposure interaction with treatment effect (keep with quadratic)
+set.seed(1983)
+meandspp.blm_3 = map2stan(
+  alist(
+    SDMeander ~ dnorm(mu, sigma), 
+      mu  <-  a + 
+              be*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC) +
+              bts*(SppDummy)*(lnCalcConcC) +
+              bt2*(lnCalcConcC2) +
+              bt2e*(ExposeDummy)*(lnCalcConcC2) +
+              bt2s*(SppDummy)*(lnCalcConcC2) ,
         a ~ dnorm(0,10),
         be ~ dnorm(0,10),
         bs ~ dnorm(0,10),
         bt ~ dnorm(0,10),
         bts ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
-    ) ,
-  data = DSmeand_bmoddat, iter = 800, warmup = 300, chains = 1)
-
-# trash = c(1,2,3)
-# saveRDS(trash, "trash.Rds")
-# trash = readRDS("trash.Rds")
-saveRDS(meandspp.blm_int1, "meandspp.blm_int1.Rds")
-
-
-set.seed(1983)
-meandspp.blm_int2 = map2stan(
-  alist(
-    TurnAngleCirc ~ dnorm(mu, sigma), 
-      mu  <-  a + 
-              be*ExposeDummy + 
-              bs*SppDummy + 
-              bt*(lnCalcConcC) + 
-              bt2*(lnCalcConcC2), 
-        a ~ dnorm(0,10),
-        be ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
-    ) ,
-  data = DSmeand_bmoddat, iter = 800, warmup = 300, chains = 1)
-
-saveRDS(meandspp.blm_int2, "meandspp.blm_int2.Rds")
-
-
-
-set.seed(1983)
-meandspp.blm_int3 = map2stan(
-  alist(
-    TurnAngleCirc ~ dnorm(mu, sigma), 
-      mu  <-  a + 
-              be*ExposeDummy + 
-              bs*SppDummy + 
-              bt*(lnCalcConcC) + 
-              bt2*(lnCalcConcC2) + 
-              bt2e*(lnCalcConcC2)*(ExposeDummy), 
-        a ~ dnorm(0,10),
-        be ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        bt2e ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
-    ) ,
-  data = DSmeand_bmoddat, iter = 800, warmup = 300, chains = 1)
-
-saveRDS(meandspp.blm_int3, "meandspp.blm_int3.Rds")
-
-
-set.seed(1983)
-meandspp.blm_int4 = map2stan(
-  alist(
-    TurnAngleCirc ~ dnorm(mu, sigma), 
-      mu  <-  a + 
-              be*ExposeDummy + 
-              bs*SppDummy + 
-              bt*(lnCalcConcC) + 
-              bt2*(lnCalcConcC2) + 
-              bt2e*(lnCalcConcC2)*(ExposeDummy)+ 
-              bt2s*(lnCalcConcC2)*(SppDummy), 
-        a ~ dnorm(0,10),
-        be ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bt ~ dnorm(0,10),
         bt2 ~ dnorm(0,10),
         bt2e ~ dnorm(0,10),
         bt2s ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
+      sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 800, warmup = 300, chains = 1)
+  data = DSmeand_bmoddat, iter = 1000, warmup = 300, chains = 4)
 
-saveRDS(meandspp.blm_int4, "meandspp.blm_int4.Rds")
-
-
-
-compare(meandspp.blm_int1, meandspp.blm_int2, meandspp.blm_int3, meandspp.blm_int4)
+saveRDS(meandspp.blm_3, "meandspp.blm_3.Rds")
 
 
-# 
-# 
-# a_fish[RepID] + 
-#              be_fish[RepID]*ExposeDummy + 
-#               bs*SppDummy + 
-#               bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-#               bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-#         # Wrong way of extending a random intercept; doesn't include correlation between slope and intercept for the same individual
-#         # a_fish[RepID] ~ dnorm(a,a_sig),
-#         #   a ~ dcauchy(0,10),
-#         #   a_sig ~ dcauchy(0,10),
-#         # be_fish[RepID] ~ dnorm(be,be_sig),
-#         #   be ~ dcauchy(0,10),
-#         #   be_sig ~ dcauchy(0,10),
-#         # Right way, because includes correlation by individual
-#            c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be), sigma=sigma_fish, Rho=Rho),
-#            a ~ dnorm(0,10),
-#            be ~ dnorm(0,10),
-#            sigma_fish ~ dcauchy(0,10),
-#            Rho ~ dlkjcorr(2),
-#              # not as flat as (1) but biases against strong correlations of intercept and slope
-#        
+
+# remove exposure interaction with both straight and squadratic treatment effect 
+set.seed(1983)
+meandspp.blm_4 = map2stan(
+  alist(
+    SDMeander ~ dnorm(mu, sigma), 
+      mu  <-  a + 
+              be*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC) +
+              bts*(SppDummy)*(lnCalcConcC) +
+              bt2*(lnCalcConcC2) +
+              bt2s*(SppDummy)*(lnCalcConcC2) ,
+        a ~ dnorm(0,10),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bts ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10),
+      sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 1000, warmup = 300, chains = 4)
+
+saveRDS(meandspp.blm_4, "meandspp.blm_4.Rds")
+
+
+
+# remove species interaction with straight treatment effect 
+set.seed(1983)
+meandspp.blm_5 = map2stan(
+  alist(
+    SDMeander ~ dnorm(mu, sigma), 
+      mu  <-  a + 
+              be*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC) +
+              bt2*(lnCalcConcC2) +
+              bt2s*(SppDummy)*(lnCalcConcC2) ,
+        a ~ dnorm(0,10),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10),
+      sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 1000, warmup = 300, chains = 4)
+
+saveRDS(meandspp.blm_5, "meandspp.blm_5.Rds")
 
 ```
 
 ```{r meander multi-level Baysemodels selection, echo=F, eval=F}
 
-# # set.seed(1983)
-# # meandspp.blm_int1.rise = map2stan(
-# #   alist(
-# #     MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
-# #       mu  <- a_fish[RepID] + 
-# #              be_fish[RepID]*ExposeDummy + 
-# #               bs*SppDummy + 
-# #               bt*(lnCalcConcC)  + 
-# #               bts1*(SppDummy)*(lnCalcConcC),
-# #          # Right way to code intercept and slope, because includes correlation by individual
-# #            c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be), sigma=sigma_fish, Rho=Rho),
-# #            a ~ dnorm(0,10),
-# #            be ~ dnorm(0,10),
-# #            sigma_fish ~ dcauchy(0,10),
-# #            Rho ~ dlkjcorr(2),
-# #              # not as flat as (1) but biases against strong correlations of intercept and slope
-# #         bt ~ dnorm(0,10),
-# #         #bt2 ~ dnorm(0,10),
-# #         bs ~ dnorm(0,10),
-# #         bts1 ~ dnorm(0,10),
-# #         #bts2 ~ dnorm(0,10),
-# #     sigma ~ dcauchy(0,10)
-# #     ) ,
-# #   data = DSmeand_bmoddat, iter = 2500, warmup = 750, chains = 4)
-# #  ## not too bad? Not great, but better than alot that I've been looking at 
-# # 
-# # set.seed(2016)
-# # meandspp.blm_int1.ri = map2stan(
-# #   alist(
-# #     MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
-# #       mu  <- a_fish[RepID] + 
-# #              be*ExposeDummy + 
-# #               bs*SppDummy + 
-# #               bt*(lnCalcConcC)  + 
-# #               bts1*(SppDummy)*(lnCalcConcC),
-# #            a_fish[RepID] ~ dnorm(a,a_sig),
-# #                a ~ dnorm(200,100),
-# #                a_sig ~ dcauchy(50,100),
-# #         be ~ dnorm(0,50),
-# #         bt ~ dnorm(0,50),
-# #         bs ~ dnorm(0,50),
-# #         bts1 ~ dnorm(0,50),
-# #     sigma ~ dcauchy(0,50)
-# #     ) ,
-# #   data = DSmeand_bmoddat, iter = 1500, warmup = 1000, chains = 4)
-# #  ## well, not aweful except for a_sig
-# 
-# set.seed(2016)
-# meandspp.blm_int1.se = map2stan(
-#   alist(
-#     MnMeander ~ dnorm(mu, sigma), # data don't look normal; bimodal
-#       mu  <- a + 
-#              be_fish[RepID]*ExposeDummy + 
-#               bs*SppDummy + 
-#               bt*(lnCalcConcC)  + 
-#               bts1*(SppDummy)*(lnCalcConcC),
-#          a ~ dnorm(0,10),
-#          be_fish[RepID] ~ dnorm(be,be_sig),
-#            be ~ dnorm(0,10),
-#            be_sig ~ dcauchy(0,10),
-#          bt ~ dnorm(0,10),
-#          bs ~ dnorm(0,10),
-#          bts1 ~ dnorm(0,10),
-#     sigma ~ dcauchy(0,10)
-#     ) ,
-#   data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
-#  ##  
-# 
 
 set.seed(1983)
-meandspp.blm_int3.rise = map2stan(
+meandspp.blm_2.rise = map2stan(
   alist(
-    TurnAngleCirc ~ dnorm(mu, sigma), 
+    SDMeander ~ dnorm(mu, sigma), 
       mu  <-  a_fish[RepID] + 
               be_fish[RepID]*ExposeDummy + 
               bs*SppDummy + 
-              bt*(lnCalcConcC) + 
-              bt2*(lnCalcConcC2) + 
-              bt2e*(lnCalcConcC2)*(ExposeDummy) +
-              bt2s*(lnCalcConcC2)*(SppDummy), 
-                 c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be), sigma=sigma_fish, Rho=Rho), 
+              bt*(lnCalcConcC) +
+              bte*(ExposeDummy)*(lnCalcConcC) +
+              bts*(SppDummy)*(lnCalcConcC) +
+              bt2*(lnCalcConcC2) +
+              bt2e*(ExposeDummy)*(lnCalcConcC2) +
+              bt2s*(SppDummy)*(lnCalcConcC2) ,
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be), sigma=sigma_fish, Rho=Rho), 
                    a ~ dnorm(0,10),
                    be ~ dnorm(0,10),
                    sigma_fish ~ dcauchy(0,10),
-                   Rho ~ dlkjcorr(2),
-        bs ~ dnorm(0,10),
+                   Rho ~ dlkjcorr(2),        bs ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
         bt ~ dnorm(0,10),
+        bte ~ dnorm(0,10),
+        bts ~ dnorm(0,10),
         bt2 ~ dnorm(0,10),
         bt2e ~ dnorm(0,10),
         bt2s ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 2)
-
-saveRDS(meandspp.blm_int3.rise, "meandspp.blm_int3.rise.Rds")
-
-## model fit after four or more days of running. 
-## there were 381 transitions that exceeded max tree depth (set at 10)
-## bulk effective sample size is too low and total effective sample size is too low . suggest running the chains for more iterations. Lowest n_eff was for bt2e (89) while highest possible should have been 3000. Only sigma was over 500. Rhat are actually okay, se seem reasonable. Trace plots are somewhat strange; 
- # be_fish[1:15] arent as 'fuzzy' as usual, have n_eff just under 100, but two chains overlap. be_fish[16:30] look great and have n_eff ~3000. be_fish[31-45] are somewhere in between (n_eff 107-179), and be_fish[46-68] are only slightly worse (n_eff 93-128). be_fish[69-75] look the same as the first (n_eff 90-95). be_fish[76-90] look just fine (n_eff 182-305). 
- # a_fish[1-15] look fine with n_eff ~ 100, [16-23] are nearly flat lines but with large x axis range and n_eff>2500, [24-30] look fine w/ n_eff 275-285, [31-75] look fine w/ n_eff 95-164 and n_ff trending down over this range, [76-90] also look fine, n_eff 171-202. Not concerned about the pattern of these trace plots except for those few with 'flat' lines but the high n_eff makes me think it's not an issue of identifiabiilty. 
- # the global estimate for be is not optimal, but not terrible. Estimate for bt2e wiggles a little more than I'd like but mostly within bounds and the two chains pretty much agree. The estimate for sigma is perfectly straight with n_eff=2866, sand I'm not sure what this means (now wondering about the a_fish with the same pattern?). all other estimates have good trace plots. 
- # If it didn't take ages to run I'd just run it again for longer and see. But if this isn't the best model I won't waste the time. 
-
-set.seed(1983)
-meandspp.blm_int4.rise = map2stan(
-  alist(
-    MnMeander ~ dnorm(mu, sigma),  # data don't look normal; bimodal
-    mu  <- a_fish[RepID] +
-           be_fish[RepID]*ExposeDummy +
-             bs*SppDummy +
-             bt*(lnCalcConcC) + 
-             bt2*(lnCalcConcC2) +
-             bts1*(SppDummy)*(lnCalcConcC) + 
-             bts2*(SppDummy)*(lnCalcConcC2),
-                 c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be),    
-                                              sigma=sigma_fish, Rho=Rho), 
-           a ~ dnorm(0,10),
-           be ~ dnorm(0,10),
-           sigma_fish ~ dcauchy(0,10),
-           Rho ~ dlkjcorr(2),
-        bs ~ dnorm(0,10),
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-     sigma ~ dcauchy(0,10)
-    ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 2)
-
-saveRDS(meandspp.blm_int4.rise, "meandspp.blm_int4.rise.Rds")
-### n_eff==1?? Rhat is not close to 1 (3-45,0000!)
-
-
-
-
-
-
-
-
-
-
-
-
-meandspp.blm_intXX.rise.2 = map2stan(
-  alist(
-    MnMeander ~ dnorm(mu, sigma),
-    mu  <- a_fish[RepID] + 
-           be_fish[RepID]*ExposeDummy + 
-             bs*SppDummy + 
-             bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-             bse*(SppDummy)*(ExposeDummy) +
-             bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),# 
-           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
-           be ~ dnorm(0,10),
-           sigma_fish ~ dcauchy(0,2),
-           Rho ~ dlkjcorr(2),
-             # not as flat as (1) but biases against strong correlations of intercept and slope
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,2)
-    ) ,
-  data = DSmeand_bmoddat, iter = 4000, warmup = 1000, chains = 4)
-### Also DOES NOT FIT WELL - pretty bad convergence in trace plots, long run time
-
-
-meandspp.blm_intXXX.rise.2.offset = map2stan(
-  alist(
-    MnMeander ~ dnorm(mu, sigma),
-    mu  <- a + a_fish[RepID] +
-           be + be_fish[RepID]*ExposeDummy +
-             bs*SppDummy +
-             bt*(lnCalcConcC) + bt2*(lnCalcConcC2) +
-             bse*(SppDummy)*(ExposeDummy) +
-             bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-           c(a_fish,be_fish)[RepID] ~ dmvnorm2(0,sigma=sigma_fish, Rho=Rho),#
-           a ~ dnorm(4,5), # approximate mean of base case (GS-24hr)
-           be ~ dnorm(0,5),
-           sigma_fish ~ dcauchy(0,2),
-           Rho ~ dlkjcorr(2),
-             # not as flat as (1) but biases against strong correlations of intercept and slope
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,2)
-    ) ,
-  data = DSmeand_bmoddat, iter = 4000, warmup = 1000, chains = 4, cores=2)
-### Also DOES NOT FIT WELL - pretty bad convergence in trace plots, long run time
-
-
-meandspp.blm_intXX.ri = map2stan(
-  alist(
-    MnMeander ~ dnorm(mu, sigma),
-    mu  <- a_fish[RepID] + 
-           bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-           be*ExposeDummy + 
-           bs*SppDummy + 
-           bse*(SppDummy)*(ExposeDummy) +
-           bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-             a_fish[RepID] ~ dnorm(a,a_sig),
-             a ~ dcauchy(0,10),
-             a_sig ~ dcauchy(0,10),
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        be ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
-    ) ,
-  data = DSmeand_bmoddat, iter = 2000, warmup = 500, chains = 4)
-
-
- plot(meandspp.blm_int1.rise)
- plot(meandspp.blm_int2.rise)
- plot(meandspp.blm_int5.rise.2)
- plot(meandspp.blm_int5.rise.2.offset)
- plot(meandspp.blm_int5.ri)
+  data = DSmeand_bmoddat, iter = 2000, warmup = 700, chains = 4)
  
- precis(meandspp.blm_int1.rise, prob = .95, digits=3)
- precis(meandspp.blm_int2.rise, prob = .95, digits=3)
- precis(meandspp.blm_int5.rise.2, prob = .95, digits=3)
- precis(meandspp.blm_int5.rise.2.offset, prob = .95, digits=3)
- precis(meandspp.blm_int5.ri, prob = .95, digits=3)
+saveRDS(meandspp.blm_2.rise, "meandspp.blm_2.rise.Rds")
 
- plot(precis(meandspp.blm_int1.rise, prob = .95))
- plot(precis(meandspp.blm_int2.rise, prob = .95))
- plot(precis(meandspp.blm_int5.rise.2, prob = .95, depth=2))
- plot(precis(meandspp.blm_int5.rise.2.offset, prob = .95, depth=2))
- plot(precis(meandspp.blm_int5.ri, prob = .95, depth=2))
-
-compare(meandspp.blm_int1.rise, meandspp.blm_int2.rise,
-        meandspp.blm_int5.rise.2, meandspp.blm_int5.rise.2.offset, 
-        meandspp.blm_int5.ri)
-
-plot(compare(meandspp.blm_int1.rise, meandspp.blm_int2.rise,
-             meandspp.blm_int5.rise.2,meandspp.blm_int5.rise.2.offset,  
-             meandspp.blm_int5.ri))
-
+## _2.rise is the best model, and matches the other models, and lets us test the questions we're interested in. 
 ```
-### I'm guess I'm happy with model int5.rise.2, that accounts for the repeated measures of an individual across time ('distspp.blm_int5.rise.2'). The trace plots have better mixing for int5.2 than int5.NC and Zack says that there's more to parameterizing the NC approach than is covered in the rethinking book chapter. The trace plots aren't great but it seems relatively stable as I change small things, so Zack says it's probably good enough. If I really cared I could go tweek parameters more and document the changes to the estimated parameters. I tried estimating the overall interept and slope seperately, with offsets for the individual IDs, but the variance for the overall parameters was huge and largely dependant on the prior. I'm going to move on and assume the model is good enough. 
-
-
-### more to come....turn angle data needs some serious reconsideration given the circular nature of the data. Perhaps need to re-output data as directional turns so we have the full 360 and can work with it more appropriately. ###
 
 
 
