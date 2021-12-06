@@ -2215,30 +2215,7 @@ logistic.summary.func = function(x) { mean = logistic(mean(x))
                        diff.meancontrol = c(NA, sapply(GS24cent.list[2:6], function(x) mean(GS24cent.list[[1]]) - mean(x) )),
                      prob.greater0 = c(NA, mapply(function(x,y) sum(x<y), GS24cent.list[1], GS24cent.list[2:6]) / length(GS24cent.list[[1]]) ) )
 
-          ## long version of the above pred.mu
-          # logistic(mean(GS0bif24cent))
-          # 
-          # logistic(mean(GS5bif24cent))
-          #  cont.GS_0.5bif_24cent = (sum(GS0bif24cent<GS5bif24cent) / length(GS0bif24cent)) 
-          #  cont.GS_0.5bif_24cent #  57.2% prob that 5 is more than 0
-          #  
-          # logistic(mean(GS100bif24cent))
-          #  cont.GS_0.100bif_24cent = (sum(GS0bif24cent<GS100bif24cent) / length(GS0bif24cent)) 
-          #  cont.GS_0.100bif_24cent #  85.2% prob that 100 is more than 0
-          #  
-          # logistic(mean(GS500bif24cent))
-          #  cont.GS_0.500bif_24cent = (sum(GS0bif24cent<GS500bif24cent) / length(GS0bif24cent)) 
-          #  cont.GS_0.500bif_24cent #  99.5% prob that 500 is more than 0
-          #  
-          # logistic(mean(GS1000bif24cent))
-          #  cont.GS_0.1000bif_24cent = (sum(GS0bif24cent<GS1000bif24cent) / length(GS0bif24cent)) 
-          #  cont.GS_0.1000bif_24cent #  99.8% prob that 1000 is more than 0
-          # 
-          # logistic(mean(GS2000bif24cent))
-          #  cont.GS_0.2000bif_24cent = (sum(GS0bif24cent<GS2000bif24cent) / length(GS0bif24cent)) 
-          #  cont.GS_0.2000bif_24cent #  >99.9% prob that 2000 is more than 0 
-          ##
- 
+         
  
 GS24cent.plot = ggplot() + geom_density(aes(x=logistic(GS0bif24cent), color="black")) + 
   geom_density(aes(x=logistic(GS5bif24cent), color="green3")) + 
@@ -2305,16 +2282,6 @@ logistic.summary.func = function(x) { mean = logistic(mean(x))
 
 
 
-        # 
-        # mean(GS0bif96cent)
-        # mean(GS5bif96cent)
-        #  cont.GS_0.5bif_96cent = (sum(GS0bif96cent<GS5bif96cent) / length(GS0bif96cent)) 
-        #  cont.GS_0.5bif_96cent #72.0% prob that 5 is more than 0
-        # mean(GS100bif96cent)
-        # mean(GS500bif96cent)
-        # mean(GS1000bif96cent)
-        # mean(GS2000bif96cent)
-
 GS96cent.plot = ggplot() + geom_density(aes(x=logistic(GS0bif96cent)), color="black") + 
   geom_density(aes(x=logistic(GS5bif96cent)), color="green3") + 
   geom_density(aes(x=logistic(GS100bif96cent)), color="goldenrod") + 
@@ -2380,24 +2347,7 @@ logistic.summary.func = function(x) { mean = logistic(mean(x))
                      diff.meancontrol = c(NA, sapply(WS24cent.list[2:6], function(x) mean(WS24cent.list[[1]]) - mean(x) )),
                      prob.greater0 = c(NA, mapply(function(x,y) sum(x<y), WS24cent.list[1], WS24cent.list[2:6]) / length(WS24cent.list[[1]]) ) )
 
-        # 
-        # mean(WS0bif24cent)
-        # mean(WS5bif24cent)
-        #  cont.WS_0.5bif_24cent = (sum(WS0bif24cent<WS5bif24cent) / length(WS0bif24cent)) 
-        #  cont.WS_0.5bif_24cent #100% prob that 5 is more than 0
-        # mean(WS100bif24cent)
-        #  cont.WS_0.100bif_24cent = (sum(WS0bif24cent<WS100bif24cent) / length(WS0bif24cent)) 
-        #  cont.WS_0.100bif_24cent #100% prob that 100 is more than 0
-        # mean(WS500bif24cent)
-        #  cont.WS_0.500bif_24cent = (sum(WS0bif24cent<WS500bif24cent) / length(WS0bif24cent)) 
-        #  cont.WS_0.500bif_24cent #55% prob that 500 is more than 0
-        # mean(WS1000bif24cent)
-        #  cont.WS_0.1000bif_24cent = (sum(WS0bif24cent<WS1000bif24cent) / length(WS0bif24cent)) 
-        #  cont.WS_0.1000bif_24cent #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
-        # mean(WS2000bif24cent)
-        #  cont.WS_0.2000bif_24cent = (sum(WS0bif24cent<WS2000bif24cent) / length(WS0bif24cent)) 
-        #  cont.WS_0.2000bif_24cent #0% prob that 2000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
-        #  
+   
 WS24cent.plot = ggplot() + geom_density(aes(x=logistic(WS0bif24cent)), color="black") + 
   geom_density(aes(x=logistic(WS5bif24cent)), color="green3") + 
   geom_density(aes(x=logistic(WS100bif24cent)), color="goldenrod") + 
@@ -2468,24 +2418,6 @@ logistic.summary.func = function(x) { mean = logistic(mean(x))
                      diff.meancontrol = c(NA, sapply(WS96cent.list[2:6], function(x) mean(WS96cent.list[[1]]) - mean(x) )),
                      prob.greater0 = c(NA, mapply(function(x,y) sum(x<y), WS96cent.list[1], WS96cent.list[2:6]) / length(WS96cent.list[[1]]) ) )
 
-
- 
-# mean(WS0bif96cent)
-# mean(WS5bif96cent)
-#  cont.WS_0.5bif_96cent = (sum(WS0bif96cent<WS5bif96cent) / length(WS0bif96cent)) 
-#  cont.WS_0.5bif_96cent #100% prob that 5 is more than 0
-# mean(WS100bif96cent)
-#  cont.WS_0.100bif_96cent = (sum(WS0bif96cent<WS100bif96cent) / length(WS0bif96cent)) 
-#  cont.WS_0.100bif_96cent #100% prob that 100 is more than 0
-# mean(WS500bif96cent)
-#  cont.WS_0.500bif_96cent = (sum(WS0bif96cent<WS500bif96cent) / length(WS0bif96cent)) 
-#  cont.WS_0.500bif_96cent #55.0% prob that 500 is more than 0
-# mean(WS1000bif96cent)
-#  cont.WS_0.1000bif_96cent = (sum(WS0bif96cent<WS1000bif96cent) / length(WS0bif96cent)) 
-#  cont.WS_0.1000bif_96cent #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
-# mean(WS2000bif96cent)
-#  cont.WS_0.2000bif_96cent = (sum(WS0bif96cent<WS2000bif96cent) / length(WS0bif96cent)) 
-#  cont.WS_0.2000bif_96cent #0% prob that 2000 is more than 0 (i.e. 100% prob that 2000 is less than 0)
 
 WS96cent.plot = ggplot() + geom_density(aes(x=logistic(WS0bif96cent)), color="black") + 
   geom_density(aes(x=logistic(WS5bif96cent)), color="green3") + 
