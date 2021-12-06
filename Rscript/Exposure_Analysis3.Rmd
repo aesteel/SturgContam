@@ -724,7 +724,7 @@ WS0bif96 = postdist$a + postdist$bs + postdist$be + post$bse +
   postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2) +
   postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
   postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2)
-WS5bif96 = postdist$a + postdist$bs + postdist$be + 
+WS5bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
   postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
   postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2) +
   postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
@@ -939,8 +939,8 @@ velspp.lmm = lmer(MnVel ~ factor(Spp)*factor(Treatment)*factor(ExposureHrs)+ (1|
 DataSum2496 <- DataSum2496.raw %>%
   mutate(MeanderCircLog = log(abs(MeanderCirc)+1)) %>%
   mutate(lnCalcConc = log(calcConc+1)) %>%
-  mutate(lnCalcConcC= scale(lnCalcConc, scale=FALSE)) %>%
-  mutate(lnCalcConcC2 = lnCalcConcC^2 ) %>% 
+  mutate(lnCalcConcC= as.numeric(scale(lnCalcConc, scale=FALSE))) %>%
+  mutate(lnCalcConcC2 = lnCalcConcC ^ 2 ) %>% 
    # order of transformations matters (log then scale then square)
   data.frame()
 
@@ -949,7 +949,7 @@ DataSum2496 <- DataSum2496.raw %>%
 ## Summarize meander and turn angle
 DataSum2496.meand = DataSum2496 %>%
   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, 
-           lnCalcConc, lnCalcConcC, lnCalcConcC2, Spp, RepID) %>%
+           calcConc, lnCalcConc, lnCalcConcC, lnCalcConcC2, Spp, RepID) %>%
   summarize(MnTurnAngle = deg(circ.mean.na(rad(TurnAngleCirc))), 
             VarTurnAngle = deg(circ.disp.na(rad(TurnAngleCirc))$var), # circular variance
             MnMeander = mean(MeanderCirc, na.rm=T),
@@ -976,8 +976,7 @@ DataSum2496.meand = DataSum2496 %>%
 ```{r meander single-level Bayesmodels selection, echo=F, eval=F}
 # try setting up the linear model in a bayesian form, same as frequentist model above
 # use all meander data points, not summarized data
-DSmeand_bmoddat = DataSum2496.meand[,c("SDMeander","lnCalcConcC","lnCalcConcC2",
-                                     "ExposureHrs","Spp","RepID")]
+DSmeand_bmoddat = DataSum2496.meand[,c("SDMeander","calcConc","lnCalcConcC","lnCalcConcC2","ExposureHrs","Spp","RepID")]
 DSmeand_bmoddat = DSmeand_bmoddat[!is.na(DSmeand_bmoddat$SDMeander),] # drops 26.1% of the data points when using full dataset; none if using summarized dataset 
 
 DSmeand_bmoddat$lnCalcConcC = as.numeric(DSmeand_bmoddat$lnCalcConcC) 
@@ -1053,6 +1052,29 @@ saveRDS(meandspp.blm_2, "meandspp.blm_2.Rds")
 ## removing s*e improved model by 5.8 AIC points. Will keep it out
 
 
+
+# drop all t interactions
+set.seed(1983)
+meandspp.blm_2b = map2stan(
+  alist(
+    SDMeander ~ dnorm(mu, sigma), 
+      mu  <-  a + 
+              be*ExposeDummy + 
+              bs*SppDummy + 
+              bt*(lnCalcConcC) +
+              bt2*(lnCalcConcC2),
+        a ~ dnorm(0,10),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+      sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 1000, warmup = 300, chains = 4)
+
+
+# add back in interaction with spp and treatment - below as blm_4
+
 # remove exposure interaction with treatment effect (keep with quadratic)
 set.seed(1983)
 meandspp.blm_3 = map2stan(
@@ -1107,11 +1129,38 @@ meandspp.blm_4 = map2stan(
 
 saveRDS(meandspp.blm_4, "meandspp.blm_4.Rds")
 
+# remove exposure interaction with both straight and squadratic treatment effect but add bace s*e (match distance model)
+set.seed(1983)
+meandspp.blm_5 = map2stan(
+  alist(
+    SDMeander ~ dnorm(mu, sigma), 
+      mu  <-  a + 
+              be*ExposeDummy + 
+              bs*SppDummy + 
+              bse*SppDummy*ExposeDummy + 
+              bt*(lnCalcConcC) +
+              bts*(SppDummy)*(lnCalcConcC) +
+              bt2*(lnCalcConcC2) +
+              bt2s*(SppDummy)*(lnCalcConcC2) ,
+        a ~ dnorm(0,10),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bts ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10),
+      sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 1000, warmup = 300, chains = 4)
+
+saveRDS(meandspp.blm_5, "meandspp.blm_5.Rds")
+# model without s*e is still better, even when there isn't an interaction between exposure and the treatment and quadratic of treatment. 
 
 
 # remove species interaction with straight treatment effect 
 set.seed(1983)
-meandspp.blm_5 = map2stan(
+meandspp.blm_6 = map2stan(
   alist(
     SDMeander ~ dnorm(mu, sigma), 
       mu  <-  a + 
@@ -1130,14 +1179,33 @@ meandspp.blm_5 = map2stan(
     ) ,
   data = DSmeand_bmoddat, iter = 1000, warmup = 300, chains = 4)
 
-saveRDS(meandspp.blm_5, "meandspp.blm_5.Rds")
+saveRDS(meandspp.blm_6, "meandspp.blm_6.Rds")
 
+
+compare(meandspp.blm_2,meandspp.blm_3,meandspp.blm_4,meandspp.blm_5,meandspp.blm_6)
 ```
 
 ```{r meander multi-level Baysemodels selection, echo=F, eval=F}
 
+# use all meander data points, not summarized data
+DSmeand_bmoddat = DataSum2496.meand[,c("SDMeander","lnCalcConcC","lnCalcConcC2",
+                                     "ExposureHrs","Spp","RepID")]
+DSmeand_bmoddat = DSmeand_bmoddat[!is.na(DSmeand_bmoddat$SDMeander),] # drops 26.1% of the data points when using full dataset; none if using summarized dataset 
 
-set.seed(1983)
+DSmeand_bmoddat$lnCalcConcC = as.numeric(DSmeand_bmoddat$lnCalcConcC) 
+DSmeand_bmoddat$lnCalcConcC2 = as.numeric(DSmeand_bmoddat$lnCalcConcC2) 
+DSmeand_bmoddat$SppDummy <- as.numeric(ifelse(DSmeand_bmoddat$Spp=="GS", 0,1))
+DSmeand_bmoddat$ExposeDummy <- as.numeric(ifelse(DSmeand_bmoddat$ExposureHrs=="24", 0,1))
+#DSmeand_bmoddat$MeanderCircLog = as.numeric(DSmeand_bmoddat$MeanderCircLog) 
+
+# remove fish with only one timepoint of detection, because cant add random slope with one timepoint
+DSmeand_bmoddat = DSmeand_bmoddat[!(DSmeand_bmoddat$RepID %in% paste0(c(0,5,100,500,1000,2000), "-WS-4")),]
+DSmeand_bmoddat$RepID = as.factor(as.character(DSmeand_bmoddat$RepID))
+
+DSmeand_bmoddat = DSmeand_bmoddat[order(DSmeand_bmoddat$RepID),]
+
+# let treatment effect and curve vary by species and exposure (all interactions except for s*e) and include random intercept for each individual, and let effect of exposure time vary by individual
+set.seed(2016)
 meandspp.blm_2.rise = map2stan(
   alist(
     SDMeander ~ dnorm(mu, sigma), 
@@ -1154,8 +1222,8 @@ meandspp.blm_2.rise = map2stan(
                    a ~ dnorm(0,10),
                    be ~ dnorm(0,10),
                    sigma_fish ~ dcauchy(0,10),
-                   Rho ~ dlkjcorr(2),        bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
+                   Rho ~ dlkjcorr(2),
+        bs ~ dnorm(0,10),
         bt ~ dnorm(0,10),
         bte ~ dnorm(0,10),
         bts ~ dnorm(0,10),
@@ -1166,15 +1234,435 @@ meandspp.blm_2.rise = map2stan(
     ) ,
   data = DSmeand_bmoddat, iter = 2000, warmup = 700, chains = 4)
  
-saveRDS(meandspp.blm_2.rise, "meandspp.blm_2.rise.Rds")
+#saveRDS(meandspp.blm_2.rise, "meandspp.blm_2.rise.Rds")
 
-## _2.rise is the best model, and matches the other models, and lets us test the questions we're interested in. 
-```
+# check model
+ precis(meandspp.blm_2.rise, prob = .95, digits=3)
+ plot(precis(meandspp.blm_2.rise, prob = .95))
+ plot(precis(meandspp.blm_2.rise, prob = .95, depth=2))
 
-
-
+ plot(meandspp.blm_2.rise)
+# this model's checks looked fine but it's fitting TERRIBLY. could be a plotting thing, but I think it's that the estimtd for the curvature of GS are way too high. Same with the basic blm_2 model above, but less so.  
 
  
+```
+### _2.rise is a fine model, and pretty well matches the other models, and lets us test the questions we're interested in. But the neff for sigma is pretty low. Trield various levels of dcauchy(0,X) and estimates didn't change too dramatically: with dcauchy(0,20) neff=26. With dcauchy(0,50) neff=4. with dcauchy(0,5) neff=30. with dcauchy(0,10) neff=25. Rhat ~1.1 - 1.2 for most also. Traceplots look okay but not perfect. Some sections where one or two of the chains don't mix (ie: are pretty thin lines). And sigma trace plots don't look great. But likely an okay model to use anyway. 
+ 
+### Comparing the models with and wihtout random effects, we see that when random effects are added the estimates all move closer to zero (shrinkage?) and the variance gets arger for alle stimates that do not include any effect of exposure time (since that is the random slope). Those which do include exposure time show reduced sd values because some of the variation assocaited with exposure time is accounted for by the individual clustering. 
+
+
+```{r meander multi-level Bayesmodels predict, echo=F, eval=F}
+
+# pull posterior from model:
+set.seed(42)
+post = extract.samples(meandspp.blm_2.rise)
+
+# set up dataframe to plot posterior predictions
+preddat = list(CalcConc=rep(seq(0, 2250, 2), 4), 
+               lnCalcConc=log(rep(seq(0, 2250, 2),4)+1), 
+               lnCalcConcC=   (log(rep(seq(0, 2250, 2),4)+1)) - 
+                 mean(DataSum2496.dist$lnCalcConc) ,
+               lnCalcConcC2=( (log(rep(seq(0, 2250, 2),4)+1)) - 
+                 mean(DataSum2496.dist$lnCalcConc) ) ^ 2 ,               
+               ExposeDummy = rep(c(0,1), each=1126*2), 
+               SppDummy = rep(rep(c(0,1),each=1126),2), 
+               RepID = rep(16,4504))
+
+
+# replace individual fish estimates with global estimate; this should predict to the average individual in a population...so since I want to get at the population level response this seems most appropriate.
+a_global = matrix(post$a,5200,90) # 5200 = 1300 samples per chain x 4 chains
+be_global = matrix(post$be,5200,90)
+
+# use link to predict to mean only
+link.2.rise <- link(meandspp.blm_2.rise, n=1000, data= preddat, 
+                        replace = list(a_fish = a_global, 
+                                        be_fish = be_global) )
+
+preddat.df <- data.frame(sapply(preddat,c)) # thanks stack overflow! https://stackoverflow.com/questions/4227223/convert-a-list-to-a-data-frame
+
+preddat.df$link_mu_mn <- apply(link.2.rise, 2, mean) 
+preddat.df$link_PI05 = apply(link.2.rise, 2, PI, .95)[1,] 
+preddat.df$link_PI95 = apply(link.2.rise, 2, PI, .95)[2,] 
+
+
+  # plot back-transformed data
+  preddat.df$Spp <- ifelse(preddat.df$SppDummy==0,"GS","WS")
+  preddat.df$ExposureHrs <- ifelse(preddat.df$ExposeDummy==0,"24","96")
+
+
+MeandPred_transf_plot = ggplot() + 
+  geom_point(data=DataSum2496.meand,
+             aes(x=(lnCalcConcC),                          
+                 y=SDMeander, 
+                 color=factor(Spp))) + 
+  geom_ribbon(data = preddat.df, aes(x=(lnCalcConcC), 
+              ymin=link_PI05, ymax=link_PI95), 
+              alpha=.4, col="grey70")+
+  geom_line(data = preddat.df, aes(x=(lnCalcConcC), y=link_mu_mn), lwd=.2)+
+    facet_grid(Spp~ExposureHrs, scales="free", labeller = labeller(
+      ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure"),
+      Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
+    scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
+    ylab("SD of Track Meander (deg/mm)") + 
+    scale_x_continuous(name="Log-centered Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
+    theme_bw()
+
+
+MeandPred_orig_plot = ggplot() + 
+  geom_point(data=DataSum2496.meand,
+             aes(x=exp(lnCalcConc),                          
+                 y=SDMeander, 
+                 color=factor(Spp))) + 
+  geom_ribbon(data = preddat.df, aes(x=(CalcConc), 
+              ymin=link_PI05, ymax=link_PI95), 
+              alpha=.4, col="grey70")+
+  geom_line(data = preddat.df, aes(x=(CalcConc), y=link_mu_mn), lwd=.2)+
+  facet_grid(Spp~ExposureHrs, scales="free", labeller = labeller(
+    ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure"),
+    Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
+  scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
+  ylab("SD of Track Meander (deg/mm)") + 
+  scale_x_continuous(name="Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
+  theme_bw()
+
+MeandPred_transf_plot
+MeandPred_orig_plot 
+
+```
+ 
+ 
+### MeanderSD Contrasts
+
+### Study questions: 
+
+###  1) is there an effect (all treatment vs control), and which metrics show an effect
+
+###  2) does that effect change with time [96 treat vs 96 control and 24 treat vs 24 control OR individual change from 24 to 96 (all treatments) as compared to individual change for control between 24 and 96]
+
+###  3) Does the magnitude of the effect vary between species
+
+```{r meander multi-level model density plots, echo=F}
+set.seed(1983) 
+postmeand = extract.samples(meandspp.blm_2.rise)  
+
+# reference table to convert from treatment to centered, log-transformed measured concentrations
+TreatCalcTable = unique(DataSum2496.meand[order(DataSum2496.meand$Treatment)
+                                             ,c("Spp", "Treatment","lnCalcConc", "lnCalcConcC")])
+TreatCalcTable$lnCalcConcC2 = TreatCalcTable$lnCalcConcC ^ 2
+
+
+
+# calculate differences between control and treatment at each time point for each species (20 contrasts)
+GS0bif24m = postmeand$a +
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC2)
+GS5bif24m = postmeand$a + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC2)
+GS100bif24m = postmeand$a + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC2)
+GS500bif24m = postmeand$a + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC2)
+GS1000bif24m = postmeand$a +
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC) + 
+  postmeand$bt2* as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC2)
+GS2000bif24m = postmeand$a + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC) + 
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC2)
+
+mean(GS0bif24m)
+mean(GS5bif24m)
+ cont.GS_0.5bif_24m = (sum(GS0bif24m<GS5bif24m) / length(GS0bif24m)) 
+ cont.GS_0.5bif_24m #72.0% prob that 5 is more than 0
+mean(GS100bif24m)
+ cont.GS_0.100bif_24m = (sum(GS0bif24m<GS100bif24m) / length(GS0bif24m)) 
+ cont.GS_0.100bif_24m #62.4% prob that 100 is more than 0
+mean(GS500bif24m)
+ cont.GS_0.500bif_24m = (sum(GS0bif24m<GS500bif24m) / length(GS0bif24m)) 
+ cont.GS_0.500bif_24m #40.7% prob that 500 is more than 0
+mean(GS1000bif24m)
+ cont.GS_0.1000bif_24m = (sum(GS0bif24m<GS1000bif24m) / length(GS0bif24m)) 
+ cont.GS_0.1000bif_24m #32.8% prob that 1000 is more than 0
+mean(GS2000bif24m)
+ cont.GS_0.2000bif_24m = (sum(GS0bif24m<GS2000bif24m) / length(GS0bif24m)) 
+ cont.GS_0.2000bif_24m #13.7% prob that 2000 is more than 0 (86.3% chance that 2000 is less than 0)
+
+GS24m.plot = ggplot() + geom_density(aes(x=GS0bif24m, color="black")) + 
+  geom_density(aes(x=GS5bif24m, color="green3")) + 
+  geom_density(aes(x=GS100bif24m, color="goldenrod")) + 
+  geom_density(aes(x=GS500bif24m, color="red3")) + 
+  geom_density(aes(x=GS1000bif24m, color="pink")) + 
+  geom_density(aes(x=GS2000bif24m, color="steelblue3")) + 
+  scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
+                     values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
+                              "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
+                     labels=c("0 ng/L", "5 ng/L", "100ng/L", 
+                              "500ng/L", "1000ng/L", "2000 ng/L") ) + 
+  xlab("SD Track Meander (GS @ 24hr)")+
+  theme_bw()
+
+
+# repeat for green sturgeon, 96hr
+
+GS0bif96m = postmeand$a + postmeand$be +
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC2)
+GS5bif96m = postmeand$a + postmeand$be + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC2)
+GS100bif96m = postmeand$a + postmeand$be + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC2)
+GS500bif96m = postmeand$a + postmeand$be + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC2)
+GS1000bif96m = postmeand$a + postmeand$be +
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC) + 
+  postmeand$bt2* as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC2)
+GS2000bif96m = postmeand$a + postmeand$be + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC) + 
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC2)
+
+mean(GS0bif96m)
+mean(GS5bif96m)
+ cont.GS_0.5bif_96m = (sum(GS0bif96m<GS5bif96m) / length(GS0bif96m)) 
+ cont.GS_0.5bif_96m #72.0% prob that 5 is more than 0
+mean(GS100bif96m)
+mean(GS500bif96m)
+mean(GS1000bif96m)
+mean(GS2000bif96m)
+
+GS96m.plot = ggplot() + geom_density(aes(x=GS0bif96m), color="black") + 
+  geom_density(aes(x=GS5bif96m), color="green3") + 
+  geom_density(aes(x=GS100bif96m), color="goldenrod") + 
+  geom_density(aes(x=GS500bif96m), color="red3") + 
+  geom_density(aes(x=GS1000bif96m), color="pink") + 
+  geom_density(aes(x=GS2000bif96m), color="steelblue3") + 
+  scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
+                     values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
+                              "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
+                     labels=c("0 ng/L", "5 ng/L", "100ng/L", 
+                              "500ng/L", "1000ng/L", "2000 ng/L") ) + 
+  xlab("SD Track Meander (GS @ 96hr)")+
+  theme_bw()
+
+
+# repeat for white sturgeon, 24hr
+
+WS0bif24m = postmeand$a + postmeand$bs +
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2) +
+  postmeand$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
+  postmeand$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2)
+WS5bif24m = postmeand$a + postmeand$bs + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)+
+  postmeand$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
+  postmeand$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)
+WS100bif24m = postmeand$a + postmeand$bs + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)+
+  postmeand$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
+  postmeand$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)
+WS500bif24m = postmeand$a + postmeand$bs + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)+
+  postmeand$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
+  postmeand$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)
+WS1000bif24m = postmeand$a + postmeand$bs +
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
+  postmeand$bt2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)+
+  postmeand$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
+  postmeand$bts2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)
+WS2000bif24m = postmeand$a + postmeand$bs + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)+
+  postmeand$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
+  postmeand$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)
+
+mean(WS0bif24m)
+mean(WS5bif24m)
+ cont.WS_0.5bif_24m = (sum(WS0bif24m<WS5bif24m) / length(WS0bif24m)) 
+ cont.WS_0.5bif_24m #100% prob that 5 is more than 0
+mean(WS100bif24m)
+ cont.WS_0.100bif_24m = (sum(WS0bif24m<WS100bif24m) / length(WS0bif24m)) 
+ cont.WS_0.100bif_24m #100% prob that 100 is more than 0
+mean(WS500bif24m)
+ cont.WS_0.500bif_24m = (sum(WS0bif24m<WS500bif24m) / length(WS0bif24m)) 
+ cont.WS_0.500bif_24m #55% prob that 500 is more than 0
+mean(WS1000bif24m)
+ cont.WS_0.1000bif_24m = (sum(WS0bif24m<WS1000bif24m) / length(WS0bif24m)) 
+ cont.WS_0.1000bif_24m #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
+mean(WS2000bif24m)
+ cont.WS_0.2000bif_24m = (sum(WS0bif24m<WS2000bif24m) / length(WS0bif24m)) 
+ cont.WS_0.2000bif_24m #0% prob that 2000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
+ 
+WS24m.plot = ggplot() + geom_density(aes(x=WS0bif24m), color="black") + 
+  geom_density(aes(x=WS5bif24m), color="green3") + 
+  geom_density(aes(x=WS100bif24m), color="goldenrod") + 
+  geom_density(aes(x=WS500bif24m), color="red3") + 
+  geom_density(aes(x=WS1000bif24m), color="pink") + 
+  geom_density(aes(x=WS2000bif24m), color="steelblue3") + 
+  scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
+                     values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
+                              "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
+                     labels=c("0 ng/L", "5 ng/L", "100ng/L", 
+                              "500ng/L", "1000ng/L", "2000 ng/L") ) + 
+  xlab("SD Track Meander (WS @ 24hr)")+
+  theme_bw()
+
+
+# repeat for white sturgeon, 96hr
+
+
+WS0bif96m = postmeand$a + postmeand$bs + postmeand$be + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2) +
+  postmeand$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
+  postmeand$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2)
+WS5bif96m = postmeand$a + postmeand$bs + postmeand$be + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2) +
+  postmeand$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
+  postmeand$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)
+WS100bif96m = postmeand$a + postmeand$bs + postmeand$be + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2) +
+  postmeand$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
+  postmeand$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)
+WS500bif96m = postmeand$a + postmeand$bs + postmeand$be + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2) +
+  postmeand$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
+  postmeand$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)
+WS1000bif96m = postmeand$a + postmeand$bs + postmeand$be +  
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
+  postmeand$bt2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2) +
+  postmeand$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
+  postmeand$bts2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)
+WS2000bif96m = postmeand$a + postmeand$bs + postmeand$be + 
+  postmeand$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
+  postmeand$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2) +
+  postmeand$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
+  postmeand$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)
+
+mean(WS0bif96m)
+mean(WS5bif96m)
+ cont.WS_0.5bif_96m = (sum(WS0bif96m<WS5bif96m) / length(WS0bif96m)) 
+ cont.WS_0.5bif_96m #100% prob that 5 is more than 0
+mean(WS100bif96m)
+ cont.WS_0.100bif_96m = (sum(WS0bif96m<WS100bif96m) / length(WS0bif96m)) 
+ cont.WS_0.100bif_96m #100% prob that 100 is more than 0
+mean(WS500bif96m)
+ cont.WS_0.500bif_96m = (sum(WS0bif96m<WS500bif96m) / length(WS0bif96m)) 
+ cont.WS_0.500bif_96m #55.0% prob that 500 is more than 0
+mean(WS1000bif96m)
+ cont.WS_0.1000bif_96m = (sum(WS0bif96m<WS1000bif96m) / length(WS0bif96m)) 
+ cont.WS_0.1000bif_96m #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
+mean(WS2000bif96m)
+ cont.WS_0.2000bif_96m = (sum(WS0bif96m<WS2000bif96m) / length(WS0bif96m)) 
+ cont.WS_0.2000bif_96m #0% prob that 2000 is more than 0 (i.e. 100% prob that 2000 is less than 0)
+
+WS96m.plot = ggplot() + geom_density(aes(x=WS0bif96m), color="black") + 
+  geom_density(aes(x=WS5bif96m), color="green3") + 
+  geom_density(aes(x=WS100bif96m), color="goldenrod") + 
+  geom_density(aes(x=WS500bif96m), color="red3") + 
+  geom_density(aes(x=WS1000bif96m), color="pink") + 
+  geom_density(aes(x=WS2000bif96m), color="steelblue3") + 
+  scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
+                     values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
+                              "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
+                     labels=c("0 ng/L", "5 ng/L", "100ng/L", 
+                              "500ng/L", "1000ng/L", "2000 ng/L") ) + 
+  xlab("SD Track Meander (WS @ 96hr)")+
+  theme_bw()
+
+GS24m.plot + GS96m.plot + WS24m.plot + WS96m.plot
+
+predgroups = list(GS0bif24m, GS5bif24m,GS100bif24m,GS500bif24m,GS1000bif24m,GS2000bif24m,
+                  GS0bif96m, GS5bif96m,GS100bif96m,GS500bif96m,GS1000bif96m,GS2000bif96m,
+                  WS0bif24m, WS5bif24m,WS100bif24m,WS500bif24m,WS1000bif24m,WS2000bif24m,
+                  WS0bif96m, WS5bif96m,WS100bif96m,WS500bif96m,WS1000bif96m,WS2000bif96m)
+PredGroupNames =  as.character(expression(GS0bif24m,GS5bif24m,GS100bif24m,GS500bif24m,
+                                          GS1000bif24m,GS2000bif24m,
+                   GS0bif96m, GS5bif96m,GS100bif96m,GS500bif96m,GS1000bif96m,GS2000bif96m,
+                   WS0bif24m, WS5bif24m,WS100bif24m,WS500bif24m,WS1000bif24m,WS2000bif24m,
+                   WS0bif96m, WS5bif96m,WS100bif96m,WS500bif96m,WS1000bif96m,WS2000bif96m))
+posterior.preds = data.frame(PredGroupNames = PredGroupNames, 
+                             PredMeans = sapply(predgroups, mean),
+                             Pred95CIl = sapply(predgroups, quantile, 0.05),
+                             Pred95CIu = sapply(predgroups, quantile, 0.95))
+```
+#### if use this in a paper, recolor to a more intuitive gradient and add legend
+ 
+ 
+```{r meander multi-level model time and spp contrasts, echo=F}
+# this uses the predicted posteriors for distance moved, calculated above
+
+# GS vs WS
+cont.GS.WS_0bif_24m = sum(GS0bif24m<WS0bif24m) / length(GS0bif24m)
+ cont.GS.WS_0bif_24m # 100% probability that GS will move less than WS
+
+ cont.GS.WS_0bif_96m = sum(GS0bif96m<WS0bif96m) / length(GS0bif96m)
+ cont.GS.WS_0bif_96m # 100% probability that GS will move less than WS
+cont.GS.WS_2000bif_96m = sum(GS2000bif96m<WS2000bif96m) / length(GS2000bif96m)
+ cont.GS.WS_2000bif_96m # 99.89% probability that GS will move less than WS
+
+
+# Green Sturgeon, Exposure Hr
+cont.GS0bif_96.24m = (sum(GS0bif96m<GS0bif24m) / length(GS0bif96m)) 
+cont.GS5bif_96.24m = (sum(GS5bif96m<GS5bif24m) / length(GS5bif96m)) 
+cont.GS100bif_96.24m = (sum(GS100bif96m<GS100bif24m) / length(GS100bif96m)) 
+cont.GS500bif_96.24m = (sum(GS500bif96m<GS500bif24m) / length(GS500bif96m)) 
+cont.GS1000bif_96.24m = (sum(GS1000bif96m<GS1000bif24m) / length(GS1000bif96m)) 
+cont.GS2000bif_96.24m = (sum(GS2000bif96m<GS2000bif24m) / length(GS2000bif96m)) 
+
+cont.GS0bif_96.24m
+cont.GS5bif_96.24m
+cont.GS100bif_96.24m
+cont.GS500bif_96.24m
+cont.GS1000bif_96.24m
+cont.GS2000bif_96.24m
+
+
+GS0bif_96.24m.plot = ggplot() + geom_density(aes(x=GS0bif96m), color="steelblue3") + 
+  geom_density(aes(x=GS0bif24m), color="green3") + 
+  xlab("SD Meander - GS @ 0 ng/L bifenthrin\n24 vs 96 hrs)") +
+  theme_bw()
+GS2000bif_96.24m.plot = ggplot() + geom_density(aes(x=GS2000bif96m), color="steelblue3") + 
+  geom_density(aes(x=GS2000bif24m), color="green3") + 
+  xlab("SD Meander - GS @ 2000 ng/L bifenthrin\n24 vs 96 hrs)") +
+  theme_bw()
+# can repeat these for each concentration if interesting
+
+# use patchwork grammar to plot multiple plots together
+GS0bif_96.24m.plot + GS2000bif_96.24m.plot   
+
+
+
+
+# White Sturgeon: probability of a difference between 24 and 96 hours, at each treatment level
+cont.WS0bif_96.24m = (sum(WS0bif96m<WS0bif24m) / length(WS0bif96m)) 
+cont.WS0bif_96.24m
+
+
+WS0bif_96.24m.plot = ggplot() + geom_density(aes(x=WS0bif96m), color="steelblue3") + 
+  geom_density(aes(x=WS0bif24m), color="green3") + 
+  xlab("SD Meander - WS @ 0 ng/L bifenthrin\n24 vs 96 hrs)") +
+  theme_bw()
+WS0bif_96.24m.plot
+
+
+```
+
+#### well, these plots all look about the same, as they should since there's no interaction for concentration * exposure time; which fits the contrast value - it is 95.2% likely (for all comparisons of concentation, because there isn't an interaction) that for Green Sturgeon the distance moved at 96hrs (7ph) is greater than the distance moved at 24hrs (4 dph). But for white sturgeon, it's a 100% chance that there is less movement at 96hrs than at 24hrs exposure. 
+
+
+
+
+########### 
      
 ## Center Zone Models - good and complete! #####
 ```{r center zone data, echo=F, eval=F} 
@@ -1462,13 +1950,61 @@ compare(centspp.blm_int1, centspp.blm_int2, centspp.blm_int3, centspp.blm_int4, 
 
 ```
 
+```{r centerzone multi-level Bayesmodels final, echo=F}
+DScent_bmoddat = DataSum2496.centC[,c("nCent", "npos", "lnCalcConcC","lnCalcConcC2", "ExposureHrs","Spp","RepID")]
+DScent_bmoddat$lnCalcConcC = as.numeric(DScent_bmoddat$lnCalcConcC) 
+DScent_bmoddat$lnCalcConcC2 = as.numeric(DScent_bmoddat$lnCalcConcC2) 
+DScent_bmoddat$SppDummy <- as.numeric(ifelse(DScent_bmoddat$Spp=="GS", 0,1))
+DScent_bmoddat$ExposeDummy <- as.numeric(ifelse(DScent_bmoddat$ExposureHrs=="24", 0,1))
 
+# remove fish with only one timepoint of detection, because cant add random slope with one timepoint
+DScent_bmoddat = DScent_bmoddat[!(DScent_bmoddat$RepID %in% paste0(c(0,5,100,500,1000,2000), "-WS-4")),]
+DScent_bmoddat$RepID = as.factor(as.character(DScent_bmoddat$RepID))
+
+
+
+set.seed(1983)
+centspp.blm_int8 = map2stan(
+  alist(
+    nCent ~ dbinom(npos, p),
+      logit(p)  <- a_fish[RepID] +
+              be_fish[RepID]*ExposeDummy +
+              bs*SppDummy +
+              bt*(lnCalcConcC) +
+              bse*(SppDummy)*(ExposeDummy)+
+              bts*(lnCalcConcC)*(SppDummy)+
+              bt2*(lnCalcConcC2) +
+              bt2s*(lnCalcConcC2)*(SppDummy),
+
+           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),#
+           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
+           be ~ dnorm(0,10),
+           sigma_fish ~ dcauchy(0,2),
+           Rho ~ dlkjcorr(2), # not as flat as (1) but biases against strong correlations of intercept and slope
+
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bts ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10)
+    ) ,
+  data = DScent_bmoddat, iter = 2000, warmup = 300, chains = 3)
+
+
+# check model
+ precis(centspp.blm_int8, prob = .95, digits=3)
+ plot(precis(centspp.blm_int8, prob = .95))
+ plot(precis(centspp.blm_int8, prob = .95, depth=2))
+
+ plot(centspp.blm_int8)
+```
 
 ```{r center zone multi-level Bayesmodels predict, echo=F, eval=F}
 
 # pull posterior from model:
 set.seed(42)
-post = extract.samples(centspp.blm_int7)
+post = extract.samples(centspp.blm_int8)
 
 # set up dataframe to plot posterior predictions
 preddat = list(CalcConc=rep(seq(0, 2250, 2), 4), 
@@ -1495,29 +2031,32 @@ a_global = matrix(post$a,459000,90)
 be_global = matrix(post$be,459000,90)
 
 # use link to predict to mean only
-link.int2 <- link(centspp.blm_int2, n=1000, data= preddat, 
-                         replace = list(a_fish = a_global, 
-                                        be_fish = be_global) )
-link.int3 <- link(centspp.blm_int3, n=1000, data= preddat, 
-                         replace = list(a_fish = a_global, 
-                                        be_fish = be_global) )
-link.int4 <- link(centspp.blm_int4, n=1000, data= preddat, 
-                         replace = list(a_fish = a_global, 
-                                        be_fish = be_global) )
-link.int5 <- link(centspp.blm_int5, n=1000, data= preddat, 
-                         replace = list(a_fish = a_global, 
-                                        be_fish = be_global) )
-link.int6 <- link(centspp.blm_int6, n=1000, data= preddat, 
-                         replace = list(a_fish = a_global, 
-                                        be_fish = be_global) )
-link.int7 <- link(centspp.blm_int7, n=1000, data= preddat, 
+# link.int2 <- link(centspp.blm_int2, n=1000, data= preddat, 
+#                          replace = list(a_fish = a_global, 
+#                                         be_fish = be_global) )
+# link.int3 <- link(centspp.blm_int3, n=1000, data= preddat, 
+#                          replace = list(a_fish = a_global, 
+#                                         be_fish = be_global) )
+# link.int4 <- link(centspp.blm_int4, n=1000, data= preddat, 
+#                          replace = list(a_fish = a_global, 
+#                                         be_fish = be_global) )
+# link.int5 <- link(centspp.blm_int5, n=1000, data= preddat, 
+#                          replace = list(a_fish = a_global, 
+#                                         be_fish = be_global) )
+# link.int6 <- link(centspp.blm_int6, n=1000, data= preddat, 
+#                          replace = list(a_fish = a_global, 
+#                                         be_fish = be_global) )
+# link.int7 <- link(centspp.blm_int7, n=1000, data= preddat, 
+#                          replace = list(a_fish = a_global, 
+#                                         be_fish = be_global) )
+link.int8 <- link(centspp.blm_int8, n=1000, data= preddat, 
                          replace = list(a_fish = a_global, 
                                         be_fish = be_global) )
 preddat.df <- data.frame(sapply(preddat,c)) # thanks stack overflow! (turns the list into a dataframe) https://stackoverflow.com/questions/4227223/convert-a-list-to-a-data-frame
 
-preddat.df$link_mu_mn <- apply(link.int7, 2, mean) 
-preddat.df$link_PI05 = apply(link.int7, 2, PI, .95)[1,] 
-preddat.df$link_PI95 = apply(link.int7, 2, PI, .95)[2,] 
+preddat.df$link_mu_mn <- apply(link.int8, 2, mean) 
+preddat.df$link_PI05 = apply(link.int8, 2, PI, .95)[1,] 
+preddat.df$link_PI95 = apply(link.int8, 2, PI, .95)[2,] 
 
 # preddat.df$link_mu_mn <- apply(link.int5, 2, mean) 
 # preddat.df$link_PI05 = apply(link.int5, 2, PI, .95)[1,] 
@@ -1541,7 +2080,7 @@ preddat.df$link_PI95 = apply(link.int7, 2, PI, .95)[2,]
   preddat.df$ExposureHrs <- ifelse(preddat.df$ExposeDummy==0,"24","96")
 
 
-CentPred_transf_plot2_mod7 = ggplot() + 
+CentPred_transf_plot2_mod8 = ggplot() + 
   geom_point(data=DataSum2496.centC,
              aes(x=(lnCalcConcC),                          
                  y=nCent/npos, 
@@ -1559,7 +2098,7 @@ CentPred_transf_plot2_mod7 = ggplot() +
     theme_bw()
 
 
-CentPred_orig_plot2_mod7 = ggplot() + 
+CentPred_orig_plot2_mod8 = ggplot() + 
   geom_point(data=DataSum2496.centC,
              aes(x=(calcConc),                          
                  y=nCent/npos, 
@@ -1578,24 +2117,26 @@ CentPred_orig_plot2_mod7 = ggplot() +
 
 
 
-CentPred_transf_plot2_mod1
-CentPred_transf_plot2_mod2
-CentPred_transf_plot2_mod3
-CentPred_transf_plot2_mod4
-CentPred_transf_plot2_mod5
-CentPred_transf_plot2_mod6
-CentPred_transf_plot2_mod7
+# CentPred_transf_plot2_mod1
+# CentPred_transf_plot2_mod2
+# CentPred_transf_plot2_mod3
+# CentPred_transf_plot2_mod4
+# CentPred_transf_plot2_mod5
+# CentPred_transf_plot2_mod6
+# CentPred_transf_plot2_mod7
+CentPred_transf_plot2_mod8
 
-CentPred_orig_plot2_mod1
-CentPred_orig_plot2_mod2
-CentPred_orig_plot2_mod3
-CentPred_orig_plot2_mod4
-CentPred_orig_plot2_mod5
-CentPred_orig_plot2_mod6
-CentPred_orig_plot2_mod7
+# CentPred_orig_plot2_mod1
+# CentPred_orig_plot2_mod2
+# CentPred_orig_plot2_mod3
+# CentPred_orig_plot2_mod4
+# CentPred_orig_plot2_mod5
+# CentPred_orig_plot2_mod6
+# CentPred_orig_plot2_mod7
+CentPred_orig_plot2_mod8
 
 ```
- ### Hm. WAIC suggests they're nearly all equal, except for 7 (barely, nearly better). From looking at the fit of the prediction lines, I think 6 is not a good model because without the quadratic it doesn't fit the curve of the data and the mechanism we expected. Model 5 allows the quadratic to vary by species (green sturgeon curve becomes flatter in the transformed plots), and the effect of concentration to vary by exposure period (24 hr curve becomes flatter). This looks pretty good, but the confidence bands are wider than those for model 4 while the trend is very smiliar. Model 3 lets the quadratic vary by exposure period (but not spp), so I built/fit Model 7 to let both the standard and quadratic effectws for treatment vary by exposure period and species (ie: seperate line for each of the four facets). This model seems to be better, or at least not worse, based on AIC, and the plots look better too. Let's go with 7 - I think it's similar to the model for distance too, which will make the paper easier to write. 
+ ### Hm. WAIC suggests they're nearly all equal, except for 7 (barely, nearly better). From looking at the fit of the prediction lines, I think 6 is not a good model because without the quadratic it doesn't fit the curve of the data and the mechanism we expected. Model 5 allows the quadratic to vary by species (green sturgeon curve becomes flatter in the transformed plots), and the effect of concentration to vary by exposure period (24 hr curve becomes flatter). This looks pretty good, but the confidence bands are wider than those for model 4 while the trend is very smiliar. Model 3 lets the quadratic vary by exposure period (but not spp), so I built/fit Model 7 to let both the standard and quadratic effectws for treatment vary by exposure period and species (ie: seperate line for each of the four facets). This model seems to be better, or at least not worse, based on AIC, and the plots look better too. Let's go with 7 - I think it's similar to the model for distance too, which will make the paper easier to write. Oops. Model 8 matches the distance model. And it is slightly better on AIC - it removes the interactions between treatment and exposure time. 
  
  
  
@@ -1622,13 +2163,14 @@ CentPred_orig_plot2_mod7
 
 
 
-```{r cent multi-level model density plots, echo=F}
+```{r cent multi-level model density plots and conc contrasts, echo=F}
 set.seed(1983) 
-postcent = extract.samples(centspp.blm_int4)
+postcent = extract.samples(centspp.blm_int8)
  
-# reference table to convert from treatment to centered, log-transformed measured concentrations
+    # # reference table to convert from treatment to centered, log-transformed measured concentrations
 TreatCalcTable = unique(DataSum2496.centC[order(DataSum2496.centC$Treatment)
-                                             ,c("Spp", "Treatment","lnCalcConc", "lnCalcConcC")])
+                                             ,c("Spp", "Treatment", 
+                                                "lnCalcConc", "lnCalcConcC")])
 TreatCalcTable$lnCalcConcC2 = TreatCalcTable$lnCalcConcC ^ 2
 
 
@@ -1653,36 +2195,65 @@ GS2000bif24cent = postcent$a +
   postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC) + 
   postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC2)
 
-mean(GS0bif24cent)
-mean(GS5bif24cent)
- cont.GS_0.5bif_24cent = (sum(GS0bif24cent<GS5bif24cent) / length(GS0bif24cent)) 
- cont.GS_0.5bif_24cent #  % prob that 5 is more than 0
-mean(GS100bif24cent)
- cont.GS_0.100bif_24cent = (sum(GS0bif24cent<GS100bif24cent) / length(GS0bif24cent)) 
- cont.GS_0.100bif_24cent #  % prob that 100 is more than 0
-mean(GS500bif24cent)
- cont.GS_0.500bif_24cent = (sum(GS0bif24cent<GS500bif24cent) / length(GS0bif24cent)) 
- cont.GS_0.500bif_24cent #  % prob that 500 is more than 0
-mean(GS1000bif24cent)
- cont.GS_0.1000bif_24cent = (sum(GS0bif24cent<GS1000bif24cent) / length(GS0bif24cent)) 
- cont.GS_0.1000bif_24cent #  % prob that 1000 is more than 0
-mean(GS2000bif24cent)
- cont.GS_0.2000bif_24cent = (sum(GS0bif24cent<GS2000bif24cent) / length(GS0bif24cent)) 
- cont.GS_0.2000bif_24cent #  % prob that 2000 is more than 0 (  % chance that 2000 is less than 0)
+# complile into a list
+GS24cent.list = list(GS0bif24cent, GS5bif24cent, GS100bif24cent,
+                     GS500bif24cent, GS1000bif24cent, GS2000bif24cent)
 
-GS24cent.plot = ggplot() + geom_density(aes(x=GS0bif24cent, color="black")) + 
-  geom_density(aes(x=GS5bif24cent, color="green3")) + 
-  geom_density(aes(x=GS100bif24cent, color="goldenrod")) + 
-  geom_density(aes(x=GS500bif24cent, color="red3")) + 
-  geom_density(aes(x=GS1000bif24cent, color="pink")) + 
-  geom_density(aes(x=GS2000bif24cent, color="steelblue3")) + 
+# write come output functions to reduce code length
+logistic.summary.func = function(x) { mean = logistic(mean(x))
+                                      Lower95CI = logistic(quantile(x,.025))
+                                      Upper95CI = logistic(quantile(x,.975))
+                                      return(data.frame(mean = mean,
+                                                        U95CI = Upper95CI,
+                                                        L95CI=Lower95CI)) }
+
+# use functions to 
+   pred.muGS24 = data.frame(nomconc = c(0,5,100,500,1000,2000), 
+                            Spp = "GS",
+                            ExposureHrs = 24,
+                     pred.centZone = t(sapply(GS24cent.list,logistic.summary.func)),
+                       diff.meancontrol = c(NA, sapply(GS24cent.list[2:6], function(x) mean(GS24cent.list[[1]]) - mean(x) )),
+                     prob.greater0 = c(NA, mapply(function(x,y) sum(x<y), GS24cent.list[1], GS24cent.list[2:6]) / length(GS24cent.list[[1]]) ) )
+
+          ## long version of the above pred.mu
+          # logistic(mean(GS0bif24cent))
+          # 
+          # logistic(mean(GS5bif24cent))
+          #  cont.GS_0.5bif_24cent = (sum(GS0bif24cent<GS5bif24cent) / length(GS0bif24cent)) 
+          #  cont.GS_0.5bif_24cent #  57.2% prob that 5 is more than 0
+          #  
+          # logistic(mean(GS100bif24cent))
+          #  cont.GS_0.100bif_24cent = (sum(GS0bif24cent<GS100bif24cent) / length(GS0bif24cent)) 
+          #  cont.GS_0.100bif_24cent #  85.2% prob that 100 is more than 0
+          #  
+          # logistic(mean(GS500bif24cent))
+          #  cont.GS_0.500bif_24cent = (sum(GS0bif24cent<GS500bif24cent) / length(GS0bif24cent)) 
+          #  cont.GS_0.500bif_24cent #  99.5% prob that 500 is more than 0
+          #  
+          # logistic(mean(GS1000bif24cent))
+          #  cont.GS_0.1000bif_24cent = (sum(GS0bif24cent<GS1000bif24cent) / length(GS0bif24cent)) 
+          #  cont.GS_0.1000bif_24cent #  99.8% prob that 1000 is more than 0
+          # 
+          # logistic(mean(GS2000bif24cent))
+          #  cont.GS_0.2000bif_24cent = (sum(GS0bif24cent<GS2000bif24cent) / length(GS0bif24cent)) 
+          #  cont.GS_0.2000bif_24cent #  >99.9% prob that 2000 is more than 0 
+          ##
+ 
+ 
+GS24cent.plot = ggplot() + geom_density(aes(x=logistic(GS0bif24cent), color="black")) + 
+  geom_density(aes(x=logistic(GS5bif24cent), color="green3")) + 
+  geom_density(aes(x=logistic(GS100bif24cent), color="goldenrod")) + 
+  geom_density(aes(x=logistic(GS500bif24cent), color="red3")) + 
+  geom_density(aes(x=logistic(GS1000bif24cent), color="pink")) + 
+  geom_density(aes(x=logistic(GS2000bif24cent), color="steelblue3")) + 
   scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
-                     values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
-                              "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
+                     values=c("black"="black", "green3"="green3", 
+                              "goldenrod"="goldenrod","red3"="red3", 
+                              "pink"="pink","steelblue3"="steelblue3"), 
                      labels=c("0 ng/L", "5 ng/L", "100ng/L", 
                               "500ng/L", "1000ng/L", "2000 ng/L") ) + 
-  xlab("Log Proportion of Detections in Central Zone (GS @ 24hr)")+
-  xlim(c(-5,2))+
+  xlab("probability of Detection in Central Zone (GS @ 24hr)")+
+  xlim(c(0,1))+
   theme_bw()
 
 
@@ -1712,28 +2283,51 @@ GS2000bif96cent = postcent$a + postcent$be +
   postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC) + 
   postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC2)
 
-mean(GS0bif96cent)
-mean(GS5bif96cent)
- cont.GS_0.5bif_96cent = (sum(GS0bif96cent<GS5bif96cent) / length(GS0bif96cent)) 
- cont.GS_0.5bif_96cent #72.0% prob that 5 is more than 0
-mean(GS100bif96cent)
-mean(GS500bif96cent)
-mean(GS1000bif96cent)
-mean(GS2000bif96cent)
+## complile into a list
+GS96cent.list = list(GS0bif96cent, GS5bif96cent, GS100bif96cent,
+                     GS500bif96cent, GS1000bif96cent, GS2000bif96cent)
 
-GS96cent.plot = ggplot() + geom_density(aes(x=GS0bif96cent), color="black") + 
-  geom_density(aes(x=GS5bif96cent), color="green3") + 
-  geom_density(aes(x=GS100bif96cent), color="goldenrod") + 
-  geom_density(aes(x=GS500bif96cent), color="red3") + 
-  geom_density(aes(x=GS1000bif96cent), color="pink") + 
-  geom_density(aes(x=GS2000bif96cent), color="steelblue3") + 
+# write come output functions to reduce code length
+logistic.summary.func = function(x) { mean = logistic(mean(x))
+                                      Lower95CI = logistic(quantile(x,.025))
+                                      Upper95CI = logistic(quantile(x,.975))
+                                      return(data.frame(mean = mean,
+                                                        U95CI = Upper95CI,
+                                                        L95CI=Lower95CI)) }
+
+# use functions to 
+   pred.muGS96 = data.frame(nomconc = c(0,5,100,500,1000,2000), 
+                            Spp = "GS",
+                            ExposureHrs = 96,
+                     pred.centZone = t(sapply(GS96cent.list,logistic.summary.func)),
+                     diff.meancontrol = c(NA, sapply(GS96cent.list[2:6], function(x) mean(GS96cent.list[[1]]) - mean(x) )),
+                     prob.greater0 = c(NA, mapply(function(x,y) sum(x<y), GS96cent.list[1], GS96cent.list[2:6]) / length(GS96cent.list[[1]]) ) )
+
+
+
+        # 
+        # mean(GS0bif96cent)
+        # mean(GS5bif96cent)
+        #  cont.GS_0.5bif_96cent = (sum(GS0bif96cent<GS5bif96cent) / length(GS0bif96cent)) 
+        #  cont.GS_0.5bif_96cent #72.0% prob that 5 is more than 0
+        # mean(GS100bif96cent)
+        # mean(GS500bif96cent)
+        # mean(GS1000bif96cent)
+        # mean(GS2000bif96cent)
+
+GS96cent.plot = ggplot() + geom_density(aes(x=logistic(GS0bif96cent)), color="black") + 
+  geom_density(aes(x=logistic(GS5bif96cent)), color="green3") + 
+  geom_density(aes(x=logistic(GS100bif96cent)), color="goldenrod") + 
+  geom_density(aes(x=logistic(GS500bif96cent)), color="red3") + 
+  geom_density(aes(x=logistic(GS1000bif96cent)), color="pink") + 
+  geom_density(aes(x=logistic(GS2000bif96cent)), color="steelblue3") + 
   scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
                      values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
                               "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
                      labels=c("0 ng/L", "5 ng/L", "100ng/L", 
                               "500ng/L", "1000ng/L", "2000 ng/L") ) + 
-  xlab("Log Proportion of Detections in Central Zone (GS @ 96hr)")+
-  xlim(c(-5,2))+
+  xlab("Proportion of Detections in Central Zone (GS @ 96hr)")+
+  xlim(c(0,1))+
   theme_bw()
 
 
@@ -1764,101 +2358,154 @@ WS2000bif24cent = postcent$a + postcent$bs +
   postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)+
   postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)
 
-mean(WS0bif24cent)
-mean(WS5bif24cent)
- cont.WS_0.5bif_24cent = (sum(WS0bif24cent<WS5bif24cent) / length(WS0bif24cent)) 
- cont.WS_0.5bif_24cent #100% prob that 5 is more than 0
-mean(WS100bif24cent)
- cont.WS_0.100bif_24cent = (sum(WS0bif24cent<WS100bif24cent) / length(WS0bif24cent)) 
- cont.WS_0.100bif_24cent #100% prob that 100 is more than 0
-mean(WS500bif24cent)
- cont.WS_0.500bif_24cent = (sum(WS0bif24cent<WS500bif24cent) / length(WS0bif24cent)) 
- cont.WS_0.500bif_24cent #55% prob that 500 is more than 0
-mean(WS1000bif24cent)
- cont.WS_0.1000bif_24cent = (sum(WS0bif24cent<WS1000bif24cent) / length(WS0bif24cent)) 
- cont.WS_0.1000bif_24cent #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
-mean(WS2000bif24cent)
- cont.WS_0.2000bif_24cent = (sum(WS0bif24cent<WS2000bif24cent) / length(WS0bif24cent)) 
- cont.WS_0.2000bif_24cent #0% prob that 2000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
- 
-WS24cent.plot = ggplot() + geom_density(aes(x=WS0bif24cent), color="black") + 
-  geom_density(aes(x=WS5bif24cent), color="green3") + 
-  geom_density(aes(x=WS100bif24cent), color="goldenrod") + 
-  geom_density(aes(x=WS500bif24cent), color="red3") + 
-  geom_density(aes(x=WS1000bif24cent), color="pink") + 
-  geom_density(aes(x=WS2000bif24cent), color="steelblue3") + 
+
+
+# complile into a list
+WS24cent.list = list(WS0bif24cent, WS5bif24cent, WS100bif24cent,
+                     WS500bif24cent, WS1000bif24cent, WS2000bif24cent)
+
+# write come output functions to reduce code length
+logistic.summary.func = function(x) { mean = logistic(mean(x))
+                                      Lower95CI = logistic(quantile(x,.025))
+                                      Upper95CI = logistic(quantile(x,.975))
+                                      return(data.frame(mean = mean,
+                                                        U95CI = Upper95CI,
+                                                        L95CI=Lower95CI)) }
+
+# use functions to 
+   pred.muWS24 = data.frame(nomconc = c(0,5,100,500,1000,2000), 
+                            Spp = "WS",
+                            ExposureHrs = 24,
+                     pred.centZone = t(sapply(WS24cent.list,logistic.summary.func)),
+                     diff.meancontrol = c(NA, sapply(WS24cent.list[2:6], function(x) mean(WS24cent.list[[1]]) - mean(x) )),
+                     prob.greater0 = c(NA, mapply(function(x,y) sum(x<y), WS24cent.list[1], WS24cent.list[2:6]) / length(WS24cent.list[[1]]) ) )
+
+        # 
+        # mean(WS0bif24cent)
+        # mean(WS5bif24cent)
+        #  cont.WS_0.5bif_24cent = (sum(WS0bif24cent<WS5bif24cent) / length(WS0bif24cent)) 
+        #  cont.WS_0.5bif_24cent #100% prob that 5 is more than 0
+        # mean(WS100bif24cent)
+        #  cont.WS_0.100bif_24cent = (sum(WS0bif24cent<WS100bif24cent) / length(WS0bif24cent)) 
+        #  cont.WS_0.100bif_24cent #100% prob that 100 is more than 0
+        # mean(WS500bif24cent)
+        #  cont.WS_0.500bif_24cent = (sum(WS0bif24cent<WS500bif24cent) / length(WS0bif24cent)) 
+        #  cont.WS_0.500bif_24cent #55% prob that 500 is more than 0
+        # mean(WS1000bif24cent)
+        #  cont.WS_0.1000bif_24cent = (sum(WS0bif24cent<WS1000bif24cent) / length(WS0bif24cent)) 
+        #  cont.WS_0.1000bif_24cent #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
+        # mean(WS2000bif24cent)
+        #  cont.WS_0.2000bif_24cent = (sum(WS0bif24cent<WS2000bif24cent) / length(WS0bif24cent)) 
+        #  cont.WS_0.2000bif_24cent #0% prob that 2000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
+        #  
+WS24cent.plot = ggplot() + geom_density(aes(x=logistic(WS0bif24cent)), color="black") + 
+  geom_density(aes(x=logistic(WS5bif24cent)), color="green3") + 
+  geom_density(aes(x=logistic(WS100bif24cent)), color="goldenrod") + 
+  geom_density(aes(x=logistic(WS500bif24cent)), color="red3") + 
+  geom_density(aes(x=logistic(WS1000bif24cent)), color="pink") + 
+  geom_density(aes(x=logistic(WS2000bif24cent)), color="steelblue3") + 
   scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
                      values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
                               "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
                      labels=c("0 ng/L", "5 ng/L", "100ng/L", 
                               "500ng/L", "1000ng/L", "2000 ng/L") ) + 
-  xlab("Log Proportion of Detections in Central Zone (WS @ 24hr)")+
-  xlim(c(-5,2))+
+  xlab("Proportion of Detections in Central Zone (WS @ 24hr)")+
+  xlim(c(0,1))+
   theme_bw()
 
 
 # repeat for white sturgeon, 96hr
 
 
-WS0bif96cent = postcent$a + postcent$bs + postcent$be + 
+WS0bif96cent = postcent$a + postcent$bs + postcent$be + postcent$bse + 
   postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
   postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2) +
   postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2)
-WS5bif96cent = postcent$a + postcent$bs + 
+
+WS5bif96cent = postcent$a + postcent$bs + postcent$be + postcent$bse +
   postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
   postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2) +
   postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)
-WS100bif96cent = postcent$a + postcent$bs + postcent$be +
+
+WS100bif96cent = postcent$a + postcent$bs + postcent$be + postcent$bse +
   postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
   postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2) +
   postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)
-WS500bif96cent = postcent$a + postcent$bs + postcent$be +  
+
+WS500bif96cent = postcent$a + postcent$bs + postcent$be + postcent$bse +
   postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
   postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2) +
   postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)
-WS1000bif96cent = postcent$a + postcent$bs + postcent$be + 
+
+WS1000bif96cent = postcent$a + postcent$bs + postcent$be + postcent$bse +
   postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
   postcent$bt2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2) +
   postcent$bt2s* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)
-WS2000bif96cent = postcent$a + postcent$bs + postcent$be + 
+
+WS2000bif96cent = postcent$a + postcent$bs + postcent$be + postcent$bse +
   postcent$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
   postcent$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2) +
   postcent$bt2s*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)
 
-mean(WS0bif96cent)
-mean(WS5bif96cent)
- cont.WS_0.5bif_96cent = (sum(WS0bif96cent<WS5bif96cent) / length(WS0bif96cent)) 
- cont.WS_0.5bif_96cent #100% prob that 5 is more than 0
-mean(WS100bif96cent)
- cont.WS_0.100bif_96cent = (sum(WS0bif96cent<WS100bif96cent) / length(WS0bif96cent)) 
- cont.WS_0.100bif_96cent #100% prob that 100 is more than 0
-mean(WS500bif96cent)
- cont.WS_0.500bif_96cent = (sum(WS0bif96cent<WS500bif96cent) / length(WS0bif96cent)) 
- cont.WS_0.500bif_96cent #55.0% prob that 500 is more than 0
-mean(WS1000bif96cent)
- cont.WS_0.1000bif_96cent = (sum(WS0bif96cent<WS1000bif96cent) / length(WS0bif96cent)) 
- cont.WS_0.1000bif_96cent #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
-mean(WS2000bif96cent)
- cont.WS_0.2000bif_96cent = (sum(WS0bif96cent<WS2000bif96cent) / length(WS0bif96cent)) 
- cont.WS_0.2000bif_96cent #0% prob that 2000 is more than 0 (i.e. 100% prob that 2000 is less than 0)
 
-WS96cent.plot = ggplot() + geom_density(aes(x=WS0bif96cent), color="black") + 
-  geom_density(aes(x=WS5bif96cent), color="green3") + 
-  geom_density(aes(x=WS100bif96cent), color="goldenrod") + 
-  geom_density(aes(x=WS500bif96cent), color="red3") + 
-  geom_density(aes(x=WS1000bif96cent), color="pink") + 
-  geom_density(aes(x=WS2000bif96cent), color="steelblue3") + 
+## complile into a list
+WS96cent.list = list(WS0bif96cent, WS5bif96cent, WS100bif96cent,
+                     WS500bif96cent, WS1000bif96cent, WS2000bif96cent)
+
+# write come output functions to reduce code length
+logistic.summary.func = function(x) { mean = logistic(mean(x))
+                                      Lower95CI = logistic(quantile(x,.025))
+                                      Upper95CI = logistic(quantile(x,.975))
+                                      return(data.frame(mean = mean,
+                                                        U95CI = Upper95CI,
+                                                        L95CI=Lower95CI)) }
+
+# use functions to 
+   pred.muWS96 = data.frame(nomconc = c(0,5,100,500,1000,2000), 
+                            Spp = "WS",
+                            ExposureHrs = 96,
+                     pred.centZone = t(sapply(WS96cent.list,logistic.summary.func)),
+                     diff.meancontrol = c(NA, sapply(WS96cent.list[2:6], function(x) mean(WS96cent.list[[1]]) - mean(x) )),
+                     prob.greater0 = c(NA, mapply(function(x,y) sum(x<y), WS96cent.list[1], WS96cent.list[2:6]) / length(WS96cent.list[[1]]) ) )
+
+
+ 
+# mean(WS0bif96cent)
+# mean(WS5bif96cent)
+#  cont.WS_0.5bif_96cent = (sum(WS0bif96cent<WS5bif96cent) / length(WS0bif96cent)) 
+#  cont.WS_0.5bif_96cent #100% prob that 5 is more than 0
+# mean(WS100bif96cent)
+#  cont.WS_0.100bif_96cent = (sum(WS0bif96cent<WS100bif96cent) / length(WS0bif96cent)) 
+#  cont.WS_0.100bif_96cent #100% prob that 100 is more than 0
+# mean(WS500bif96cent)
+#  cont.WS_0.500bif_96cent = (sum(WS0bif96cent<WS500bif96cent) / length(WS0bif96cent)) 
+#  cont.WS_0.500bif_96cent #55.0% prob that 500 is more than 0
+# mean(WS1000bif96cent)
+#  cont.WS_0.1000bif_96cent = (sum(WS0bif96cent<WS1000bif96cent) / length(WS0bif96cent)) 
+#  cont.WS_0.1000bif_96cent #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
+# mean(WS2000bif96cent)
+#  cont.WS_0.2000bif_96cent = (sum(WS0bif96cent<WS2000bif96cent) / length(WS0bif96cent)) 
+#  cont.WS_0.2000bif_96cent #0% prob that 2000 is more than 0 (i.e. 100% prob that 2000 is less than 0)
+
+WS96cent.plot = ggplot() + geom_density(aes(x=logistic(WS0bif96cent)), color="black") + 
+  geom_density(aes(x=logistic(WS5bif96cent)), color="green3") + 
+  geom_density(aes(x=logistic(WS100bif96cent)), color="goldenrod") + 
+  geom_density(aes(x=logistic(WS500bif96cent)), color="red3") + 
+  geom_density(aes(x=logistic(WS1000bif96cent)), color="pink") + 
+  geom_density(aes(x=logistic(WS2000bif96cent)), color="steelblue3") + 
   scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
                      values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
                               "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
                      labels=c("0 ng/L", "5 ng/L", "100ng/L", 
                               "500ng/L", "1000ng/L", "2000 ng/L") ) + 
-  xlab("Log Proportion of Detections in Central Zone (WS @ 96hr)")+
-  xlim(c(-5,2))+
+  xlab("Proportion of Detections in Central Zone (WS @ 96hr)")+
+  xlim(c(0,1))+
   theme_bw()
 
 GS24cent.plot + GS96cent.plot + WS24cent.plot + WS96cent.plot
 
+
+# compile it for output
 predgroups = list(GS0bif24cent, GS5bif24cent, GS100bif24cent,
                   GS500bif24cent, GS1000bif24cent, GS2000bif24cent,
                   GS0bif96cent, GS5bif96cent, GS100bif96cent,
@@ -1879,79 +2526,68 @@ posterior.preds = data.frame(PredGroupNames = PredGroupNames,
                              PredMeans = sapply(predgroups, mean),
                              Pred95CIl = sapply(predgroups, quantile, 0.05),
                              Pred95CIu = sapply(predgroups, quantile, 0.95))
+
+# try to compile again in a different way. Didn't know I'd already done this here, and did it again with each spp/exp group above. Oops. 
+grouplist = list(pred.muGS24,pred.muGS96,pred.muWS24,pred.muWS96)
+posterior.preds2 = do.call(rbind, grouplist)
+
 ```
 #### if use this in a paper, recolor to a more intuitive gradient and add legend
  
  
 ```{r center zone  multi-level model time and spp contrasts, echo=F}
-# this uses the predicted posteriors for distance moved, calculated above
+# this uses the predicted posteriors for time in central zone, calculated above
 
 # GS vs WS
 cont.GS.WS_0bif_24cent = sum(GS0bif24cent<WS0bif24cent) / length(GS0bif24cent)
- cont.GS.WS_0bif_24cent # 100% probability that GS will move less than WS
+ cont.GS.WS_0bif_24cent # 19.7% probability that GS will spend less time in center than WS, at 24hrs (ie: GS should be in the center more)
 
  cont.GS.WS_0bif_96cent = sum(GS0bif96cent<WS0bif96cent) / length(GS0bif96cent)
- cont.GS.WS_0bif_96cent # 100% probability that GS will move less than WS
-cont.GS.WS_2000bif_96cent = sum(GS2000bif96cent<WS2000bif96cent) / length(GS2000bif96cent)
- cont.GS.WS_2000bif_96cent # 99.89% probability that GS will move less than WS
+ cont.GS.WS_0bif_96cent # 42.7% probability that GS will spend less time in center than WS, at 96 hrs, which translates to a 57.2% probability that WS will spend less time in the center than GS. In otherwords, there's not  much difference in time spent in central zone at 96 hours because WS increase their use of the middle as they age
+  
+cont.GS.WS_5bif_24cent = sum(GS5bif24cent<WS5bif24cent) / length(GS5bif24cent)
+ cont.GS.WS_5bif_24cent # 1.6% probability that GS will spend less time in center than WS, after 24 hrs exposure to 100ng/L bifenthrin (ie: GS found in center more than WS)
+
+ cont.GS.WS_5bif_96cent = sum(GS5bif96cent<WS5bif96cent) / length(GS5bif96cent)
+ cont.GS.WS_5bif_96cent # 6.2% probability that GS will spend less time in center than WS, after 96 hrs exposure to 100ng/L bifenthrin (ie: GS in center more than WS, but not quite to standard 5% probability 'significance' standard
+   
+cont.GS.WS_100bif_24cent = sum(GS100bif24cent<WS100bif24cent) / length(GS100bif24cent)
+ cont.GS.WS_100bif_24cent # <0.001% probability that GS will spend less time in center than WS after 24hrs of exposure to 100ng/L bifenthrin. Ie: highly likely that GS spend more time in center than WS.
+  
+cont.GS.WS_100bif_96cent = sum(GS100bif96cent<WS100bif96cent) / length(GS100bif96cent)
+ cont.GS.WS_100bif_96cent # 0.02% probability that GS will spend less time in center than WS after 24hrs of exposure to 100ng/L bifenthrin. Ie: highly likely that GS spend more time in center than WS.
+
+ ## etc...
+ 
+ cont.GS.WS_2000bif_96cent = sum(GS2000bif96cent<WS2000bif96cent) / length(GS2000bif96cent)
+ cont.GS.WS_2000bif_96cent # 1.1% probability that GS will spend less time in center than WS at 96 hrs, when exposed to 2000ng/L bifenthrin. Ie: highly likely that GS spend more time in center than WS after 96hrs of exposure t0 2000ng/L bifenthrin
+ 
+cont.GS.WS_2000bif_24cent = sum(GS2000bif24cent<WS2000bif24cent) / length(GS2000bif24cent)
+ cont.GS.WS_2000bif_24cent # 0.2% probability that GS will spend less time in center than WS after 96hrs of exposure to 2000ng/L bifenthrin. Ie: highly likely that GS spend more time in center than WS.
+
+ cont.GS.WS_2000bif_96cent = sum(GS2000bif96cent<WS2000bif96cent) / length(GS2000bif96cent)
+ cont.GS.WS_2000bif_96cent # 0.01% probability that GS will spend less time in center than WS at 96 hrs, when exposed to 2000ng/L bifenthrin. Ie: highly likely that GS spend more time in center than WS after 96hrs of exposure t0 2000ng/L bifenthrin
 
 
-# Green Sturgeon, Exposure Hr
+# Green Sturgeon, Exposure Hr (no change at different levels since no exposure*treatment term in model
 cont.GS0bif_96.24cent = (sum(GS0bif96cent<GS0bif24cent) / length(GS0bif96cent)) 
-# cont.GS5bif_96.24cent = (sum(GS5bif96cent<GS5bif24cent) / length(GS5bif96cent))
-# cont.GS100bif_96.24cent = (sum(GS100bif96cent<GS100bif24cent) / length(GS100bif96cent))
-# cont.GS500bif_96.24cent = (sum(GS500bif96cent<GS500bif24cent) / length(GS500bif96cent))
-# cont.GS1000bif_96.24cent = (sum(GS1000bif96cent<GS1000bif24cent) / length(GS1000bif96cent))
-# cont.GS2000bif_96.24cent = (sum(GS2000bif96cent<GS2000bif24cent) / length(GS2000bif96cent))
-
 cont.GS0bif_96.24cent
-# ; cont.GS5bif_96.24cent; cont.GS100bif_96.24cent; cont.GS500bif_96.24cent; cont.GS1000bif_96.24cent; cont.GS2000bif_96.24cent
-
-# ha! they're all the same, because there's no interaction of exposure time and treatment. 
- # 4.8% of the samples from the posterior showed less distance moved at 96 than 24; so most likely that movement is greater at 96 than 24 (95.2%)
+ # 22.7% of the samples from the posterior showed less use of central zone by GS at 96 than 24; so most likely that central-zone use is greater at 96 than 24 (77.3%), but not 'significant' if using standard cut-off thresholds
 
 GS0bif_96.24cent.plot = ggplot() + geom_density(aes(x=GS0bif96cent), color="steelblue3") + 
   geom_density(aes(x=GS0bif24cent), color="green3") + 
   xlab("Distance moved - GS @ 0 ng/L bifenthrin\n24 vs 96 hrs)") +
   theme_bw()
-# GS5bif_96.24cent.plot = ggplot() + geom_density(aes(x=GS5bif96cent), color="steelblue3") + 
-#   geom_density(aes(x=GS5bif24cent), color="green3") + 
-#   xlab("Distance moved - GS @ 5 ng/L bifenthrin\n24 vs 96 hrs)") +
-#   theme_bw()
-# GS100bif_96.24cent.plot = ggplot() + geom_density(aes(x=GS100bif96cent), color="steelblue3") + 
-#   geom_density(aes(x=GS100bif24cent), color="green3") + 
-#   xlab("Distance moved - GS @ 100 ng/L bifenthrin\n24 vs 96 hrs)") +
-#   theme_bw()
-# GS500bif_96.24cent.plot = ggplot() + geom_density(aes(x=GS500bif96cent), color="steelblue3") + 
-#   geom_density(aes(x=GS500bif24cent), color="green3") + 
-#   xlab("Distance moved - GS @ 500 ng/L bifenthrin\n24 vs 96 hrs)") +
-#   theme_bw()
-# GS1000bif_96.24cent.plot = ggplot() + geom_density(aes(x=GS1000bif96cent), color="steelblue3") + 
-#   geom_density(aes(x=GS1000bif24cent), color="green3") + 
-#   xlab("Distance moved - GS @ 1000 ng/L bifenthrin\n24 vs 96 hrs)") +
-#   theme_bw()
-# GS2000bif_96.24cent.plot = ggplot() + geom_density(aes(x=GS2000bif96cent), color="steelblue3") + 
-#   geom_density(aes(x=GS2000bif24cent), color="green3") + 
-#   xlab("Distance moved - GS @ 2000 ng/L bifenthrin\n24 vs 96 hrs)") +
-#   theme_bw()
 
 # use patchwork grammar to plot multiple plots
 GS0bif_96.24cent.plot
-#(GS0bif_96.24cent.plot|GS5bif_96.24cent.plot|GS100bif_96.24cent.plot)/(GS500bif_96.24cent.plot|GS1000bif_96.24cent.plot|GS2000bif_96.24cent.plot)
-
-cont.GS0bif_96.24cent # 4.8% chance that GS move less at 96hrs than 24hrs (ie: move more with age)
-# cont.GS5bif_96.24cent
-# cont.GS100bif_96.24cent
-# cont.GS500bif_96.24cent
-# cont.GS1000bif_96.24cent
-# cont.GS2000bif_96.24cent
 
 
 
 # White Sturgeon: probability of a difference between 24 and 96 hours, at each treatment level
 cont.WS0bif_96.24cent = (sum(WS0bif96cent<WS0bif24cent) / length(WS0bif96cent)) 
 cont.WS0bif_96.24cent
-# 4.8% of the samples from the posterior showed less distance moved at 96 than 24; so most likely that movement is greater at 96 than 24 (95.2%)
+# 2.1% of the samples from the posterior showed less use of central zone by WS at 96 than 24; so highly likely that WS use of central zone is greater at 96 than 24 (97.9%) 'significant' using standard thresholds
 
 WS0bif_96.24cent.plot = ggplot() + geom_density(aes(x=WS0bif96cent), color="steelblue3") + 
   geom_density(aes(x=WS0bif24cent), color="green3") + 
