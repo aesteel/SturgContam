@@ -31,6 +31,27 @@ nstep = function(t2,t1, interv=0.2) {
   return(nstep)
   }
 
+
+circ.mean.na = function(x) {
+  x2 = x[!is.na(x)]
+  sinr <- sum(sin(x2))
+  cosr <- sum(cos(x2))
+  circmean <- atan2(sinr, cosr)
+  return(circmean)
+}
+
+
+circ.disp.na = function(x) {
+  x2 = x[!is.na(x)]
+    n <- length(x2)
+    c <- sum(cos(x2))
+    s <- sum(sin(x2))
+    r <- sqrt(c^2 + s^2)
+    rbar <- r/n
+    var <- 1 - rbar
+    data.frame(n, r, rbar, var)
+}
+
 ```
 
 
@@ -526,6 +547,25 @@ DistPred_orig_plot2 = ggplot() +
   scale_x_continuous(name="Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
   theme_bw()
 
+
+
+DistPred_orig_plot_96 = ggplot() + 
+  geom_point(data=DataSum2496.dist[DataSum2496.dist$ExposureHrs==96,],
+             aes(x=(calcConc),                          
+                 y=TotalfishDist_m, 
+                 color=factor(Spp))) + 
+  geom_ribbon(data = preddat.df[preddat.df$ExposureHrs==96,], aes(x=(CalcConc), 
+              ymin=link_PI05, ymax=link_PI95), 
+              alpha=.4, col="grey70")+
+  geom_line(data = preddat.df[preddat.df$ExposureHrs==96,], aes(x=(CalcConc), y=link_mu_mn), lwd=.2)+
+  facet_grid(Spp~., scales="free", labeller = labeller(
+    Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
+  scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
+  ylab("Total Distance Traveled (cm)") + 
+  scale_x_continuous(name="Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
+  theme_bw()
+
+
 DistPred_transf_plot2
 DistPred_orig_plot2 
 
@@ -939,6 +979,7 @@ velspp.lmm = lmer(MnVel ~ factor(Spp)*factor(Treatment)*factor(ExposureHrs)+ (1|
 DataSum2496 <- DataSum2496.raw %>%
   mutate(MeanderCircLog = log(abs(MeanderCirc)+1)) %>%
   mutate(lnCalcConc = log(calcConc+1)) %>%
+  mutate(lnCalcConc2 = lnCalcConc^2) %>%
   mutate(lnCalcConcC= as.numeric(scale(lnCalcConc, scale=FALSE))) %>%
   mutate(lnCalcConcC2 = lnCalcConcC ^ 2 ) %>% 
    # order of transformations matters (log then scale then square)
@@ -946,16 +987,21 @@ DataSum2496 <- DataSum2496.raw %>%
 
 ## Summarize meander and turn angle
 
+# trying this to see if the tiny are causing the problems - could reasonably be argued that these are within the error range of the computer tracking
+DataSum2496[!is.na(DataSum2496$MeanderCirc) & DataSum2496$MeanderCirc<1,"MeanderCirc"] <- NA
+
 ## Summarize meander and turn angle
 DataSum2496.meand = DataSum2496 %>%
   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, 
-           calcConc, lnCalcConc, lnCalcConcC, lnCalcConcC2, Spp, RepID) %>%
+           calcConc, lnCalcConc, lnCalcConc2, lnCalcConcC, lnCalcConcC2, Spp, RepID) %>%
   summarize(MnTurnAngle = deg(circ.mean.na(rad(TurnAngleCirc))), 
             VarTurnAngle = deg(circ.disp.na(rad(TurnAngleCirc))$var), # circular variance
             MnMeander = mean(MeanderCirc, na.rm=T),
             SDMeander = sd(MeanderCirc, na.rm=T))  %>%
   ungroup()  %>%
   data.frame()
+
+
 
 #keep raw data but remove missing points
 #DataSum2496.mraw = DataSum2496[!is.na(DataSum2496$TurnAngle_deg),]
@@ -1188,7 +1234,8 @@ compare(meandspp.blm_2,meandspp.blm_3,meandspp.blm_4,meandspp.blm_5,meandspp.blm
 ```{r meander multi-level Baysemodels selection, echo=F, eval=F}
 
 # use all meander data points, not summarized data
-DSmeand_bmoddat = DataSum2496.meand[,c("SDMeander","lnCalcConcC","lnCalcConcC2",
+DSmeand_bmoddat = DataSum2496.meand[,c("SDMeander","lnCalcConc","lnCalcConc2",
+                                       "lnCalcConcC","lnCalcConcC2",
                                      "ExposureHrs","Spp","RepID")]
 DSmeand_bmoddat = DSmeand_bmoddat[!is.na(DSmeand_bmoddat$SDMeander),] # drops 26.1% of the data points when using full dataset; none if using summarized dataset 
 
@@ -1212,19 +1259,21 @@ meandspp.blm_2.rise = map2stan(
       mu  <-  a_fish[RepID] + 
               be_fish[RepID]*ExposeDummy + 
               bs*SppDummy + 
-              bt*(lnCalcConcC) +
-              bte*(ExposeDummy)*(lnCalcConcC) +
-              bts*(SppDummy)*(lnCalcConcC) +
-              bt2*(lnCalcConcC2) +
-              bt2e*(ExposeDummy)*(lnCalcConcC2) +
-              bt2s*(SppDummy)*(lnCalcConcC2) ,
+              bse*SppDummy*ExposeDummy + 
+              bt*(lnCalcConc) +
+              bte*(ExposeDummy)*(lnCalcConc) +
+              bts*(SppDummy)*(lnCalcConc) +
+              bt2*(lnCalcConc2) +
+              bt2e*(ExposeDummy)*(lnCalcConc2) +
+              bt2s*(SppDummy)*(lnCalcConc2) ,
            c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be), sigma=sigma_fish, Rho=Rho), 
-                   a ~ dnorm(0,10),
+                   a ~ dnorm(100,10),
                    be ~ dnorm(0,10),
                    sigma_fish ~ dcauchy(0,10),
                    Rho ~ dlkjcorr(2),
         bs ~ dnorm(0,10),
         bt ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
         bte ~ dnorm(0,10),
         bts ~ dnorm(0,10),
         bt2 ~ dnorm(0,10),
@@ -1242,40 +1291,192 @@ meandspp.blm_2.rise = map2stan(
  plot(precis(meandspp.blm_2.rise, prob = .95, depth=2))
 
  plot(meandspp.blm_2.rise)
-# this model's checks looked fine but it's fitting TERRIBLY. could be a plotting thing, but I think it's that the estimtd for the curvature of GS are way too high. Same with the basic blm_2 model above, but less so.  
+ 
+# the model without removing the tiny meanders (0-1) fit to actual observations TERRIBLY. could be a plotting thing, but I think it's that the estimtd for the curvature of GS are way too high. Same with the basic blm_2 model above, but less so.  
+
+# tried without the tiny meanders, an Rhat/ neff looked better (not great, but better). Sigma has some issues being estimated, but I think the rest look much muhc better than before the filtering.  Hwoever, the model still doesn't fit the data at all. Soemthing weird is going on. 
+ 
+# tried it without centered concentration variables and it worked way better. strange. Still not great. 
+ 
+ 
+ 
+set.seed(2019)
+meandspp.blm_3.ri = map2stan(
+  alist(
+    SDMeander ~ dnorm(mu, sigma), 
+      mu  <-  a_fish[RepID] + 
+              be*ExposeDummy + 
+              bs*SppDummy + 
+              bse*SppDummy*ExposeDummy + 
+              bt*(lnCalcConc) +
+              bte*(ExposeDummy)*(lnCalcConc) +
+              bts*(SppDummy)*(lnCalcConc) +
+              bt2*(lnCalcConc2) +
+              bt2e*(ExposeDummy)*(lnCalcConc2) +
+              bt2s*(SppDummy)*(lnCalcConc2) ,
+                  a_fish[RepID] ~ dnorm(a, sigma_fish), 
+                     a ~ dnorm(100,10),
+                     sigma_fish ~ dcauchy(0,10),
+        be ~ dnorm(0,10),
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bse ~ dnorm(0,10),
+        bte ~ dnorm(0,10),
+        bts ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt2e ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat, iter = 2000, warmup = 700, chains = 4)
+  ## compared this to a model without s*e and this one had an AIC that was 13.3 lower. So keep s*e; I also think it makes the model fit better when overlaid on the points. 
+
+  ## this model (Without random effect for individual slope for exposure time) seems to fit better bawsed on Rhat and neff. The trace plots look cleaner too; not perfect but better. 
+
 
  
-```
-### _2.rise is a fine model, and pretty well matches the other models, and lets us test the questions we're interested in. But the neff for sigma is pretty low. Trield various levels of dcauchy(0,X) and estimates didn't change too dramatically: with dcauchy(0,20) neff=26. With dcauchy(0,50) neff=4. with dcauchy(0,5) neff=30. with dcauchy(0,10) neff=25. Rhat ~1.1 - 1.2 for most also. Traceplots look okay but not perfect. Some sections where one or two of the chains don't mix (ie: are pretty thin lines). And sigma trace plots don't look great. But likely an okay model to use anyway. 
+
+# use all meander data points, not summarized data
+DSmeand_bmoddat_cat = DataSum2496.meand[,c("SDMeander","lnCalcConc","lnCalcConc2",
+                                     "ExposureHrs","Spp","RepID")]
+DSmeand_bmoddat_cat = DSmeand_bmoddat_cat[!is.na(DSmeand_bmoddat_cat$SDMeander),] # drops 26.1% of the data points when using full dataset; none if using summarized dataset 
+
+DSmeand_bmoddat_cat$GS24dummy <- as.numeric(ifelse(DSmeand_bmoddat_cat$Spp=="GS" & 
+                                                 DSmeand_bmoddat_cat$ExposureHrs==24,1,0))
+DSmeand_bmoddat_cat$GS96dummy <- as.numeric(ifelse(DSmeand_bmoddat_cat$Spp=="GS" & 
+                                                 DSmeand_bmoddat_cat$ExposureHrs==96,1,0))
+DSmeand_bmoddat_cat$WS24dummy <- as.numeric(ifelse(DSmeand_bmoddat_cat$Spp=="WS" & 
+                                                 DSmeand_bmoddat_cat$ExposureHrs==24,1,0))
+DSmeand_bmoddat_cat$WS96dummy <- as.numeric(ifelse(DSmeand_bmoddat_cat$Spp=="WS" & 
+                                                 DSmeand_bmoddat_cat$ExposureHrs==96,1,0))
+
+# remove fish with only one timepoint of detection, because cant add random slope with one timepoint
+DSmeand_bmoddat_cat = DSmeand_bmoddat_cat[!(DSmeand_bmoddat_cat$RepID %in% paste0(c(0,5,100,500,1000,2000), "-WS-4")),]
+DSmeand_bmoddat_cat$RepID = as.factor(as.character(DSmeand_bmoddat_cat$RepID))
+
+DSmeand_bmoddat_cat = DSmeand_bmoddat_cat[order(DSmeand_bmoddat_cat$RepID),] 
+
+
+set.seed(2019)
+meandspp.blm_cat.ri = map2stan(
+  alist(
+    SDMeander ~ dnorm(mu, sigma), 
+      mu  <-  a_fish[RepID] + 
+      
+              bGS24*GS24dummy + 
+              bGS96*GS96dummy +
+              bWS24*WS24dummy +
+              bWS96*WS96dummy +
+      
+              bt*(lnCalcConc) +
+              bt2*(lnCalcConc2) +
+      
+              bt_GS24*(lnCalcConc)*(GS24dummy) +
+              bt2_GS24*(lnCalcConc2)*(GS24dummy) +
+              bt_GS96*(lnCalcConc)*(GS96dummy) +
+              bt2_GS96*(lnCalcConc2)*(GS96dummy) +
+              bt_WS24*(lnCalcConc)*(WS24dummy) +
+              bt2_WS24*(lnCalcConc2)*(WS24dummy) +
+              bt_WS96*(lnCalcConc)*(WS96dummy) +
+              bt2_WS96*(lnCalcConc2)*(WS96dummy),
+      
+                  a_fish[RepID] ~ dnorm(a, sigma_fish), 
+                     a ~ dnorm(100,10),
+                     sigma_fish ~ dcauchy(0,10),
+        bGS24 ~ dnorm(0,10),
+        bGS96 ~ dnorm(0,10),
+        bWS24 ~ dnorm(0,10),
+        bWS96 ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt_GS24 ~ dnorm(0,10),
+        bt_GS96 ~ dnorm(0,10),
+        bt_WS24 ~ dnorm(0,10),
+        bt_WS96 ~ dnorm(0,10),
+        bt2_GS24 ~ dnorm(0,10),
+        bt2_GS96 ~ dnorm(0,10),
+        bt2_WS24 ~ dnorm(0,10),
+        bt2_WS96 ~ dnorm(0,10),
+    
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat_cat, iter = 2000, warmup = 700, chains = 4)
+
+
+
+
+DSmeand_bmoddat96 = DSmeand_bmoddat[DSmeand_bmoddat$ExposureHrs==96,]
+
+
+set.seed(2019)
+meandspp.blm_96 = map2stan(
+  alist(
+    SDMeander ~ dnorm(mu, sigma), 
+      mu  <-  a +
+              #a_tray[RepID] +
+              bs*SppDummy + 
+              bt*(lnCalcConc) +
+              bts*(SppDummy)*(lnCalcConc) +
+              bt2*(lnCalcConc2) +
+              bt2s*(SppDummy)*(lnCalcConc2) ,
+        a ~ dnorm(100,10),
+        bs ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bts ~ dnorm(0,10),
+        bt2 ~ dnorm(0,10),
+        bt2s ~ dnorm(0,10),
+    sigma ~ dcauchy(0,10)
+    ) ,
+  data = DSmeand_bmoddat96, iter = 2000, warmup = 700, chains = 4)
  
-### Comparing the models with and wihtout random effects, we see that when random effects are added the estimates all move closer to zero (shrinkage?) and the variance gets arger for alle stimates that do not include any effect of exposure time (since that is the random slope). Those which do include exposure time show reduced sd values because some of the variation assocaited with exposure time is accounted for by the individual clustering. 
+```
+### _2.rise is a logical model, and pretty well matches the other models, and lets us test the questions we're interested in. But the neff for sigma is pretty low. Tried various levels of dcauchy(0,X) and estimates didn't change too dramatically: with dcauchy(0,20) neff=26. With dcauchy(0,50) neff=4. with dcauchy(0,5) neff=30. with dcauchy(0,10) neff=25. Rhat ~1.1 - 1.2 for most also. Traceplots look okay but not perfect. Some sections where one or two of the chains don't mix (ie: are pretty thin lines). And sigma trace plots don't look great. But likely an okay model to use anyway. 
+
+### tried with a prior for alpha that was (100,10) (mean SDMeader was 195). And that alone didn't help much
+
+### tried filtering out the tiny meanders, because there were a lot and it seems like they could be within the range of error of the computer tracking.  
+
+### Unfortunately, none of these changes to make the model converge better have improved the fit with the raw data. The curve of the GS preduction is too big, and potentially even in the wrong direction (should be concave but it's convex). And the WS is too flat when it should be curved. It's almost as though the bt2 element was added to the wrong place....hm. 
+ 
+### tried it without centering the variables for concentration; I coulnd't wrap my head around how a quadratic would work with centered vars. Tried a 'guess and check' method to see if I could pick parameters that would make approximately the right shape, and I couldn't find them 
+ 
+### Comparing the models with and wihtout random effects, we see that when random effects are added the estimates all move closer to zero (shrinkage?) and the variance gets arger for alle stimates that do not include any effect of exposure time (since that is the random slope). Those which do include exposure time show reduced sd values because some of the variation assocaited with exposure time is accounted for by the individual clustering. I think this all makes sense
 
 
 ```{r meander multi-level Bayesmodels predict, echo=F, eval=F}
 
 # pull posterior from model:
 set.seed(42)
-post = extract.samples(meandspp.blm_2.rise)
+post = extract.samples(meandspp.blm_96)
 
 # set up dataframe to plot posterior predictions
-preddat = list(CalcConc=rep(seq(0, 2250, 2), 4), 
-               lnCalcConc=log(rep(seq(0, 2250, 2),4)+1), 
-               lnCalcConcC=   (log(rep(seq(0, 2250, 2),4)+1)) - 
-                 mean(DataSum2496.dist$lnCalcConc) ,
-               lnCalcConcC2=( (log(rep(seq(0, 2250, 2),4)+1)) - 
-                 mean(DataSum2496.dist$lnCalcConc) ) ^ 2 ,               
-               ExposeDummy = rep(c(0,1), each=1126*2), 
-               SppDummy = rep(rep(c(0,1),each=1126),2), 
-               RepID = rep(16,4504))
+# preddat = list(CalcConc=rep(seq(0, 2250, 2), 4), 
+#                lnCalcConc=log(rep(seq(0, 2250, 2),4)+1), 
+#                lnCalcConc2=log(rep(seq(0, 2250, 2),4)+1) ^2, 
+#                lnCalcConcC=   (log(rep(seq(0, 2250, 2),4)+1)) - 
+#                  mean(DataSum2496.dist$lnCalcConc) ,
+#                lnCalcConcC2=( (log(rep(seq(0, 2250, 2),4)+1)) - 
+#                  mean(DataSum2496.dist$lnCalcConc) ) ^ 2 ,               
+#                ExposeDummy = rep(c(0,1), each=1126*2), 
+#                SppDummy = rep(rep(c(0,1),each=1126),2), 
+#                RepID = rep(16,4504))
 
+preddat = list(CalcConc=rep(seq(0, 2250, 2), 2), 
+               lnCalcConc=log(rep(seq(0, 2250, 2),2)+1), 
+               lnCalcConc2=log(rep(seq(0, 2250, 2),2)+1) ^2, 
+               lnCalcConcC=   (log(rep(seq(0, 2250, 2),2)+1)) - 
+                 mean(DataSum2496.dist$lnCalcConc) ,
+               lnCalcConcC2=( (log(rep(seq(0, 2250, 2),2)+1)) - 
+                 mean(DataSum2496.dist$lnCalcConc) ) ^ 2 ,               
+               SppDummy = rep(c(0,1), each=1126))
 
 # replace individual fish estimates with global estimate; this should predict to the average individual in a population...so since I want to get at the population level response this seems most appropriate.
 a_global = matrix(post$a,5200,90) # 5200 = 1300 samples per chain x 4 chains
 be_global = matrix(post$be,5200,90)
 
 # use link to predict to mean only
-link.2.rise <- link(meandspp.blm_2.rise, n=1000, data= preddat, 
-                        replace = list(a_fish = a_global, 
+link.2.rise <- link(meandspp.blm_96, n=1000, data= preddat)#, 
+                        replace = list(a_fish = a_global)), 
                                         be_fish = be_global) )
 
 preddat.df <- data.frame(sapply(preddat,c)) # thanks stack overflow! https://stackoverflow.com/questions/4227223/convert-a-list-to-a-data-frame
@@ -1291,14 +1492,14 @@ preddat.df$link_PI95 = apply(link.2.rise, 2, PI, .95)[2,]
 
 
 MeandPred_transf_plot = ggplot() + 
-  geom_point(data=DataSum2496.meand,
-             aes(x=(lnCalcConcC),                          
+  geom_point(data=DSmeand_bmoddat96,
+             aes(x=(lnCalcConc),                          
                  y=SDMeander, 
                  color=factor(Spp))) + 
-  geom_ribbon(data = preddat.df, aes(x=(lnCalcConcC), 
+  geom_ribbon(data = preddat.df, aes(x=(lnCalcConc), 
               ymin=link_PI05, ymax=link_PI95), 
               alpha=.4, col="grey70")+
-  geom_line(data = preddat.df, aes(x=(lnCalcConcC), y=link_mu_mn), lwd=.2)+
+  geom_line(data = preddat.df, aes(x=(lnCalcConc), y=link_mu_mn), lwd=.2)+
     facet_grid(Spp~ExposureHrs, scales="free", labeller = labeller(
       ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure"),
       Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
@@ -1307,6 +1508,34 @@ MeandPred_transf_plot = ggplot() +
     scale_x_continuous(name="Log-centered Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
     theme_bw()
 
+MeandPred_transf_plot96 = ggplot() + 
+  geom_point(data=DataSum2496.meand,
+             aes(x=(lnCalcConcC),                          
+                 y=SDMeander, 
+                 color=factor(Spp))) + 
+  geom_ribbon(data = preddat.df, aes(x=(lnCalcConcC), 
+              ymin=link_PI05, ymax=link_PI95), 
+              alpha=.4, col="grey70")+
+  geom_line(data = preddat.df, aes(x=(lnCalcConcC), y=link_mu_mn), lwd=.2)+
+    facet_wrap(Spp~., scales="free", labeller = labeller(
+      Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
+    scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
+    ylab("SD of Track Meander (deg/mm)") + 
+    scale_x_continuous(name="Log-centered Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
+    theme_bw()
+
+
+MeandPred_transf_plot_smooth = ggplot(data=DataSum2496.meand,
+             aes(x=(lnCalcConcC),                          
+                 y=SDMeander, 
+                 color=factor(Spp))) + geom_point() + geom_smooth(span=1.25) + 
+    facet_grid(Spp~ExposureHrs, scales="free", labeller = labeller(
+      ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure"),
+      Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
+    scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
+    ylab("SD of Track Meander (deg/mm)") + 
+    scale_x_continuous(name="Log-centered Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
+    theme_bw()
 
 MeandPred_orig_plot = ggplot() + 
   geom_point(data=DataSum2496.meand,
@@ -1325,6 +1554,7 @@ MeandPred_orig_plot = ggplot() +
   scale_x_continuous(name="Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
   theme_bw()
 
+MeandPred_transf_plot_smooth
 MeandPred_transf_plot
 MeandPred_orig_plot 
 
@@ -2116,6 +2346,24 @@ CentPred_orig_plot2_mod8 = ggplot() +
   theme_bw()
 
 
+CentPred_orig_plot_96_mod8 = ggplot() + 
+  geom_point(data=DataSum2496.centC[DataSum2496.centC$ExposureHrs==96,],
+             aes(x=(calcConc),                          
+                 y=nCent/npos, 
+                 color=factor(Spp))) + 
+  geom_ribbon(data = preddat.df[preddat.df$ExposureHrs==96,], 
+              aes(x=(CalcConc), 
+              ymin=link_PI05, ymax=link_PI95), 
+              alpha=.4, col="grey70")+
+  geom_line(data = preddat.df[preddat.df$ExposureHrs==96,],
+            aes(x=(CalcConc), y=link_mu_mn), lwd=.2)+
+  facet_grid(Spp~., scales="free", labeller = labeller(
+    Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
+  scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
+  ylab("Proportion of Positions within Central Zone") + 
+  scale_x_continuous(name="Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
+  theme_bw()
+
 
 # CentPred_transf_plot2_mod1
 # CentPred_transf_plot2_mod2
@@ -2134,7 +2382,7 @@ CentPred_transf_plot2_mod8
 # CentPred_orig_plot2_mod6
 # CentPred_orig_plot2_mod7
 CentPred_orig_plot2_mod8
-
+CentPred_orig_plot_96_mod8
 ```
  ### Hm. WAIC suggests they're nearly all equal, except for 7 (barely, nearly better). From looking at the fit of the prediction lines, I think 6 is not a good model because without the quadratic it doesn't fit the curve of the data and the mechanism we expected. Model 5 allows the quadratic to vary by species (green sturgeon curve becomes flatter in the transformed plots), and the effect of concentration to vary by exposure period (24 hr curve becomes flatter). This looks pretty good, but the confidence bands are wider than those for model 4 while the trend is very smiliar. Model 3 lets the quadratic vary by exposure period (but not spp), so I built/fit Model 7 to let both the standard and quadratic effectws for treatment vary by exposure period and species (ie: seperate line for each of the four facets). This model seems to be better, or at least not worse, based on AIC, and the plots look better too. Let's go with 7 - I think it's similar to the model for distance too, which will make the paper easier to write. Oops. Model 8 matches the distance model. And it is slightly better on AIC - it removes the interactions between treatment and exposure time. 
  
