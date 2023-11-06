@@ -267,6 +267,21 @@ gs.end.nl3 = map2stan(
  # trace plots look good
   # neff/Rhat good
     
+          
+          gs.end.nl3.offset = map2stan(
+            alist(
+              lnsec ~ dnorm(mu, sigma),
+              mu  <- a_rnd[trialRound] + a + bn*lnConcC + bl*TLcmC,
+                  a_rnd[trialRound] ~ dnorm(0,a_sig),
+                     a_sig ~ dcauchy(0,10),
+                  a ~ dnorm(0,10),
+                  bn ~ dnorm(0,10),
+                  bl ~ dnorm(0,10),
+              sigma ~ dcauchy(0,10)
+              ) ,
+            data = moddat3min, iter = 2000, warmup = 500, chains = 4)
+           # trace plots look good
+            # neff/Rhat good
 
 gs.end.lt = map2stan(
   alist(
@@ -308,11 +323,11 @@ gs.end.anlt = map2stan(
 
 # pull posterior from model:
 set.seed(42)
-post = extract.samples(gs.end.nl)
-post3 = extract.samples(gs.end.nl3)
+#post = extract.samples(gs.end.nl)
+post3 = extract.samples(gs.end.nl3.offset)
 
 # set up dataframe to plot posterior predictions at the average fish length
-preddat = data.frame(expand_grid(conc=seq(0, 1000, 2), 
+preddat = data.frame(expand_grid(conc=seq(0, 1000, 5), 
               TLcm = mean(moddat3min$TLcm), 
               trialRound = 1))
  preddat$TLcmC = preddat$TLcm -  mean(moddat3min$TLcm)
@@ -322,19 +337,20 @@ preddat = data.frame(expand_grid(conc=seq(0, 1000, 2),
 
 # replace individual fish estimates with global estimate; this should predict to the average individual in a population...so since I want to get at the population level response this seems more appropriate.
 a_global = matrix(post$a,6000,19)
+arnd_zeros = matrix(0,6000,19)
 
 # use link to predict to mean only
-link.gs.end.nl <- link(gs.end.nl, n=1000, data= preddat, 
-                         replace = list(a_rnd = a_global) )
-link.gs.end.nl3 <- link(gs.end.nl3, n=1000, data= preddat, 
-                         replace = list(a_rnd = a_global) )
+#link.gs.end.nl <- link(gs.end.nl, n=1000, data= preddat, 
+#                         replace = list(a_rnd = a_global) )
+link.gs.end.nl3.o <- link(gs.end.nl3.offset, n=1000, data= preddat, 
+                         replace = list(a_rnd = arnd_zeros) )#a_global) )
 
 preddat.df <- preddat
   #data.frame(sapply(preddat,c)) # thanks stack overflow! https://stackoverflow.com/questions/4227223/convert-a-list-to-a-data-frame
 
-preddat.df$link_mu_mn <- apply(link.gs.end.nl3, 2, mean) 
-preddat.df$link_PI05 = apply(link.gs.end.nl3, 2, PI, .95)[1,] 
-preddat.df$link_PI95 = apply(link.gs.end.nl3, 2, PI, .95)[2,] 
+preddat.df$link_mu_mn <- apply(link.gs.end.nl3.o, 2, mean) 
+preddat.df$link_PI05 = apply(link.gs.end.nl3.o, 2, PI, .95)[1,] 
+preddat.df$link_PI95 = apply(link.gs.end.nl3.o, 2, PI, .95)[2,] 
 
 
 gs.end.transf3 = ggplot() + 
@@ -343,12 +359,12 @@ gs.end.transf3 = ggplot() +
                  y=lnsec)) + 
   geom_ribbon(data = preddat.df, aes(x=(lnConcC), 
               ymin=link_PI05, ymax=link_PI95), 
-              alpha=.4, col="grey70")+
+              alpha=.4, col="grey70") +
   geom_line(data = preddat.df, aes(x=(lnConcC), y=link_mu_mn), lwd=.2)+
     ylab("ln(Seconds to Fatigue)") + #ylim(c(3.5, 8.5)) + 
     scale_x_continuous(name="ln(Nominal Fipronil Concentration (ug/L))") + 
     theme_bw()
-gs.end.transf
+
 
 
 gs.end.orig3 = ggplot() + 
@@ -721,13 +737,13 @@ ws.end.nl.p = map2stan(
   # neff /Rhat good
     
 
-ws.end.nl.p3 = map2stan(
+ws.end.nl.p3.offset = map2stan(
   alist(
     lnsec ~ dnorm(mu, sigma),
-    mu  <- a_rnd[trialRound] + bn*lnConcC + bl*TLcmC,
-        a_rnd[trialRound] ~ dnorm(a,a_sig),
-           a ~ dnorm(0,10),
+    mu  <- a + a_rnd[trialRound] + bn*lnConcC + bl*TLcmC,
+        a_rnd[trialRound] ~ dnorm(0,a_sig),
            a_sig ~ dcauchy(0,10),
+        a ~ dnorm(0,10),
         bn ~ dnorm(0,10),
         bl ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
@@ -748,7 +764,7 @@ ws.end.nl.p3 = map2stan(
 
 # pull posterior from model:
 set.seed(42)
-post = extract.samples(ws.end.nl.p3)
+post = extract.samples(ws.end.nl.p3.offset)
 
 # set up dataframe to plot posterior predictions at the average fish length
 preddat = data.frame(expand_grid(conc=seq(0, 1000, 2), 
@@ -761,10 +777,11 @@ preddat = data.frame(expand_grid(conc=seq(0, 1000, 2),
 
 # replace individual fish estimates with global estimate; this should predict to the average individual in a population...so since I want to get at the population level response this seems more appropriate.
 a_global = matrix(post$a,6000,19)
+arnd_zero = matrix(0,6000,19)
 
 # use link to predict to mean only
-link.ws.end.nl.p3 <- link(ws.end.nl.p3, n=1000, data= preddat, 
-                         replace = list(a_rnd = a_global) )
+link.ws.end.nl.p3 <- link(ws.end.nl.p3.offset, n=1000, data= preddat, 
+                         replace = list(a_rnd = arnd_zero))# a_global) )
 
 preddat.df <- preddat
   #data.frame(sapply(preddat,c)) # thanks stack overflow! https://stackoverflow.com/questions/4227223/convert-a-list-to-a-data-frame
@@ -789,7 +806,7 @@ ws.end.transf3
 
 
 ws.end.orig3 = ggplot() + 
-  geom_point(data=moddat,
+  geom_point(data=moddatwspart3g,
              aes(x=(nomconc),                          
                  y=fatigueTimeSec)) + 
   geom_ribbon(data = preddat.df, aes(x=(conc), 

@@ -67,15 +67,46 @@ DataSum2496 = read.csv("outputData/Exposure_Outputdata/Bifenthrin_2020_Cleaned_F
 ```{r distance data, echo=F}
 
 ## Summarize to take total distance (sum moved in a trial) for each fish replicate
+DataSum96.dist = DataSum2496 %>%
+  filter(ExposureHrs==96) %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
+  summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100)) %>%
+  ungroup()  %>%
+  data.frame()
+
+## Summarize to take total distance (sum moved in a trial) for each fish replicate
 DataSum2496.dist = DataSum2496 %>%
   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
   #summarize(TotalfishDist = sum(SumDistMoved, na.rm=T)) %>%
   summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100)) %>%
   ungroup()  %>%
   data.frame()
+
+
 ```
 
 ```{r distance plots}
+## with 96
+totfishdist96_hist = ggplot(DataSum96.dist, aes(x=TotalfishDist_m) ) + 
+                     geom_histogram(bins=15) + 
+                     facet_wrap(Treatment~Spp, labeller = labeller(
+                         Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+ 
+                     theme_bw()
+
+totfishdist96 = ggplot(DataSum96.dist, aes(fill=factor(Treatment), y=TotalfishDist_m, 
+                               x=factor(ExposureHrs) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_wrap(~Spp, labeller = labeller(
+                        Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),
+                        scales="free") +
+                      ylab("Total Trial Distance (m)") + 
+                      xlab("Exposure Hours") +
+                      scale_fill_viridis_d(name="Nominal Fpironil\nConcentration (ug/L)") + 
+                      theme_bw()
+
+totfishdist96
+
+
 totfishdist_hist = ggplot(DataSum2496.dist, aes(x=TotalfishDist_m) ) + 
                      geom_histogram(bins=15) + 
                      facet_wrap(Treatment~Spp, labeller = labeller(
@@ -94,9 +125,95 @@ totfishdist = ggplot(DataSum2496.dist, aes(fill=factor(Treatment), y=TotalfishDi
                       theme_bw()
 
 totfishdist
+
+    totfishdist2496_Control = ggplot(DataSum2496.dist[DataSum2496.dist$Treatment==0,],
+                                    aes(y=TotalfishDist_m, 
+                                   x=factor(ExposureHrs),
+                                   fill=Spp) ) + 
+                          geom_boxplot(outlier.size = .75) + 
+                          facet_wrap(~Spp, labeller = labeller(
+                            Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+                          ylab("Total Trial Distance (m)") + 
+                          xlab("Exposure Hours") +
+                          scale_fill_manual(values=c("palegreen3","grey70"))+
+                          theme_bw()
+    
+    totfishdist2496_Control
+    
+tiff("figures/Exposure_OutputFigs/TotalDistance_BifControl.tiff", width=140, height=70, units="mm", compression="lzw", res=150)
+totfishdist2496_Control
+dev.off()
 ```
 
+```{r visualizing as distributions of percent change with 96}
+
+DataSum96.dist.cont = DataSum96.dist[DataSum96.dist$Treatment==0, c("Spp","ExposureHrs","Replicate","TotalfishDist_m")]
+   DataSum96.dist.cont = rename(DataSum96.dist.cont,
+                                 ControlTotaldist = TotalfishDist_m)
+   
+DataSum96.dist.treat = DataSum96.dist[DataSum96.dist$Treatment!=0, c("Spp","ExposureHrs","Replicate","Treatment","TotalfishDist_m")]
+
+DataSum96.dist.pseudowide = merge(DataSum96.dist.treat, DataSum96.dist.cont, all.x=T)
+
+dist.dist.func = function(a,b) { 
+  g <- expand.grid(data.frame(a, b))
+  PercDiff <- (g$b - g$a)/g$a
+  return(PercDiff) 
+  }
+  
+PercChg96 = DataSum96.dist.pseudowide %>%
+  group_by(Spp, Treatment, Replicate) %>%
+  summarize(PercChg = dist.dist.func(a=ControlTotaldist, b=TotalfishDist_m)) %>%
+           ungroup() %>% data.frame()
+
+  PercChgGSlm = lm(PercChg ~ factor(Treatment), 
+                     data = PercChg96[PercChg96$Spp=="GS",])
+    PercChgGSaov = aov(PercChgGSlm)
+    summary(PercChgGSaov)
+      TukeyHSD(PercChgGSaov)
+       # nothing is significantly different
+     
+    PercChgWSlm = lm(PercChg ~ factor(Treatment), 
+                     data = PercChg96[PercChg96$Spp=="WS",])
+    PercChgWSaov = aov(PercChgWSlm)
+    summary(PercChgWSaov)
+      TukeyHSD(PercChgWSaov)
+       # difference between 2000 and 5:500 are significant @ p<0.02; nothing else
+  
+# are the boxes different from zero?      
+onesamp.ttest <- PercChg96 %>%
+  group_by(Spp, Treatment) %>%
+  t_test(PercChg~1) %>%
+  adjust_pvalue(method = "BH") %>%
+  add_significance() %>%
+  data.frame()
+onesamp.ttest
+        
+
+DistnChg96.dist = ggplot(PercChg96, 
+                         aes(y=PercChg, x=factor(Treatment), fill=factor(Treatment)) ) + 
+                       geom_hline(yintercept = 0, lwd=.6, linetype="dashed", color="black")+
+                       geom_boxplot(outlier.shape=NA) +                      
+  #geom_point(fill="grey60") + 
+                       facet_grid(.~Spp, labeller = labeller(
+                         Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")) )+
+                       geom_hline(yintercept = (-0.5), lwd=.6, linetype="dashed", color="red")+
+                       ylab("Change in Swimming Distance (m)") + ylim(c(-1,1)) +
+                       xlab("Bifenthrin Nominal Concentration") +
+                       scale_fill_viridis_d(guide=F)+
+                       theme_bw()
+DistnChg96.dist
+
+tiff("/Users/Anna/Documents/ResearchGit/SturgContam/figures/Exposure_OutputFigs/TrialDistance_Bif96_Perchg.tiff", width=140, height=70, units="mm", compression="lzw", res=150)
+DistnChg96.dist
+dev.off()
+
+```
+
+
 ```{r other ways of visualizing distance}
+## these were written prior to deciding how to visualize and plot change from control
+#(which was updated Dec 2021)
 
  # look at the CHANGE between mean distance of control (mean for treatment-exposurehrs) and target conc (each individual)
  
@@ -289,6 +406,7 @@ DataSumChg.Vel = DataSum2496.vel %>%
 
 ## Summarize meander and turn angle
 DataSum2496.meand = DataSum2496 %>%
+  #filter(Meander>0.1) %>% # initially added this because many of the meander values are tiny and seem to be causing issues. Generally the fish move straight, but we want to know whether they turn more than normal, when they do turn. Perhaps should adjust all values < threshold to zero then run a zero inflated model on these. Predict the % of time they are moving straight (0) and then evaluate how much they are turning, if they turn. That will be a problem for a later day. 
   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, calcConc, RepID) %>%
   summarize(MnTurnAngle = deg(circ.mean.na(rad(TurnAngleCirc))), 
             VarTurnAngle = deg(circ.disp.na(rad(TurnAngleCirc))$var), # circular variance
@@ -306,7 +424,7 @@ DataSum2496.mraw = DataSum2496[!is.na(DataSum2496$TurnAngle_deg),]
 meanMeander.plot = ggplot(DataSum2496.meand, 
                            aes(fill=factor(Treatment), y=abs(MnMeander), 
                                x=factor(ExposureHrs) ) ) + geom_boxplot(outlier.size = .75) + 
-  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")), scales="free") +
   ylab("Mean Meander (deg/mm)") + 
   xlab ("Exposure Hours") + 
   scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
@@ -317,7 +435,7 @@ mnTurnangle.plot = ggplot(DataSum2496.meand,
                               x=factor(ExposureHrs) ) ) + 
   geom_boxplot(outlier.size = .75) + 
   #geom_violin(outlier.size = .75) + 
-  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")), scales="free") +
   ylab("Mean Turn Angle (deg)") + 
   xlab ("Exposure Hours") + 
   scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
@@ -326,7 +444,7 @@ mnTurnangle.plot = ggplot(DataSum2496.meand,
 sdMeander.plot = ggplot(DataSum2496.meand, 
                            aes(fill=factor(Treatment), y=(SDMeander), 
                                x=factor(ExposureHrs) ) ) + geom_boxplot(outlier.size = .75) + 
-  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")), scales="free") +
   ylab("Standard Deviation of Meander (deg/mm)") + 
   xlab ("Exposure Hours") + 
   scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
@@ -335,7 +453,7 @@ sdMeander.plot = ggplot(DataSum2496.meand,
 CVMeander.plot = ggplot(DataSum2496.meand, 
                            aes(fill=factor(Treatment), y=(CVMeander), 
                                x=factor(ExposureHrs) ) ) + geom_boxplot(outlier.size = .75) + 
-  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")), scales="free") +
   ylab("Coef-Var of Meander (deg/mm)") + 
   xlab ("Exposure Hours") + ylim(c(0,100))+
   scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
@@ -346,7 +464,7 @@ VarTurnangle.plot = ggplot(DataSum2496.meand,
                               x=factor(ExposureHrs) ) ) + 
   geom_boxplot(outlier.size = .75) + 
   #geom_violin(outlier.size = .75) + 
-  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")), scales="free") +
   ylab("Circular Variance of Turn Angle (deg)") + 
   xlab ("Exposure Hours") + 
   scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
@@ -359,6 +477,202 @@ CVMeander.plot
 mnTurnangle.plot
 VarTurnangle.plot
 ```
+
+```{r visualizing as distns of percent change in circular turn angle at 96}
+DataSum96.ta = DataSum2496.meand[DataSum2496.meand$ExposureHrs==96,]
+
+DataSum96.ta.cont = DataSum96.ta[DataSum96.ta$Treatment==0, c("Spp","ExposureHrs","Replicate","MnTurnAngle","VarTurnAngle")]
+   DataSum96.ta.cont = rename(DataSum96.ta.cont,
+                                 ControlMnTA = MnTurnAngle,
+                                 ControlVarTA = VarTurnAngle)
+   
+DataSum96.ta.treat = DataSum96.ta[DataSum96.ta$Treatment!=0, c("Spp","ExposureHrs","Replicate","Treatment","MnTurnAngle","VarTurnAngle")]
+
+DataSum96.ta.pseudowide = merge(DataSum96.ta.treat, DataSum96.ta.cont, all.x=T)
+
+dist.func = function(a,b) { 
+  g <- expand.grid(data.frame(a, b))
+  PercDiff <- (g$b - g$a)/g$a
+  return(PercDiff) 
+  }
+  
+PercChg96 = DataSum96.ta.pseudowide %>%
+  group_by(Spp, Treatment, Replicate) %>%
+  summarize(PercChgMn_TA = dist.func(a=ControlMnTA, b=MnTurnAngle),
+            PercChgVar_TA = dist.func(a=ControlVarTA, b=VarTurnAngle)) %>%
+           ungroup() %>% data.frame()
+
+  PercChgMnTA.GSlm = lm(PercChgMn_TA ~ factor(Treatment), 
+                     data = PercChg96[PercChg96$Spp=="GS",])
+    PercChgMnTA.GSaov = aov(PercChgMnTA.GSlm)
+    summary(PercChgMnTA.GSaov)
+      TukeyHSD(PercChgMnTA.GSaov)
+       # nothing is significantly different
+     
+    PercChgMnTA.WSlm = lm(PercChgMn_TA ~ factor(Treatment), 
+                     data = PercChg96[PercChg96$Spp=="WS",])
+    PercChgMnTA.WSaov = aov(PercChgMn.WSlm)
+    summary(PercChgMnTA.WSaov)
+      TukeyHSD(PercChgMnTA.WSaov)
+       # nothing is significantly different
+    
+  PercChgVarTA.GSlm = lm(PercChgVar_TA ~ factor(Treatment), 
+                     data = PercChg96[PercChg96$Spp=="GS",])
+    PercChgVarTA.GSaov = aov(PercChgVarTA.GSlm)
+    summary(PercChgVarTA.GSaov)
+      TukeyHSD(PercChgVarTA.GSaov)
+       # 2000 is significantly different than 5, 100, 500 @ p<0.05; nothing else
+     
+    PercChgVarTA.WSlm = lm(PercChgVar_TA ~ factor(Treatment), 
+                     data = PercChg96[PercChg96$Spp=="WS",])
+    PercChgVarTA.WSaov = aov(PercChgVarTA.WSlm)
+    summary(PercChgVarTA.WSaov)
+      TukeyHSD(PercChgVarTA.WSaov)
+       # things are close but not significantly different
+    
+# are the boxes different from zero?      
+onesamp.ttest <- PercChg96 %>%
+  group_by(Spp, Treatment) %>%
+  t_test(PercChgVar_TA~1) %>%
+  adjust_pvalue(method = "BH") %>%
+  add_significance() %>%
+  data.frame()
+onesamp.ttest
+
+DistnChgMnta.96= ggplot(PercChg96, 
+                         aes(y=PercChgMn_TA, x=factor(Treatment),
+                             fill=factor(Treatment)) ) + 
+                       geom_hline(yintercept = 0, lwd=.6, 
+                                  linetype="dashed", color="black")+
+                       geom_boxplot(outlier.shape=NA) +                      
+  #geom_point(fill="grey60") + 
+                       facet_grid(.~Spp, labeller = labeller(
+                         Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),
+                         scales="free" )+
+                       geom_hline(yintercept = c(-0.5,0.5), lwd=.6, 
+                              linetype="dashed", color="red") +
+                       ylab("Change in Mean Turning Angle (deg)") + ylim(c(-6,6)) +
+                       xlab("Bifenthrin Nominal Concentration") +
+                       scale_fill_viridis_d(guide=F)+
+                       theme_bw()
+DistnChgMnta.96
+
+
+DistnChgVarTA.96= ggplot(PercChg96, 
+                         aes(y=PercChgVar_TA, x=factor(Treatment),
+                             fill=factor(Treatment)) ) + 
+                       geom_hline(yintercept = 0, lwd=.6, 
+                                  linetype="dashed", color="black")+
+                       geom_boxplot(outlier.shape=NA) +                      
+  #geom_point(fill="grey60") + 
+                       geom_hline(yintercept = c(0.5), lwd=.3, 
+                              linetype="dashed", color="red") +
+                       facet_grid(.~Spp, labeller = labeller(
+                         Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),
+                         scales="free" )+
+                        ylab("Change in Circular Variance \nof Turn Angle (deg)") + 
+                        ylim(c(-1,5)) +
+                       xlab("Bifenthrin Nominal Concentration (ng/L)") +
+                       scale_fill_viridis_d(guide=F)+
+                       theme_bw()
+DistnChgVarTA.96
+
+tiff("/Users/Anna/Documents/ResearchGit/SturgContam/figures/Exposure_OutputFigs/VarTA_Bif96_Perchg.tiff", width=140, height=70, units="mm", compression="lzw", res=150)
+DistnChgVarTA.96
+dev.off()
+
+```
+
+```{r visualizing as distns of percent change in meander at 96}
+DataSum96.meand = DataSum2496.meand[DataSum2496.meand$ExposureHrs==96,]
+
+DataSum96.meand.cont = DataSum96.meand[DataSum96.meand$Treatment==0, c("Spp","ExposureHrs","Replicate","MnMeander","SDMeander")]
+   DataSum96.meand.cont = rename(DataSum96.meand.cont,
+                                 ControlMnMeander = MnMeander,
+                                 ControlSDMeander = SDMeander)
+   
+DataSum96.meand.treat = DataSum96.meand[DataSum96.meand$Treatment!=0, c("Spp","ExposureHrs","Replicate","Treatment","MnMeander","SDMeander")]
+
+DataSum96.meand.pseudowide = merge(DataSum96.meand.treat, DataSum96.meand.cont, all.x=T)
+
+dist.func = function(a,b) { 
+  g <- expand.grid(data.frame(a, b))
+  PercDiff <- (g$b - g$a)/g$a
+  return(PercDiff) 
+  }
+  
+PercChg96 = DataSum96.meand.pseudowide %>%
+  group_by(Spp, Treatment, Replicate) %>%
+  summarize(PercChgMn = dist.func(a=ControlMnMeander, b=MnMeander),
+            PercChgSD = dist.func(a=ControlSDMeander, b=SDMeander)) %>%
+           ungroup() %>% data.frame()
+
+  PercChgMn.GSlm = lm(PercChgMn ~ factor(Treatment), 
+                     data = PercChg96[PercChg96$Spp=="GS",])
+    PercChgMn.GSaov = aov(PercChgMn.GSlm)
+    summary(PercChgMn.GSaov)
+      TukeyHSD(PercChgMn.GSaov)
+       # nothing is significantly different
+     
+    PercChgMn.WSlm = lm(PercChgMn ~ factor(Treatment), 
+                     data = PercChg96[PercChg96$Spp=="WS",])
+    PercChgMn.WSaov = aov(PercChgMn.WSlm)
+    summary(PercChgMn.WSaov)
+      TukeyHSD(PercChgMn.WSaov)
+       # nothing is significantly different
+    
+  PercChgSD.GSlm = lm(PercChgSD ~ factor(Treatment), 
+                     data = PercChg96[PercChg96$Spp=="GS",])
+    PercChgSD.GSaov = aov(PercChgSD.GSlm)
+    summary(PercChgSD.GSaov)
+      TukeyHSD(PercChgSD.GSaov)
+       # nothing is significantly different
+     
+    PercChgMn.WSlm = lm(PercChgMn ~ factor(Treatment), 
+                     data = PercChg96[PercChg96$Spp=="WS",])
+    PercChgMn.WSaov = aov(PercChgMn.WSlm)
+    summary(PercChgMn.WSaov)
+      TukeyHSD(PercChgMn.WSaov)
+       # nothing is significantly different
+    
+
+DistnChgMn.96.meand= ggplot(PercChg96, 
+                         aes(y=PercChgMn, x=factor(Treatment), fill=factor(Treatment)) ) + 
+                       geom_hline(yintercept = 0, lwd=.6, linetype="dashed", color="black")+
+                       geom_boxplot()+#outlier.shape=NA) +                      
+  #geom_point(fill="grey60") + 
+                       facet_grid(.~Spp, labeller = labeller(
+                         Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")), scales="free" )+
+                       geom_hline(yintercept = c(-0.5,0.5), lwd=.6, 
+                              linetype="dashed", color="red") +
+                       ylab("Change in Mean Meander (deg/mm)") + #ylim(c(-50,1)) +
+                       xlab("Bifenthrin Nominal Concentration") +
+                       scale_fill_viridis_d(guide=F)+
+                       theme_bw()
+DistnChgMn.96.meand
+
+
+DistnChgSD.96.meand= ggplot(PercChg96, 
+                         aes(y=PercChgSD, x=factor(Treatment), fill=factor(Treatment)) ) + 
+                       geom_hline(yintercept = 0, lwd=.6, linetype="dashed", color="black")+
+                       geom_boxplot()+#outlier.shape=NA) +                      
+  #geom_point(fill="grey60") + 
+                       facet_grid(.~Spp, labeller = labeller(
+                         Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")), scales="free" )+
+                       geom_hline(yintercept = c(-0.5,0.5), lwd=.6, 
+                              linetype="dashed", color="red") +
+                       ylab("Change in StDev of Meander (deg/mm)") + #ylim(c(-1,1)) +
+                       xlab("Bifenthrin Nominal Concentration") +
+                       scale_fill_viridis_d(guide=F)+
+                       theme_bw()
+DistnChgSD.96.meand
+
+# tiff("/Users/Anna/Documents/ResearchGit/SturgContam/figures/Exposure_OutputFigs/TrialDistance_Bif96_Perchg.tiff", width=140, height=70, units="mm", compression="lzw", res=150)
+# DistnChg96.dist
+# dev.off()
+
+```
+
 ### modelling for meander is in ExposureAnalysis3.rmd
 
 

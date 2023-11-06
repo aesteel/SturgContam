@@ -1,0 +1,690 @@
+---
+title: "Exposure Ethovision Analysis - Data Cleaning"
+author: "Anna Steel"
+date: "2/24/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lme4)
+library(rethinking)
+library(circular)
+#library(cowplot)
+library(patchwork)
+library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
+
+#knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
+```
+
+This code segment reads in the measurements of inter-laser distance taken from the tunnel (taken immediately before or after trials) and entered in the same format as Ken used in his initial tests in 2019 and 2020 ('tunnel_specsXX').   
+  
+It then manipulates these dataframes/tibbles to use merge with the burst files for each fish and calculate velocities.   
+```{r read tunnel data}
+# if running from the SturgContam project in AES, go to documents -> git folder, then the base wd is "/Users/Anna/Documents/ResearchGit/SturgContam"
+
+## Build Segment Dataset (all possible combs of inter-gate distances)----
+tunnel_specs20 <- read_csv("../rawData/Small_Burst_Tunnel_Specs_Spring_2020_KZ.csv")
+tunnel_specs21 <- read_csv("../rawData/Sturg_Burst_Tunnel_Specs_Spring_2021_AES.csv")
+
+tunnel_specs = tunnel_specs21[,c("GATE_ID_L", "INTERGATE_DISTANCES_CM","GATE_DISTANCES_CM_L")]
+names(tunnel_specs) = c("GATE_ID","INTERGATE_DISTANCES","GATE_DISTANCES")
+
+segment_dat <- tribble(  ~GATE_A, ~GATE_B, ~START, ~END  ) # empty tibble for use in next step
+seg_length = nrow(tunnel_specs) # number for use in next step
+
+   # Create a large tibble with all possible permutations of gates 
+    for (p in 1:seg_length){
+      for (q in 1:seg_length){
+        segment_dat <- segment_dat %>% 
+          add_row(GATE_A = tunnel_specs$GATE_ID[p], GATE_B = tunnel_specs$GATE_ID[q], 
+                  START = tunnel_specs$GATE_DISTANCES[p], 
+                  END = tunnel_specs$GATE_DISTANCES[q])
+      }
+    }
+    remove(p,q)
+
+    #  Clean the segment dataframe to add intergate distances and a midpoint for each segment
+    segment_dat_1 <- segment_dat %>% 
+      mutate(DIFF = END-START) %>% # calculates the difference between two gates
+      mutate(MIDPOINT = (START+END)/2) %>% # calculates the midpoint between two gates
+      filter(DIFF > 0)  # get rid of combos of the same gate or reverse combinations
+ 
+    # convert the gate categorical name to a number for use later 
+    segment_dat_2 = segment_dat_1
+      segment_dat_2$GATE_A <- as.numeric(gsub('Gate', '', segment_dat_2$GATE_A) )
+      segment_dat_2$GATE_B <- as.numeric(gsub('Gate', '', segment_dat_2$GATE_B) )    
+```      
+    
+```{r read trial metadata}
+
+# pull metadata for index to all trials and metadata
+trial_specs20ws <- read.csv("../rawData/Burst_Metadata_WS2020.csv")
+trial_specs21ws <- read.csv("../rawData/Burst_Metadata_Complete_WS2021.csv")
+trial_specs21gs <- read.csv("../rawData/Burst_Metadata_Complete_GS2021.csv")
+trial_specs22ws <- read.csv("../rawData/Burst_MetaTrialdata_WS2022.csv")
+
+# pull in chem analysis results for contaminant exposures
+chem_dat = read.csv("../rawData/ChemAnalysisResults_CompiledforR.csv")
+  ws20_chemdat = filter(chem_dat, Contaminant=="Bifenthrin", year==2020, spp=="WS", Sample=="spike")
+  ws21_chemdat = filter(chem_dat, Contaminant=="Fipronil", year==2021, spp=="WS", Sample=="spike")
+  gs21_chemdat = filter(chem_dat, Contaminant=="Fipronil", year==2021, spp=="GS", Sample=="spike")
+  ws22_chemdat = filter(chem_dat, Contaminant=="Bifenthrin", year==2022, spp=="WS", Sample=="spike")
+######*******########********#########**********#########***********#########
+  ### ***** something is off with T30 from 2022; check the output file, the =raw data sheet, and the metadata csv to see what isn't aligning. Note from AES 3/23/2023 **** ###
+######*******########********#########**********#########***********#########
+
+# set one of these datasets for use in the subsequent analysis (may re-arrange this later to make it easier to re-run after troubleshooting is complete) 
+trial_specs = merge(trial_specs21ws, ws21_chemdat[,c("nomconc","CalcConc")], 
+                    all.x=T, by.x=c("nomconc_ugL"), by.y=c("nomconc"))
+ trial_specs$color = factor(gsub(" ","",trial_specs$color),
+                            levels=c("White","Green","Yellow","Red","Pink","Blue"))
+ trial_specs$spp = gsub(" ","", trial_specs$spp) # remove spaces from extra trailing spaces entered in excel
+  
+# vector of all the file names to be considered in the analysis
+filestart <- unique(trial_specs$raspPI_filestart)
+ # remove trials without burst trial data file
+ filestart = filestart[!(filestart %in% c("WSContam2021_Whit_R03_07_22_2021",
+                                          "WSContam2021_Whit_R13_07_28_2021"))]
+
+```
+
+
+There are endless ways to use the burst events from one individual to estimate a 'burst speed' for that fish. See Ken's paper to understand what he considered and selected, and then look at if/how much those align with the methods considered here (AES note on 10/9/2023)
+
+```{r create empty df for collection}
+
+# create empty dataframe to record mean of top 3 burst velocities, after removing top 2; for each burst of each fish
+burst.topvels = data.frame(treatmentrep = "EMPTY", burstID = NA, burstQual = as.factor(NA),
+                          n_vels = NA, n_avg = NA, n_dropped = NA, start_side = NA,
+                          mn.topburstvels = NA, sd.topburstvels = NA, CV.topburstvels.perc = NA)
+
+# create empty dataframe to record above burst velocity averaged across the the pre-filtered 'good' trials for each fish, as well as sd of bursts and and N good bursts considered
+mean.topvels = data.frame(treatmentrep = filestart, 
+                          mnburstGood = NA, sdburstGood = NA, nburstGood = NA,
+                          mnburstGoodFair = NA, sdburstGoodFair = NA, nburstGoodFair = NA)
+
+# create empty data frame to record gates with top 25% of inter-gate speeds within a single burst event
+fastPos.comp = data.frame(treatmentrep = "EMPTY", burstID = as.factor(NA), burstQual = NA, 
+                          fastVel = NA, fastGate = as.factor(NA), fastPos = NA)
+                          #, nGatesMissed = NA)
+
+# create empty data frame to collect the burst events that were recorded but not used in analysis (usually false-triggers); need to check and confirm the filtering critera are working well
+check_events = data.frame(burstQual = "EMTPY", BURST_NUMBER=NA, ORIENTATION=NA, START_TIME=NA,  
+Gate00 = NA, Gate01=NA, Gate02=NA, Gate03=NA, Gate04=NA, Gate05=NA, Gate06=NA, Gate07=NA, Gate08=NA, Gate09 = NA, Gate10=NA, Gate11=NA, Gate12=NA, Gate13=NA, Gate14=NA, n.missed=NA)
+```
+  
+    
+Loop through all burst trials and fill in above dfs, and write out a pdf of burst speeds over multiple tunnel segments for manual/subjective evaluation of methods. This. Will. Be. Epic. 
+```{r loop through trials and collect data}
+
+# first define segment lengths to use in summarizing data
+min_distance = 1.5       # only consider inter-gate distances greater than 1.5cm 
+max_distance = 15        # only consider inter-gate distances less than 15cm 
+write.file = "Yes"        # don't write out a file (will take time and add clutter; only write out for final run)
+
+spp.yr.rawfilepath = "BurstTrialRaw2021WS" # match this to the dataset chosen above; used in setting filepath for write-out
+spp.yr.figfolder = "Bursts_Outputfigures_2021WS"
+spp.yr.dataoutputfolder = "Bursts_Outputdata_2021WS"
+
+
+# loop that will set up file structure for reading and writing each burst event, then run through code to pull information from the burst datafiles
+# for learning or troubleshooting, assign f to 1 (or 2 or 3 etc) then run each line within the loop directly and see what it does/where it's broken
+for(f in 1:length(filestart)) {
+  print(f) # useful for troubleshooting when things break
+     filename = as.character(dir(paste0("../rawData/",spp.yr.rawfilepath), 
+                                 pattern=filestart[f]))
+     
+     # create a folder within existing structure for each burst trial (if not already there)
+     figureoutputfolder = paste0("../figures/",spp.yr.figfolder,"/",filestart[f])
+         if (file.exists(figureoutputfolder) == FALSE) { dir.create(figureoutputfolder)}
+      dataoutputfolder = paste0("../outputData/",spp.yr.dataoutputfolder,"/",filestart[f])
+          if (file.exists(dataoutputfolder) == FALSE) { dir.create(dataoutputfolder)}
+    
+     ## read in all bursts for a fish
+     dat = read.csv(paste0("../rawData/",spp.yr.rawfilepath,"/",filename)  )
+      dat = dat[1:(nrow(dat)-3),]  
+       # remove last three rows of df that have only start/end/total time stamps
+      dat$X <- NULL
+       # if there is an extra empty column at the end, remove it here
+    
+     ## add the leading zero inside the gate names (column names) for later organization
+      shortnames = names(dat)[names(dat) %in% paste0("Gate",0:9)] 
+      longnames = paste0(str_sub(shortnames,end=4),"0",str_sub(shortnames,start=5, end=5))
+      names(dat)[names(dat) %in% shortnames] <- longnames
+      
+     gate_names <- names(dat)[grep("Gate",names(dat))] # pulls all the gate names
+      # check point during loop
+     if(sum(nchar(gate_names)!=6) >0) print(paste("filestart, element#",f,filestart[f],"with error in Gate Names. Check loop around line 150"))
+  
+     ## read in metadata for trial
+     metadat = trial_specs[trial_specs$raspPI_filestart==filestart[f],]
+      # fix entering error that typed "N/A" 
+      metadat[metadat=="N/A"] <- NA
+     
+       
+        ##### Unnecessary code from Ken; replaced with single line above #####
+        # num_gates <- length(names(dat)[grep("Gate",names(dat))])  
+        ## figure out number of gates from the tunnel specs.
+        # first_gate_L <- which(names(dat)=="Gate0")  
+        ## finds the first gate in the dataframe
+        # first_gate_R <- which(names(dat)==paste0("Gate",(num_gates-1))) 
+        ## finds the index of the rightmost gate
+         ## MAYBE CHANGE THIS DEPENDING ON HOW THE RASPBERRY PI HANDLES LEFT AND RIGHT
+        # gate_names <- names(dat[first_gate_L:first_gate_R]) 
+        ## subsets all the gate names
+        #####
+
+     
+ ## filter out gate trips not made by fish, using metadata ('stalledAt'); will remove 'poor' bursts later in code
+     dat2 = data.frame(burstQual=as.character(NA), dat) # df to be filled in with the following loop
+    
+     for(b in 1:nrow(dat2)) {                       #  for each row in dat
+     #print(b)                                     #  use this line to troubleshoot if the loop is breaking; can see where in the loop something happens, and review that specific iteration
+      dat2$burstQual[b] <- metadat[b,"burstQual"]   #   pull metadat for corresponding burst 
+      finalgate = as.numeric(metadat[b,"stalledAt"])#   translate 'stalledAt' number to GateXX name
+      if(is.na(finalgate)) next                     #   fix bug in code if there isn't enough data 
+      if(finalgate==25) next
+      badcol_index = finalgate+5                    #  save column number where 'bad data' start so you can replace data from columns GateXX and after in next line
+      dat2[b,badcol_index:ncol(dat2)] <- -99        # replace any timestamps with -99, to be removed in next stage 
+     }
+     
+    ## quantify how many gates were missed 
+     for(m in 1:nrow(dat2)) {
+       dat2$n.missed[m] = sum(is.na(dat2[m,c(5:ncol(dat2))]) )
+      }
+     
+     
+     # switch -99 to NA for rest of code
+      dat2[is.na(dat2)] <- -99
+    
+     # remove burst events that didn't collect quality data (ie: gates triggered incorrectly), but first print the gates that meet my tentative criteria for removal, along with the label so I can see what happens as the loop runs. I can take more time and vectorize this and create a dataframe with this information, but for now I'll just watch and troubleshoot in real time
+    check_events_i = dat2[dat2$n.missed>6,]
+    
+    check_events <<- rbind(check_events, check_events_i) 
+       # double arrow saves object to the global environment for reference after loop is completed
+    
+     dat3 = dat2[dat2$burstQual != -99 & dat2$n.missed<7,]
+      # maybe remove more; review again later
+      
+    
+  ### Create an empty list of datafames for each burst in the target trial
+     num_burst<-nrow(dat3)
+     burst.df.list <- replicate(num_burst, data.frame()) 
+    
+    # adjust tunnel_specs to have fewer columns and different names for the merge in the next step
+    tunnel_position = tunnel_specs[,c("GATE_ID","GATE_DISTANCES")]
+     names(tunnel_position) = c("GATE_ID","POSITION")
+     
+    # Calulate Metrics for each burst attempt in target trial
+    for (i in 1:num_burst){
+      assign("temp.dat", dat3[i,],.GlobalEnv)
+      temp.dat.gathered <- gather(temp.dat, all_of(gate_names), 
+                                  key = "GATE_ID",value = "TIMING") 
+      # convert from wide to long format, with one line per gate rather than one line per burst event
+      temp.dat.gathered = merge(temp.dat.gathered, tunnel_position, all.x=T) 
+       # add the location in the tunnel (from tunnel_specs) to the times at that gate 
+      
+      ## Use a pipe to calculate more metrics from the positions and times
+      temp.dat.gathered = temp.dat.gathered %>%
+        filter(TIMING!=-99) %>%
+           # removes gates that were missed (no times); do this first for better calcs of spd
+         filter(TIMING - lag(TIMING,1) >= 0) %>%
+           # removes row if the time recorded was before the previous; do before spd calcs 
+        mutate("POSITION_DIFF" = POSITION - lag(POSITION,1)) %>% 
+          # Calulates the difference in position between gates
+        mutate("TIMING_DIFF" = TIMING - lag(TIMING,1)) %>% 
+           # Creates a column which calculates teh differences between two sequential timings
+        mutate("VELOCITY" = POSITION_DIFF/TIMING_DIFF) %>% 
+           # calculates velocity
+        mutate("VELOCITY_DIFF" = VELOCITY - lag(VELOCITY,1)) %>%  
+           # creates column which calculates teh differnce between two sequential speeds
+        mutate("ACCEL" = VELOCITY_DIFF/TIMING_DIFF) 
+           # calculates accleration
+     burst.df.list[[i]]<-temp.dat.gathered #
+           # stores them all as dataframes in a list
+    }
+    
+   # filter to remove all elements within the list that have no data; they cause problems later
+   #  they should have been filtered out already with above filters, but this is a final check
+   burst.df.list = Filter(function(n) {sum(!is.na(n$TIMING_DIFF)) > 0}, burst.df.list)
+
+    
+   
+   
+  ## Write out to previously defined output folder  
+    if(write.file=="Yes") {
+      rbind_burst.df.list = do.call(rbind, burst.df.list) # convert from list to dataframe
+      write.csv(rbind_burst.df.list,
+                paste0(dataoutputfolder,"/Gate_by_Gate_metrics_",filestart[f],".csv"),
+                row.names=F) }
+   
+   
+   
+ # Now this function will be fed each burst event stored in the burst.df.list object above:
+    veldat_maxXcm = function(burst) {
+      
+          # deals with missing bursts from raspPi so they don't break code
+        if(nrow(data.frame(burst))<1) {burst[1,"burstQual"] <- "none"} 
+      
+          # add more information to tunnel metadat (all gate combos) from focal burst data
+        vel_dat_2 <- segment_dat_1 %>%  # segment_dat_1 is tunnel metadata. from ln 49 above
+        mutate(burstQual = unique(burst$burstQual)) %>% 
+        mutate(BURST_NUMBER = unique(burst$BURST_NUMBER)) %>%
+        mutate(ORIENTATION = unique(burst$ORIENTATION)) 
+        
+        vel_dat_2b = merge(vel_dat_2, burst[,c("GATE_ID","TIMING")], 
+                           by.x="GATE_B", by.y="GATE_ID", all.x = T)
+          names(vel_dat_2b)[ncol(vel_dat_2b)] <- "TIMING_B"
+        vel_dat_2a = merge(vel_dat_2b, burst[,c("GATE_ID","TIMING")], 
+                           by.x="GATE_A", by.y="GATE_ID", all.x = T)
+          names(vel_dat_2a)[ncol(vel_dat_2a)] <- "TIMING_A"
+          
+        # same goal, but from previous code where the gates were numeric not characters
+          # mutate(TIMING_A = (burst$TIMING[GATE_A+1])) %>%
+         # mutate(TIMING_B = (burst$TIMING[GATE_B+1])) %>% 
+          
+        vel_dat_3 <- vel_dat_2a %>%
+          mutate(TIME_DIFF = TIMING_B - TIMING_A) %>%
+          mutate(VELOCITY = DIFF/TIME_DIFF) %>%
+          filter(DIFF >= min_distance & DIFF <= max_distance) %>% # dist defined prior to loop
+          filter(TIME_DIFF <= 2) %>% # removes erroneous values generated by comparing gates which were triggered way too far apart; also appears to remove all rows with NA here
+          filter(VELOCITY >= 0) # this may be redundant, but no harm in keeping it
+      return(vel_dat_3)
+    }
+
+    clean_vel_data = lapply(burst.df.list,  veldat_maxXcm)
+
+    # ## Plot data for each burst ####
+    # if(write.file=="Yes") {
+    #     
+    #     pdf(paste0(figureoutputfolder,"/filtered_segmentBursts_",filestart[f],".pdf"), 
+    #         onefile=TRUE, )
+    #     for(i in 1:15) {
+    #       if(nrow(clean_vel_data[[i]]) == 0) {next} else {
+    #       print ( ggplot(data = clean_vel_data[[i]]) +
+    #         geom_errorbarh(aes(xmax = END, xmin = START, y = VELOCITY, height = 0))+
+    #       geom_point(aes(x=MIDPOINT, y = VELOCITY), color = "orangered2") + 
+    #         coord_cartesian(xlim=c(0,100), ylim=c(0,70))+
+    #         ggtitle(paste("Velocity: Burst",i," (max segment length =",max_distance,")")) +
+    #       ylab("Velocity (cm/s)")+
+    #         xlab("Tunnel Position (cm)")+
+    #         theme(axis.text.x = element_text(angle=90)) ) }  
+    #                }
+    #     dev.off()
+    #   }
+    # 
+    # ### other exploratory plots from Ken's code ##
+    #  Timeseries_pos_plot <- ggplot(data = burst.df.list[[i]],
+    #                            aes(x=TIMING, y = POSITION)) +
+    #     geom_line(color = "#0273e9")+
+    #     geom_point() + 
+    #     ggtitle(paste("Time Series of Position: Burst",i)) +
+    #     ylab("Tunnel Position (cm)")+
+    #     xlab("Time (s)")+
+    #     theme(axis.text.x = element_text(angle=90))
+    #  
+    #  
+    #  Timeseries_vel_plot <- ggplot(data = burst.df.list[[i]],
+    #                                aes(x=TIMING, y = VELOCITY)) +
+    #     geom_point() + 
+    #     geom_line(color = "#3c5c00")+
+    #     ggtitle(paste("Time Series of Velocities: Burst",i)) +
+    #     coord_cartesian(ylim = c(0,100)) +
+    #     ylab("Segment Velocity (cm/s)")+
+    #     xlab("Time (s)")
+    #  
+    #  
+    #   Timeseries_acc_plot <- ggplot(data = burst.df.list[[i]],
+    #                                aes(x=TIMING, y = ACCEL)) +
+    #     geom_point() + 
+    #     geom_line(color = "#3c5c00")+
+    #     ggtitle(paste("Time Series of Acceleration: Burst",i)) +
+    #     #coord_cartesian(ylim = c(0,100)) +
+    #     ylab("Segment Acceleration (cm/s)")+
+    #     xlab("Time (s)")
+    #####
+      
+      
+  ### pull velocity metrics
+    #  mean of fastest 3 velocities per burst, after dropping fastest two, 
+    
+    topvel_func= function(x,n,d) { ## runs with x = either burst.df.list or clean_vel_data 
+      vel.list = sort(x$VELOCITY, decreasing=TRUE) 
+      n_vels <- length(vel.list)
+      n_avg <- n
+      n_dropped <- d
+      if(length(vel.list)<(n+d)) {mnvel=NA; sdvel=NA; n_avg<-0} else {
+      mnvel = mean(vel.list[(d+1):(d+n)]); sdvel = sd(vel.list[(d+1):(d+n)]) }
+      return(data.frame(treatmentrep = filestart[f],
+                        burstID = unique(x$BURST_NUMBER), 
+                        burstQual = factor(unique(x$burstQual), levels=c("poor","fair","good")),
+                        n_vels = n_vels,
+                        n_avg = n_avg,
+                        n_dropped = n_dropped,
+                        start_side = unique(x$ORIENTATION),
+                        mn.topburstvels = mnvel, 
+                        sd.topburstvels = sdvel,
+                        CV.topburstvels.perc = round(sdvel/mnvel*100,1) ) ) 
+     }
+                        
+  ### drop fastest (sometimes erroneous) and take mean of next N sequential segment velocities
+    dd = 1 # drop fastest dd
+    nn = 3 # average remaining nn
+    burst.mntopvels = do.call(rbind, lapply(burst.df.list, topvel_func, n=nn, d=dd)) # seems to give similar answers to results from all (overlapping) gate combinations created in clean_vel_data; not exhaustively or formally evaluated. Using this avoids pseudoreplication, but may be less ideal if there are gaps in data where lasers are frequently missed. 
+     # returns NA vel if there are =< n velocity values measured
+   
+    
+    if(write.file=="Yes") {write.csv(burst.mntopvels, paste0(dataoutputfolder,"/Subjective_Rank_Mn_dropTop2_avgNext",nn,"_",filestart[f],".csv"), row.names=F)}
+    
+      ## append to empty dataframe so we can collect all of the bursts in one place for later analysis  
+    burst.topvels = rbind(burst.topvels, burst.mntopvels)
+
+  
+    
+    
+  ### function to pull the top 25% of speeds (measured at each sequential gate) for each burst and identify where along the burst tunnel they are happening
+    # This was mostly for designing the burst tunnel before we built the smallest one, as we wanted to confirm that a 70cm tunnel was long enough for sturgeon (ie: fastest speeds were <70cm)
+    fastPos_func = function(x) { 
+      fast.pos = which(x$VELOCITY > quantile(x$VELOCITY,.75, na.rm=T)) # returns true/false vector of which inter-gate speeds are in the top 25% percentile
+       if(length(fast.pos)==0) {return(NULL)} else {  
+      fastVel = x$VELOCITY[fast.pos]   # new vector that includes the top 25% of measured spds
+      fastGate = x$GATE_ID[fast.pos]   # gate ID that corresponds to fastest measures
+      fastPos = x$POSITION[fast.pos]   # cm along tunnel that corresponds to fastest measures
+      return(cbind(data.frame(treatmentrep = filestart[f],
+                              burstID = unique(x$BURST_NUMBER), 
+                              burstQual = unique(x$burstQual)),
+                   fastVel, fastGate, fastPos) ) } # make a new df for each burst event
+      }
+    
+    fastPos = do.call(rbind, lapply(burst.df.list, fastPos_func)) # rbind all df created with the function above for the burst trial being targetted in the current iteration of this giant loop
+    fastPos$burstID = factor(fastPos$burstID, levels=c(1:15))
+    fastPos$fastGate = factor(fastPos$fastGate, levels=paste0("Gate",1:24))
+    
+      # ggplot(fastPos, aes(y=fastVel,x=burstID, color=burstQual)) + geom_point() + 
+      #   theme_bw() 
+      # ggplot(fastPos, aes(x=fastGate, fill=burstQual)) + geom_histogram(stat="count", position="dodge", color="black") + facet_grid(.~burstQual)+
+      #   theme_bw() 
+    
+    # append the burst from the current loop to an existing object that will accumulate ALL data
+    fastPos.comp = rbind(fastPos.comp, fastPos)
+    
+    
+    # boxplots of mean top speeds within each subjective rank category
+    subjective_rank_spds = ggplot( data = burst.mntopvels[!is.na(burst.mntopvels$mn.topburstvels),],
+            aes(x=burstQual, y=mn.topburstvels)) +
+            geom_boxplot() +
+              geom_point()+
+            theme_bw()
+    
+    
+    if(write.file=="Yes") {
+      pdf(paste0(figureoutputfolder,"/Subjective_Rank_Mn_dropTop2_avgNext",nn,"_",filestart[f],".tiff"), onefile=TRUE)
+      
+        subjective_rank_spds
+        
+      dev.off()}
+    
+    
+    
+    
+    
+    
+    # calculate metrics to output
+    mn.top3goodevents = burst.mntopvels[burst.mntopvels$burstQual=="good"]      
+       mn.top3goodevents = mn.top3goodevents[rev(order(mn.top3goodevents$mn.topburstvels)),][1:3,]
+       
+      mn.top3goodfairevents = burst.mntopvels[burst.mntopvels$burstQual%in% c("good","fair")]      
+       mn.top3goodfairevents = mn.top3goodfairevents[rev(order(mn.top3goodfairevents$mn.topburstvels)),][1:3,]     
+    
+    mn.burstvalue = mean(mn.top3goodevents$mn.topburstvels, na.rm=T)
+      mn.burstvalue.gf = mean(mn.top3goodfairevents$mn.topburstvels, na.rm=T)
+    
+    sd.burstvalue = sd(mn.top3goodevents$mn.topburstvels, na.rm=T)
+      sd.burstvalue.gf = sd(mn.top3goodfairevents$mn.topburstvels, na.rm=T)
+   
+    n.burstvalue = length(mn.top3goodevents$mn.topburstvels)
+      n.burstvalue.gf = length(mn.top3goodfairevents$mn.topburstvels)
+
+    
+    # add them to the appropriate row in empty dataframe
+    mean.topvels[mean.topvels$treatmentrep == filestart[f], "mnburstGood"] <- mn.burstvalue
+     mean.topvels[mean.topvels$treatmentrep == filestart[f], "mnburstGoodFair"] <- mn.burstvalue.gf
+    mean.topvels[mean.topvels$treatmentrep == filestart[f], "sdburstGood"] <- sd.burstvalue
+     mean.topvels[mean.topvels$treatmentrep == filestart[f], "sdburstGoodFair"] <- sd.burstvalue.gf
+    mean.topvels[mean.topvels$treatmentrep == filestart[f], "nburstGood"] <- n.burstvalue
+     mean.topvels[mean.topvels$treatmentrep == filestart[f], "nburstGoodFair"] <- n.burstvalue.gf
+
+}
+```
+PHEW! That was an epic loop. 
+# ANNA - check what happens when there is no stalled at value in the datasheet. Are these rows kept, removed, or ignored for filtering? Often when the fish didn't stall (ie: went all the way to the other chamber) there is no stalled-at value entered but these were the best bursts.
+
+
+
+```{r clean up compilation df}
+# remove one line used to start the df
+burst.topvels2 = burst.topvels[burst.topvels$treatmentrep!="EMPTY",]
+fastPos.comp2 = fastPos.comp[fastPos.comp$treatmentrep!="EMPTY",]
+
+# add metadata and fix formatting
+trial_specs_unique = unique(trial_specs[,c("raspPI_filestart","trialIID", "spp","dph","treattemp","color","CalcConc","avgTemp","tl_mm","mass_g")])
+
+mean.topvels2 = merge(mean.topvels, trial_specs_unique, all.x=T, by.x="treatmentrep", by.y="raspPI_filestart") 
+
+mean.topvels2$color = factor(mean.topvels2$color,
+                             levels=c("White","Green","Yellow","Red","Pink","Blue"))
+mean.topvels2$rep = substring(mean.topvels2$treatmentrep, 19,21)
+
+# remove NA burst estimates
+mean.topvels2 = mean.topvels2[!is.na(mean.topvels2$mnburstGood),]
+
+# convert CalcConc to numeric
+mean.topvels2$CalcConc= as.numeric(mean.topvels2$CalcConc)
+
+# add BL/s column
+mean.topvels2$mnburstGood_bls = mean.topvels2$mnburstGood/(mean.topvels2$tl_mm/10) 
+
+```
+
+```{r plot study design results}
+### review study design and analysis approach first:  
+
+  # look at where the fastest burst segment were (for next tunnel design)
+  ggplot(fastPos.comp2, aes(y=fastVel,x=burstID, color=burstQual)) + 
+      geom_point() + 
+      theme_bw() 
+    
+  ggplot(fastPos.comp2, aes(x=fastGate, fill=burstQual)) + 
+      geom_histogram(stat="count", position="dodge", color="black") + facet_grid(.~burstQual)+
+      theme_bw() 
+  
+  
+  # look at relationship between estimated speed and number of samples or SD of sample
+  hist(mean.topvels2$nburstGoodFair/15, 
+       xlab="Percent of bursts classified as GOOD", 
+       main="Data Quality")
+  
+  
+  # look at speed and trial order
+  ggplot(mean.topvels2, aes(x=as.numeric(str_sub(trialIID,2,3)), y=mnburstGood)) + 
+    geom_point() + geom_smooth(method="lm") +
+    theme_bw()   
+  
+  
+  # look at relationship between estimated burst speeds and number of good bursts
+  ggplot(mean.topvels2, aes(x=nburstGood, y=mnburstGood)) + 
+    geom_point() + geom_smooth() +
+    theme_bw() 
+  
+    # reduce this to only fish that gave >4 good bursts
+    table(mean.topvels2[mean.topvels2$nburstGood>4,]$treatment)
+    
+    ggplot(mean.topvels2, 
+           aes(x=nburstGood, y=mnburstGood ,color=color, group=color)) + 
+      geom_point(size=4) + geom_smooth(n=4) + 
+      scale_color_manual(values=c("black","green3","gold1","brown3","pink","steelblue3")) + 
+      facet_wrap(~color) + theme_bw()
+  
+    ggplot(filter(mean.topvels2, nburstGood>4), 
+           aes(x=nburstGood, y=mnburstGood ,color=color, group=color)) + 
+      geom_point(size=4) + geom_smooth(n=4) + 
+      scale_color_manual(values=c("black","green3","gold1","brown3","pink","steelblue3")) + 
+      facet_wrap(~color) + theme_bw()
+      # perhaps only considering fish with >4 good bursts will be more reliable?
+  
+  
+  # look at relationship between number of bursts and sd in bursts within a fish
+  ggplot(mean.topvels2, aes(x=nburstGood, y=sdburstGood)) + 
+    geom_point(aes(color=nburstGood), size=3) + geom_smooth()
+  
+  ggplot(filter(mean.topvels2, nburstGood>4), aes(x=nburstGood, y=sdburstGood)) + 
+    geom_point(aes(color=nburstGood), size=3) + geom_smooth()
+  
+  
+  # look at effect of fish size or mass on burst speeds
+  ggplot(mean.topvels2, aes(x=tl_mm, y=mass_g)) + geom_point() + geom_smooth() + theme_bw()
+  ggplot(filter(mean.topvels2, tl_mm<110), aes(x=tl_mm, y=mnburstGood)) + 
+    geom_point() + geom_smooth() + theme_bw()
+  ggplot(filter(mean.topvels2, mass_g<6), aes(x=mass_g, y=mnburstGood)) + 
+    geom_point() + geom_smooth() + theme_bw()
+  
+     # look at length-adjusted burst speeds (ie: bl/s)
+       library(ggpubr)
+       gghistogram(mean.topvels2, x="mnburstGood_bls", y="..density..",
+                   add="mean", add_density=TRUE, fill="grey50")
+       ggplot(mean.topvels2, aes(x=mnburstGood_bls, color=factor(color), fill=factor(color))) + 
+         geom_density(alpha=0.2, bw=.75) + 
+         scale_color_manual(values=c("black","green3","gold1","brown3","pink","steelblue3")) + 
+         scale_fill_manual(values=c("black","green3","gold1","brown3","pink","steelblue3")) + 
+         theme_bw()
+
+```
+
+```{r plots of experimental treatments} 
+
+    # look at relationship between burst quality and treatment
+  ggplot(mean.topvels2, aes(x=color, y=nburstGood, fill=color)) + geom_boxplot() +
+     scale_fill_manual(values=c("grey90","green3","gold1","brown3","pink","steelblue3")) + 
+    theme_bw()
+
+  # test this statistically
+  testmod_n = lm(nburstGood~log(CalcConc+1), data = filter(mean.topvels2, nburstGood>=4))
+    plot(testmod_n) # meets assumptions okay
+    summary(aov(testmod_n)) # no significance but close
+   
+ 
+
+# look at relationship between treatment and burst speeds
+ggplot(mean.topvels2, aes(x=color, y=mnburstGood_bls, fill=color)) + 
+     geom_boxplot() +
+     scale_fill_manual(values=c("grey90","green3","gold1","brown3","pink","steelblue3")) + 
+    theme_bw()
+     
+# plot points for each fish, jittered around the log of the exposure concentration; presents same dataset but with more information
+# this is the plot used for Ken's bay delta poster
+set.seed(38)
+mean.topvels2$random.offset = runif(n=nrow(mean.topvels2), min = -0.25, max=0.25)
+mainplot = ggplot(mean.topvels2, aes(y=mnburstGood, x=log(CalcConc+1)+random.offset)) + 
+         geom_errorbar(aes(ymin=mnburstGood-sdburstGood, ymax=mnburstGood+sdburstGood), width=0) + 
+         geom_point(aes(size=nburstGood, fill=factor(color)), pch=21, alpha=0.8) + 
+         theme_bw() + 
+         ylab("Mean Burst Swim Speed (cm/s)") +
+         scale_x_continuous(breaks=log(c(1,11,101, 1001)), 
+                            labels=c(1,11,101, 1001)-1, name="Measured Fipronil Concentration")  +
+         scale_size_continuous(breaks=c(5,10,15), name = "Number of\nAnalyzed Bursts") + 
+         scale_fill_manual(values=c("grey90","green3","gold1","brown3","pink","steelblue3"), 
+                           labels=c("0 ug/l","1 ug/l","10 ug/l","100 ug/l","500 ug/l","1000 ug/l"),
+                           name="Nominal Fipronil\nConcentration") +
+         theme_bw()
+
+mainplot_patch = ggplot(mean.topvels2, aes(y=mnburstGood, x=log(CalcConc+1)+random.offset)) + 
+         geom_errorbar(aes(ymin=mnburstGood-sdburstGood, ymax=mnburstGood+sdburstGood), width=0) + 
+         geom_point(aes(size=nburstGood, fill=factor(color)), pch=21, alpha=0.8) + 
+         theme_bw() + 
+         ylab("Mean Burst Swim Speed (cm/s)") +
+         scale_x_continuous(breaks=log(c(1,11,101, 1001)), 
+                            labels=c(1,11,101, 1001)-1, name="Measured Fipronil Concentration")  +
+         scale_size_continuous(breaks=c(5,10,15), name = "Number of\nAnalyzed Bursts") + 
+         scale_fill_manual(guide=F, 
+                           values=c("grey90","green3","gold1","brown3","pink","steelblue3")) +
+         theme_bw()
+     
+
+sizeplot = ggplot(mean.topvels2, aes(y=tl_mm/10, x=color, fill=color)) + 
+  geom_boxplot(alpha=.8) +   
+  scale_fill_manual(values=c("grey90","green3","gold1","brown3","pink","steelblue3")) + 
+  ylab("Green Sturgeon Length (cm)") + theme_bw()
+  #xlab("log(Bifenthrin Concentration)") 
+
+mainplot_patch + sizeplot + plot_layout(ncol=1)
+```
+
+```{r try some models}
+testmod.continuous = lm(mnburstGood_bls~log(CalcConc+1), data = filter(mean.topvels2, nburstGood>4))
+  plot(testmod.continuous) # fits assumptions fine
+  summary(aov(testmod.continuous)) # not significant
+testmod.factor = lm(mnburstGood_bls~factor(CalcConc), data = filter(mean.topvels2, nburstGood>4))
+  plot(testmod) # fits assumptions fine
+  summary(aov(testmod)) # not significant
+# continuous model fits assumptions slightly better; neither model shows significance 
+
+
+# look for patterns on where in the tunnel the fastest burst occurred (building new one?)
+ggplot(data = fastPos.comp2, aes(x=fastPos)) + 
+  geom_histogram(binwidth=5, fill="grey80", color="grey20") + theme_bw() +
+  facet_grid(.~burstQual)
+
+ggplot(data = filter(fastPos.comp2, fastVel>20) , aes(x=fastPos)) + 
+  geom_histogram(binwidth=5, fill="grey80", color="grey20") + theme_bw() + 
+  facet_wrap(~burstQual)
+    
+
+# kitchen sink model for dredging (explore effects of study design/constraints)
+fullmod.continuous = lm(mnburstGood_bls ~ log(CalcConc+1) + nburstGood + dph + avgTemp, data = mean.topvels2) 
+ plot(fullmod.continuous)
+ summary((fullmod.continuous))
+ summary(aov(fullmod.continuous))
+ summarize(group_by(mean.topvels2, color), mean.vel = mean(mnburstGood_bls, na.rm=T), 
+           sd.vel = sd(mnburstGood_bls, na.rm=T))
+    # color  mean.vel   sd.vel
+    # White 	3.890941	0.9274118		
+    # Green	  3.763600	0.9798799		
+    # Yellow	3.609263	1.2042335		
+    # Red	    3.556690	1.2350357		
+    # Pink  	3.403234	0.7771183		
+    # Blue  	3.942739	1.0794220	
+ # n good bursts is significant; remove to threshold of 4 good bursts to be considered 
+
+ fullmod.continuous4 = lm(mnburstGood_bls ~ log(CalcConc+1) + nburstGood + dph + avgTemp, data = filter(mean.topvels2, nburstGood>=4)) #, na.action="na.fail" 
+ plot(fullmod.continuous4)
+ summary((fullmod.continuous4))
+ summary(aov(fullmod.continuous4))
+ 
+ summarize(group_by(filter(mean.topvels2, nburstGood>=4), color), 
+           n.reps = n(),
+           mean.vel = mean(mnburstGood_bls, na.rm=T), 
+           sd.vel = sd(mnburstGood_bls, na.rm=T),
+           mean.nburstGood = mean(nburstGood, na.rm=T),
+           mean.dph = mean(dph, na.rm=T),
+           mean.temp = mean(avgTemp, na.rm=T))
+    # color  n.reps  mean.vel  sd.vel     mean.nburstGood mean.dph  mean.temp
+    # White	 13      3.890941	 0.9274118	8.307692      	64.84615	17.49231
+    # Green	 14      3.939121  0.7323683	8.428571      	65.35714	17.40357
+    # Yellow 15      3.654900	 1.2320947	7.866667	      65.33333	17.57000
+    # Red	   12      4.101468	 0.8683930	6.916667	      65.16667	17.39091
+    # Pink	 13      3.472645	 0.7851576	7.769231	      65.15385	17.45000
+    # Blue	 15      3.942739	 1.0794220	8.200000	      64.93333	17.46000
+
+fullmod.participant = lm(nburstGood ~ log(CalcConc+1) + dph + avgTemp + tl_mm, data = filter(mean.topvels2, nburstGood>=4 & tl_mm<100)) #, na.action="na.fail" 
+ # removed one massive fish (121mm); next largest was 106.4mm; this fish had very high leverage in model and was not necessarily indicative of the treatment nor test question
+ plot(fullmod.participant)
+ summary((fullmod.participant))
+ summary(aov(fullmod.participant))
+
+ # no effect of fipronil on participation, but there was a small effect of dph. I suspect this is because as time went on the 'burster' was getting better at the tail prod and was able to elicit more good bursts. 
+  
+ 
+```

@@ -1,0 +1,272 @@
+---
+title: "Exposure GS2020-2023 temps"
+author: "Anna Steel"
+date: "2023-08-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readtext) # need this because the ethovision output .txt files have unusual encoding as UTF-16
+library(lme4)
+library(rethinking)
+library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
+library(patchwork)
+library(circular)
+library(rstatix)
+library(viridis)
+
+knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
+```
+
+## Bath Temps, all yrs
+# only manual data for 2020, both WS and GS for 2021, only GS for 2022 (not used in analysis), and GS in 2023
+```{r read and format GS and WS 2020 manual data, echo=FALSE}
+
+### GS ###
+bath1_GS2021 = read.csv("/Volumes/GoogleDrive/My Drive/2020 GS Multiple Stressors/2021Expts/Expt Docs - Range Test 2021 GS Fipronil/Exposure_GSfip/HoboData_SC-1.21063868_Bath1Primary.csv")
+bath1_GS2021$DateTimeGMT07 = as.POSIXct(bath1_GS2021$DateTimeGMT07, 
+                                 format="%m/%d/%y %H:%M", tz="Etc/GMT-7")
+
+bath2_GS2021 = read.csv("/Volumes/GoogleDrive/My Drive/2020 GS Multiple Stressors/2021Expts/Expt Docs - Range Test 2021 GS Fipronil/Exposure_GSfip/HoboData_SC-2.21063869_Bath2Primary.csv")
+bath2_GS2021$DateTimeGMT07 = as.POSIXct(bath2_GS2021$DateTimeGMT07, 
+                                 format="%m/%d/%y %H:%M", tz="Etc/GMT-7")
+
+baths12_GS2021 = rbind(bath1_GS2021, bath2_GS2021)
+
+hatchdateGS2021 = as.Date("2021-04-24")
+
+exposureStartGS2021 = as.POSIXct("2021-04-26 10:00:00", tz="Etc/GMT-7")
+exposureEndGS2021= as.POSIXct("2021-04-30 12:00:00", tz="Etc/GMT-7")
+
+
+exposuretempsGS2021 = baths12_GS2021[baths12_GS2021$DateTimeGMT07 > exposureStartGS2021 & baths12_GS2021$DateTimeGMT07 < exposureEndGS2021,]
+
+summarize(group_by(exposuretempsGS2021, Bath), meanC = mean(TempC, na.rm=T), sdC = sd(TempC, na.rm=T))
+# Bath          meanC     sdC
+# Bath1_primary	15.13214	0.3013808		
+# Bath2_primary	14.91826	0.2921537	
+    
+    ggplot(exposuretempsGS2021, aes(x=Bath, y=TempC)) + 
+      geom_boxplot() + theme_bw()
+    
+    t.test(exposuretempsGS2021$TempC ~ exposuretempsGS2021$Bath)
+    # t = 12.345, df = 1170.9, p-value < 2.2e-16
+
+measuredDataGS2021 = data.frame(Date = rep(as.Date(c("2021-04-26","2021-04-27",
+                                               "2021-04-28","2021-04-29",
+                                               "2021-04-30")), 3),
+                          Bath = rep(c("Bath1","Bath2","Bath3"),each=5),
+                          TempC = c(  ) )
+
+summarize(group_by(measuredDataGS2021, Bath), meanC = mean(TempC), sdC = sd(TempC))
+# Bath   meanC  sdC
+# Bath1	 	
+# Bath2	 
+# Bath3	 
+```
+
+
+```{r read and format GS2021 hobo data, echo=FALSE}
+
+### GS ###
+bath1_GS2021 = read.csv("/Volumes/GoogleDrive/My Drive/2020 GS Multiple Stressors/2021Expts/Expt Docs - Range Test 2021 GS Fipronil/Exposure_GSfip/HoboData_SC-1.21063868_Bath1Primary.csv")
+bath1_GS2021$DateTimeGMT07 = as.POSIXct(bath1_GS2021$DateTimeGMT07, 
+                                 format="%m/%d/%y %H:%M", tz="Etc/GMT-7")
+
+bath2_GS2021 = read.csv("/Volumes/GoogleDrive/My Drive/2020 GS Multiple Stressors/2021Expts/Expt Docs - Range Test 2021 GS Fipronil/Exposure_GSfip/HoboData_SC-2.21063869_Bath2Primary.csv")
+bath2_GS2021$DateTimeGMT07 = as.POSIXct(bath2_GS2021$DateTimeGMT07, 
+                                 format="%m/%d/%y %H:%M", tz="Etc/GMT-7")
+
+baths12_GS2021 = rbind(bath1_GS2021, bath2_GS2021)
+
+hatchdateGS2021 = as.Date("2021-04-24")
+
+exposureStartGS2021 = as.POSIXct("2021-04-26 10:00:00", tz="Etc/GMT-7")
+exposureEndGS2021= as.POSIXct("2021-04-30 12:00:00", tz="Etc/GMT-7")
+
+
+exposuretempsGS2021 = baths12_GS2021[baths12_GS2021$DateTimeGMT07 > exposureStartGS2021 & baths12_GS2021$DateTimeGMT07 < exposureEndGS2021,]
+
+summarize(group_by(exposuretempsGS2021, Bath), meanC = mean(TempC, na.rm=T), sdC = sd(TempC, na.rm=T))
+# Bath          meanC     sdC
+# Bath1_primary	15.13214	0.3013808		
+# Bath2_primary	14.91826	0.2921537	
+    
+    ggplot(exposuretempsGS2021, aes(x=Bath, y=TempC)) + 
+      geom_boxplot() + theme_bw()
+    
+    t.test(exposuretempsGS2021$TempC ~ exposuretempsGS2021$Bath)
+    # t = 12.345, df = 1170.9, p-value < 2.2e-16
+
+measuredDataGS2021 = data.frame(Date = rep(as.Date(c("2021-04-26","2021-04-27",
+                                               "2021-04-28","2021-04-29",
+                                               "2021-04-30")), 3),
+                          Bath = rep(c("Bath1","Bath2","Bath3"),each=5),
+                          TempC = c(  ) )
+
+summarize(group_by(measuredDataGS2021, Bath), meanC = mean(TempC), sdC = sd(TempC))
+# Bath   meanC  sdC
+# Bath1	 	
+# Bath2	 
+# Bath3	 
+```
+
+```{r read and format WS2021 hobo data, echo=FALSE}
+
+### WS ###
+bath1_WS2021 = read.csv("/Volumes/GoogleDrive/My Drive/2020 GS Multiple Stressors/2021Expts/Expt Docs - Range Test 2021 WS Fipronil/Exposure_WSfip/HoboData_SC-1.21063868_Bath1Primary_WS.csv")
+bath1_WS2021$DateTimeGMT07 = as.POSIXct(bath1_WS2021$DateTimeGMT07, 
+                                 format="%m/%d/%y %H:%M", tz="Etc/GMT-7")
+
+bath2_WS2021 = read.csv("/Volumes/GoogleDrive/My Drive/2020 GS Multiple Stressors/2021Expts/Expt Docs - Range Test 2021 WS Fipronil/Exposure_WSfip/HoboData_SC-2.21063869_Bath2Primary_WS.csv")
+bath2_WS2021$DateTimeGMT07 = as.POSIXct(bath2_WS2021$DateTimeGMT07, 
+                                 format="%m/%d/%y %H:%M", tz="Etc/GMT-7")
+
+baths12_WS2021 = rbind(bath1_WS2021, bath2_WS2021)
+
+hatchdateWS2021 = as.Date("2021-05-22")
+
+exposureStartWS2021 = as.POSIXct("2021-05-24 11:00:00", tz="Etc/GMT-7")
+exposureEndWS2021= as.POSIXct("2021-05-28 12:00:00", tz="Etc/GMT-7")
+
+
+exposuretempsWS2021 = baths12_WS2021[baths12_WS2021$DateTimeGMT07 > exposureStartWS2021 & baths12_WS2021$DateTimeGMT07 < exposureEndWS2021,]
+
+summarize(group_by(exposuretempsWS2021, Bath), meanC = mean(TempC, na.rm=T), sdC = sd(TempC, na.rm=T))
+# Bath          meanC     sdC
+# Bath1_primary	15.44677	0.5274052		
+# Bath2_primary	15.11602	0.2656092
+
+    ggplot(exposuretempsWS2021, aes(x=Bath, y=TempC)) + 
+      geom_boxplot() + theme_bw()
+    
+    ggplot(exposuretempsWS2021, aes(x=DateTimeGMT07, y=TempC)) + 
+      geom_line() + theme_bw() + facet_wrap(~Bath)
+     # shows the greater spread in bath 1 is from a temp flux due to re-setting the temps overnight (set to cold in afternoon of first day, then rebounded and set too warm, then found a happy medium by day 2)
+    
+    t.test(exposuretempsWS2021$TempC ~ exposuretempsWS2021$Bath)
+    # t = 13.927, df = 862.93, p-value < 2.2e-16
+
+measuredDataWS2021 = data.frame(Date = rep(as.Date(c("2021-05-24",
+                                                 "2021-05-25","2021-05-25",
+                                               "2021-05-26","2021-05-26",
+                                               "2021-05-27","2021-05-27",
+                                               "2021-05-28")), 2),
+                          Bath = rep(c("Bath1","Bath2"),each=8),
+                          TempC = c(15.1,14.5,15.6,15.2,15.8,15.1,15.5,15.5,
+                                    15.2,15.0,15.1,14.7,15.4,14.6,15.1,15.1) )
+
+summarize(group_by(measuredDataWS2021, Bath), meanC = mean(TempC), sdC = sd(TempC))
+# Bath   meanC    sdC
+# Bath1	 15.2875	0.4051014		
+# Bath2	 15.0250	0.2604940	
+```
+
+```{r read and format 2022 hobo data, echo=FALSE}
+# only hobo data found was for GS 2022; no WS 2022?? Uff. 
+
+bath1_2022 = read.csv("/Volumes/GoogleDrive/My Drive/2020 GS Multiple Stressors/2022Expts/hobo transfer/SturgContam-1.21063868_04182022.csv")
+bath1_2022$DateTimeGMT08 = as.POSIXct(bath1_2022$DateTimeGMT08, 
+                                 format="%m/%d/%y %H:%M", tz="Etc/GMT-8")
+
+bath2_2022 = read.csv("/Volumes/GoogleDrive/My Drive/2020 GS Multiple Stressors/2022Expts/hobo transfer/SturgContam-2.21063869_04182022.csv")
+bath2_2022$DateTimeGMT08 = as.POSIXct(bath2_2022$DateTimeGMT08, 
+                                 format="%m/%d/%y %H:%M", tz="Etc/GMT-8")
+
+
+bath3_2022 = read.csv("/Volumes/GoogleDrive/My Drive/2020 GS Multiple Stressors/2022Expts/hobo transfer/SturgContam-4.21063871_04182022.csv")
+bath3_2022$DateTimeGMT08 = as.POSIXct(bath3_2022$DateTimeGMT08, 
+                                 format="%m/%d/%y %H:%M", tz="Etc/GMT-8")
+
+baths123_2022 = rbind(bath1_2022, bath2_2022, bath3_2022)
+
+hatchdate2022 = as.Date("2022-04-06")
+
+exposureStart2022 = as.POSIXct("2022-04-09 10:00:00", tz="Etc/GMT-8")
+exposureEnd2022 = as.POSIXct("2022-04-13 12:00:00", tz="Etc/GMT-8")
+
+
+exposuretemps2022 = baths123_2022[baths123_2022$DateTimeGMT08>exposureStart2022 & baths123_2022$DateTimeGMT08<exposureEnd2022,]
+
+summarize(group_by(exposuretemps2022, Bath), meanC = mean(TempC), sdC = sd(TempC))
+# Bath  meanC     sdC
+# Bath1	11.74480	0.1740897		
+# Bath2	15.44854	0.1605778		
+# Bath3	18.69595	0.1347089	
+
+measuredData2022 = data.frame(Date = rep(as.Date(c("2022-04-10","2022-04-11",
+                                               "2022-04-13")), 3),
+                          Bath = rep(c("Bath1","Bath2","Bath3"),each=3),
+                          TempC = c(11.9,12.0,11.5,
+                                    15.3,15.1,15.2,
+                                    17.9,18.0,17.8) )
+summarize(group_by(measuredData2022, Bath), meanC = mean(TempC), sdC = sd(TempC))
+# Bath   meanC  sdC
+# Bath1	 11.8	 0.2645751		
+# Bath2	 15.2	 0.1000000		
+# Bath3	 17.9  0.1000000
+```
+
+```{r read and format 2023 hobo data, echo=FALSE}
+# one was lost in the final stages of the study, and no data was recovered
+
+bath2 = read.csv("/Volumes/GoogleDrive/My Drive/2020 GS Multiple Stressors/2023Expts/SC-2.21063869_Bath2.csv")
+bath2$DateTimeGMT08 = as.POSIXct(bath2$DateTimeGMT08, 
+                                 format="%m/%d/%y %H:%M", tz="Etc/GMT-8")
+
+
+bath3 = read.csv("/Volumes/GoogleDrive/My Drive/2020 GS Multiple Stressors/2023Expts/SC-4.21063871_Bath3.csv")
+bath3$DateTimeGMT08 = as.POSIXct(bath3$DateTimeGMT08, 
+                                 format="%m/%d/%y %H:%M", tz="Etc/GMT-8")
+
+baths23 = rbind(bath2, bath3)
+
+hatchdate2023 = as.Date("2023-03-18")
+
+exposureStart2023 = as.POSIXct("2023-03-21 10:00:00", tz="Etc/GMT-8")
+exposureEnd2023 = as.POSIXct("2023-03-25 12:00:00", tz="Etc/GMT-8")
+
+holdingStart2023 = as.POSIXct("2023-03-25 14:00:00", tz="Etc/GMT-8")
+holdingEnd2023 = as.POSIXct("2023-04-27 19:00:00", tz="Etc/GMT-8")
+
+
+exposuretemps2023 = baths23[baths23$DateTimeGMT08>exposureStart2023 & baths23$DateTimeGMT08<exposureEnd2023,]
+
+summarize(group_by(exposuretemps2023, Bath), meanC = mean(TempC), sdC = sd(TempC))
+# Bath  meanC     sdC
+# Bath2	15.23602	0.1941495		
+# Bath3	18.26643	0.3190484	
+
+measuredData2023 = data.frame(Date = rep(as.Date(c("2023-03-21","2023-03-22",
+                                               "2023-03-23","2023-03-24",
+                                               "2023-03-25")), 3),
+                          Bath = rep(c("Bath1","Bath2","Bath3"),each=5),
+                          TempC = c(11.9, 12.2,11.8,13.0,11.9,
+                                    14.7,15.6,15.1,15.5,15.1,
+                                    17.6,18.3,18.4,18.7,18.0) )
+summarize(group_by(measuredData2023, Bath), 
+          meanC = mean(TempC), sdC = sd(TempC))
+# Bath   meanC  sdC
+# Bath1	 12.16	0.4929503		
+# Bath2	 15.20	0.3605551		
+# Bath3	 18.20	0.4183300	
+
+
+bathtemps_2023_box = 
+  ggplot(exposuretemps, aes(x=Bath, y=TempC)) + 
+  geom_boxplot()+
+  coord_cartesian(ylim = c(11,19))+
+  theme_bw()
+
+bathtemps_2023_measuredbox = 
+  ggplot(measuredData, aes(x=Bath, y=TempC)) + 
+  geom_boxplot()+
+  coord_cartesian(ylim = c(11,19))+
+  theme_bw()
+
+bathtemps_2023_box + bathtemps_2023_measuredbox
+
+```

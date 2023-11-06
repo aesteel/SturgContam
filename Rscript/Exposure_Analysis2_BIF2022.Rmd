@@ -1,0 +1,236 @@
+---
+title: "Exposure_Analysis2 - Exploratory Analysis"
+author: "Anna Steel"
+date: "9/3/2021"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readtext) # need this because the ethovision output .txt files have unusual encoding as UTF-16
+library(lme4)
+library(circular)
+library(rethinking)
+library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
+library(rstatix)
+library(viridis)
+
+knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
+```
+
+```{r utility functions, include=FALSE}
+# calculate hypotenuse of triangle created by two xy locations
+
+distmov = function(x1,x2,y1,y2) { dm = sqrt((x1-x2)^2 + (y1-y2)^2); return(dm)}
+
+# calculate number steps between detections; use summarized dataset (5 pos/sec)
+nstep = function(t2,t1, interv=0.2) {
+  if (t2-t1 < 0) stop('time steps backwards?')
+  nstep <- ( (t2-t1) / interv)
+  return(nstep)
+  }
+
+
+circ.mean.na = function(x) {
+  x2 = x[!is.na(x)]
+  sinr <- sum(sin(x2))
+  cosr <- sum(cos(x2))
+  circmean <- atan2(sinr, cosr)
+  return(circmean)
+}
+
+circ.disp.na = function(x) {
+  x2 = x[!is.na(x)]
+    n <- length(x2)
+    c <- sum(cos(x2))
+    s <- sum(sin(x2))
+    r <- sqrt(c^2 + s^2)
+    rbar <- r/n
+    var <- 1 - rbar
+    data.frame(n, r, rbar, var)
+}
+
+```
+
+
+## Read in Cleaned Data ("Exposure_Analysis1.Rmd")
+```{r read in clean data}
+DataSum96temp.raw = read.csv("outputData/Exposure_Outputdata/Bifenthrin_2022_Cleaned_NoConc_96hrs.csv")
+# DataSum2496.raw = read.csv("outputData/Exposure_Outputdata/Fipronil_2021_Cleaned_NoConc_2496hrs.csv")
+# DataSumAll.raw = read.csv("outputData/Exposure_Outputdata/Fipronil_2021_Cleaned_NoConc_Allhrs.csv")
+```
+
+```{r filter}
+DataSum96temp <- DataSum96temp.raw[DataSum96temp.raw$tray!="C",]
+```                   
+## Add measured concentrations (versus nominal)
+```{r chem analysis results}
+# chemcsv.raw = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Fipronil_2021_Summary.csv")
+#   chemcsv <- chemcsv.raw[chemcsv.raw$chemical=="fipronil" & chemcsv.raw$sample=="spike", c("spp", "nomconc", "calcConc")]
+#  
+#   
+# DataSum96 <- merge(DataSum96.raw, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
+#  DataSum96$calcConc = as.numeric(DataSum96$calcConc)
+#  
+ 
+```
+
+
+## Add water temps at end of trial for 96 -->
+```{r add indiv water temp increase}
+# gstemp = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_IndivBehaviorVideo_GS2021_Temps.csv")
+# wstemp = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_IndivBehaviorVideo_WS2021_Temps.csv")
+# 
+# # interpolate missing temps
+# tempdat = rbind(gstemp, wstemp)
+# tempdat$time <- times(paste0(tempdat$time, ":00"))
+# 
+# ggplot(data=tempdat, aes(x=time, y=endtemp)) + geom_point()
+# 
+# tempdat.redu = tempdat[!(tempdat$Exposure.Hr=="24" & tempdat$species=="WS" & tempdat$Tray %in% c("A","B","C","D")),] # legitimate notes for high temps for A,B, but also outliers for c,d if we're trying to make a high quality line for temp relationship with exposure video times
+#  ggplot(data=tempdat.redu, aes(x=time, y=endtemp)) + geom_point(aes(color=species))
+# 
+# templm = lm(endtemp ~ time + species, data=tempdat.redu)
+#  summary(templm) # temp = 6.83281 + 21.94528*time + 0.42187*WS + error
+#  plot(templm)
+# 
+# tempdat$pred.endtemp[tempdat$species=="GS"] = 6.83281 + 21.94528*tempdat$time[tempdat$species=="GS"]
+# 
+# tempdat$pred.endtemp[tempdat$species=="WS"] = 6.83281 + 21.94528*tempdat$time[tempdat$species=="WS"] + 0.42187
+# 
+# ggplot(tempdat, aes(x=endtemp, y=pred.endtemp, color=species)) + geom_point() + geom_line(data = data.frame(x=14:20, y=14:20), aes(x=x, y=y), color="black", lty=2)
+# 
+# DataSum96.T = merge(DataSum96, tempdat, by.x=c("Spp","ExposureHrs","Tray","Replicate"), by.y=c("species","Exposure.Hr","Tray","rep"), all.x=T)
+#  # this uses the control as a sample for all of the corresponding replicate numbers
+# DataSum96 = DataSum96.T
+```
+
+
+
+
+## Exploratory Plots for each metric (Total distance travelled, Mean velocity, Meander and Turn angle, Use of center zone (% time), Time Active, Full Rotations vs distance traveled) 
+  
+  
+### Distance  
+  
+```{r distance data, echo=F}
+
+## Summarize to take total distance (sum moved in a trial) for each fish replicate
+DataSum96$calcConc = DataSum96$nomconc_ngL ## temporary place holder until we get the results on conc back from Luann
+DataSum96.dist = DataSum96 %>%
+  group_by(Arena, rep, ExposureHrs, nomconc_ngL, tray, temp) %>%
+  #summarize(TotalfishDist = sum(SumDistMoved, na.rm=T)) %>%
+  summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100)) %>%
+  ungroup()  %>%
+  data.frame()
+
+```
+
+```{r distance boxplots}
+## with 96
+totfishdist96.bif22 = ggplot(DataSum96.dist, 
+                             aes(fill=factor(nomconc_ngL), y=TotalfishDist_m, 
+                               x=factor(nomconc_ngL) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_wrap(~temp) + #, labeller = labeller(
+                       # Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),#)+
+                       # scales="free") +
+                      ylab("Total Trial Distance (m)") + 
+                      xlab("Nominal Bifenthrin Concentration (ng/L)") +
+                      scale_fill_viridis_d(name="") + 
+                      theme_bw()
+
+totfishdist96.bif22
+
+
+    
+tiff("figures/Exposure_OutputFigs/TotalDistance_Bif_by_temp_raw.tiff", width=240, height=70, units="mm", compression="lzw", res=150)
+totfishdist96.bif22
+dev.off()
+
+
+totfishdist96.biftemp22 = ggplot(DataSum96.dist, 
+                             aes(fill=factor(nomconc_ngL), y=TotalfishDist_m, 
+                               x=factor(temp) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_grid(~nomconc_ngL) + #, labeller = labeller(
+                       # Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),#)+
+                       # scales="free") +
+                      ylab("Total Trial Distance (m)") + 
+                      xlab("Nominal Bifenthrin Concentration (ng/L)") +
+                      scale_fill_viridis_d(name="") + 
+                      theme_bw()
+
+totfishdist96.biftemp22
+```
+
+
+
+
+
+### Sumarize time spent in center
+```{r center zone data, echo=F} 
+DataSum2496.centC = DataSum2496 %>%
+  filter(!is.na(InZoneC)) %>%  ### will this bias the data if I remove those points where there isn't a detection? If the fish is more likely to be in the center when it's stationary, and it's more likely to be undetected when it's stationary, this may bias these values and under-represent the effect of the Fipronil (more stationary when strongly affected)
+  # also note, this line doesn't actually change the results because summing the InZoneC column drops all NA automatically; this line above just makes that explicit
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID) %>%
+  summarize(InZoneC = sum(InZoneC, na.rm=T),# InZoneB = sum(InZoneB, na.rm=T), 
+            npos = n()) %>%
+  mutate(PercZoneC.1 = InZoneC / npos) %>%
+  #mutate(PercZoneC.2 = InZoneC / (InZoneC+InZoneB)) %>%
+  # ran this comparison to see how much the NA can influence the data, and it seems to be minor
+  ungroup()  %>%
+  data.frame()
+
+
+DataSumAll.centC = DataSumAll %>%
+  filter(!is.na(InZoneC)) %>%  
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID) %>%
+  summarize(InZoneC = sum(InZoneC, na.rm=T), npos = n()) %>%
+  mutate(PercZoneC.1 = InZoneC / npos) %>%
+  ungroup()  %>%
+  data.frame()
+
+```
+
+```{r center zone plots, echo=F}
+
+CenterC.plot = ggplot(DataSum2496.centC, 
+                           aes(fill=factor(Treatment), y=(PercZoneC.1), 
+                               x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  #geom_violin()+
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("% of recorded positions in Central Zone") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+CenterC.plot
+
+
+CenterCAll.plot = ggplot(DataSumAll.centC, 
+                           aes(fill=factor(Treatment), y=(PercZoneC.1), 
+                               x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  #geom_violin()+
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("% of recorded positions in Central Zone") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+CenterCAll.plot
+
+```
+
+These are some pretty good plots for WS. I think I'll use the distance moved (most intuitive), the turn angle, and the centerC plots. 
+
+```{r presentation plots}
+totfishdist
+sdMeander.plot
+activefish
+CenterC.plot
+```
+

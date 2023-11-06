@@ -1,0 +1,686 @@
+---
+title: "Exposure_Mortality_Allyrs"
+author: "Anna Steel"
+date: "2023-09-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(MuMIn)
+library(tidyverse)
+library(gtsummary) # for making beautiful tables of raw datasets and of glm outputs; builds off gt package
+
+# set wd to the location of the project, not the script file
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+```
+
+
+## read in compiled mortality data for plots for presentations
+```{r read in data, echo=FALSE}
+
+mdat = read.csv("rawData/ExposureCompiled_Mortality_Summary.csv")
+
+ mdat$notes = NULL
+ str(mdat)
+ #mdat$spp = factor(mdat$spp)
+ mdat$RepDish = factor(mdat$RepDish)
+ #mdat$conclevel = factor(mdat$conclevel)
+ 
+ mdat$lognomconc = log(mdat$nomconc+1)
+ 
+# remove top to concentrations for fipronil (both spp) 
+mdat = mdat[!(mdat$nomconc %in% c(500,1000) & mdat$contaminant=="fipronil"),]
+
+# copy these values into an excel table for report
+mdat_summary <- mdat %>%
+  filter(year%in% c(2022,2023))%>%
+  group_by(spp, contaminant, nomconc, tempC) %>%
+   summarize(mean.perc.mort = mean(perc.mort),
+            se.perc.mort = sd(perc.mort, na.rm=TRUE)/n(),
+            ndish = n(),
+            total.exposure.morts = sum(total.exposure.morts),
+            nfish = sum(total.accounted.for) ) %>%
+  data.frame()
+
+
+
+## read in chem analysis numbers
+chemanaly = read.csv("rawData/ChemAnalysisResults_CompiledforR.csv")
+ chemanaly$CalcConc[chemanaly$CalcConc=="ND"] <- 0
+ names(chemanaly) <- tolower(names(chemanaly))
+ chemanaly$contaminant <- tolower(chemanaly$contaminant)
+
+ 
+```
+```{r  wasted attempt to make pretty tables with gt or gtsummary, Not helpful tools, may return someday, echo=FALSE, eval=FALSE}
+# tried  to make a beautiful table uysing gtsummary
+# mdat_summary <- mdat %>%
+#   group_by(spp, contaminant, nomconc, tempC) %>%
+#    summarize(mean.perc.mort = mean(perc.mort), 
+#             se.perc.mort = sd(perc.mort, na.rm=TRUE)/n(),
+#             ndish = n(),
+#             total.exposure.morts = sum(total.exposure.morts),
+#             nfish = sum(total.accounted.for) ) %>%
+#   data.frame()
+# 
+# mdat_summary$se.perc.mort[is.na(mdat_summary$se.perc.mort)] <- 0 # can't figure out how to do this in a pipe
+
+### epic fail
+# mdat_table_fip <- mdat_summary %>%
+#   filter(contaminant=="fipronil") %>%
+#   select(spp, nomconc, mean.perc.mort, nfish, nfish) %>%
+#   tbl_strata2( strata = spp,
+#               .tbl_fun = 
+#                 ~ .x %>%
+#                 tbl_summary(by = nomconc) ) %>%
+#   bold_labels()
+#   
+
+### the time investment is huge and out pa off is tiny. Ending this wasted time persuit  
+# mdat_fip_wide.mort <- mdat_summary %>%
+#    filter(contaminant=="fipronil") %>%
+#    select(spp, nomconc, mean.perc.mort) %>%
+#    spread(key=nomconc, value=mean.perc.mort)
+# 
+# mdat_table_fip <- mdat_summary %>%
+#    filter(contaminant=="fipronil") %>%
+#    select(spp, nomconc, mean.perc.mort, nfish, nfish) %>%
+#    gt() %>%
+#     tab_header(title="Acute Mortality, Fipronil") %>%
+#     tab_spanner(label="Nominal Concentration",
+#                 columns = 
+#     strata = tempC,
+#               .tbl_fun = 
+#                 ~ .x %>%
+#                 tbl_summary(by = tempC, missing="no"),
+#               .header="**{strata}**C" ) %>%
+#   bold_labels()
+
+
+```
+
+
+
+## comparision 1 -> concentrations using WS fip and bif range test (15C) 
+```{r compare WS by contam, echo=FALSE}
+conc.comp <- mdat %>%
+   filter(spp=="WS") %>%
+   filter(tempC==15) %>%
+   #filter(year %in% c(2020, 2021)) %>%
+   data.frame()
+   
+ ggplot(data=conc.comp, 
+        aes(x=factor(nomconc), y=perc.mort, fill=contaminant)) + 
+   geom_boxplot() + facet_wrap(~contaminant, scales="free") + 
+     theme_bw()
+ 
+ # summarize to get mean mortality perc by concentration and contaminant
+ conc.sum <- conc.comp %>%
+   group_by(spp, contaminant, color, conclevel) %>%
+   summarize(mean.perc.mort = mean(perc.mort), se.perc.mort = sd(perc.mort)/n() ) %>%
+   data.frame()
+ conc.sum$se.perc.mort[is.na(conc.sum$se.perc.mort)] <- 0
+ #conc.sum$conclevel[conc.sum$contaminant=="fipronil"] <- conc.sum$conclevel+0.1
+ 
+add.nomconc = data.frame(contaminant = rep(c("bifenthrin","fipronil"), each=6),
+                         conclevel = rep(c(0:5), times=2),
+                         nomconc = c(0,10,100,500,1000,2000, 0,1,10,100,500,1000))
+conc.sum = merge(conc.sum, add.nomconc, all.x=T)
+ 
+ mean.mort.plot1 = ggplot(data=conc.sum, aes(x=log(nomconc+1), y=mean.perc.mort, fill=contaminant)) + 
+   geom_errorbar(aes(ymin = mean.perc.mort - se.perc.mort, 
+                     ymax = mean.perc.mort + se.perc.mort)) + 
+   geom_point(pch=21, size=3) + 
+   facet_grid(spp~contaminant, scales="free", 
+              labeller = labeller(contaminant = c("bifenthrin" = "Bifenthrin, ng/L",
+                                                  "fipronil" = "Fipronil, ug/L")) ) + 
+   scale_fill_manual(values=c("rosybrown1","salmon2"), guide="none") + 
+  scale_x_continuous(name = "Nominal Pesticide Concentration", breaks = log(c(0,10,100,1000,10000)+1), labels=c(0,10,100,1000,10000) ) + 
+   theme_bw() 
+ 
+ # mean.mort.plot1 + scale_y_continuous(name = "Mean Mortality", breaks = seq(0,.5,.1), labels=paste0(seq(0,50,10), "%"), limits=c(0,.5) )
+
+ mean.mort.plot1 + scale_y_continuous(name = "Mean Mortality", breaks = seq(0,.1,.02), labels=paste0(seq(0,10,2), "%"), limits = c(0,.1)) 
+
+tiff("figures/Mortality_WS_contaminantComp_forpresentation.jpeg",  width=600, height=300, units="px", compression="lzw", res=100)
+ mean.mort.plot1 + scale_y_continuous(name = "Mean Mortality", breaks = seq(0,.1,.02), labels=paste0(seq(0,10,2), "%"), limits = c(0,.1)) 
+dev.off()
+```
+
+## stats for WS by pesticide (comp 1)
+```{r WS comparison1 stats, echo=FALSE}
+chemanaly.WS = filter(chemanaly, spp=="WS", sample=="spike")
+#chemanaly.WS = filter(chemanaly.WS, !(contaminant %in% c("fipronil desulfinyl",
+#                                                    "desulfinyl fipronil amide",
+#                                                    "fipronil amide")))
+
+conc.comp <- mdat %>%
+   filter(spp=="WS") %>%
+   filter(tempC==15) %>%
+   data.frame()
+
+conc.comp2 = merge(conc.comp, chemanaly.WS, all.X=T)
+ conc.comp2$calcconc <- as.numeric(conc.comp2$calcconc)
+
+conc.comp2$logcalcconc = log(conc.comp2$calcconc+1)                  
+
+
+
+comp.lm = lm(perc.mort ~ contaminant*logcalcconc , data=conc.comp2) # ignores the byproducts of fipronil
+plot(comp.lm) # not good residuals
+summary(comp.lm) 
+
+# when doing a glm binomial, the LHS is a two column matrix witrh N success and N failures
+comp.glm = glm(cbind(total.exposure.morts, final.tally) ~ contaminant*logcalcconc, data=conc.comp2, family="binomial", na.action=na.fail)
+plot(comp.glm) # qq plot isn't good either, but I think that's okay for binomials?
+summary(comp.glm)
+dredge(comp.glm) # best model is with no predictors. =) That's funny. Next best is with contaminant
+
+
+      # library(rethinking)
+      # 
+      # concCompBayes = conc.comp
+      # names(concCompBayes)[c(9,10,11,12,13)]  <- c("ExposMort","IncidentMort","FinalTally","TotalFish","PercMort")
+      # concCompBayes$FishTested = concCompBayes$ExposMort + concCompBayes$FinalTally
+      # 
+      # compBayesBinom <- map2stan(
+      #         alist(
+      #               ExposMort ~ dbinom(TotalFish,p),
+      #             logit(p) <-a + bC*contaminant + bLNC*lognomconc + bCLNC*contaminant*lognomconc, 
+      #               a ~ dnorm(0,10),
+      #               c(bC, bLNC, bCLNC) ~ dnorm(0,10)
+      #            ), 
+      #            data = concCompBayes, chains=4, warmup=500, iter=1500) 
+      #       plot(compBayesBinom); precis(compBayesBinom)
+      # 
+      # 
+      # compBayesPoission <- map2stan(
+      #         alist(
+      #               ExposMort ~ dpois(p),
+      #         log(p) <- FishTested + a + bC*contaminant + bLNC*lognomconc + bCLNC*contaminant*lognomconc, 
+      #               a ~ dnorm(0,10),
+      #               c(bC, bLNC, bCLNC) ~ dnorm(0,10)
+      #            ), 
+      #            data = concCompBayes, chains=4, warmup=500, iter=1500) 
+      #       plot(compBayesPoission); precis(compBayesPoission)
+
+```
+
+
+
+## comparison 2 -> multiple stressors, WS/GS bifenthrin at temp
+```{r WS/GS comparing2 mort by temp, echo=FALSE}
+ conc.comp2 <- mdat %>%
+   #filter(spp=="WS") %>%
+   filter(year %in% c(2022, 2023)) %>%
+   data.frame()
+   
+ #plot raw data for each dish
+ ggplot(data=conc.comp2, 
+        aes(x=factor(nomconc), y=perc.mort, fill=factor(tempC)) ) + 
+   geom_point(pch=21, size=3, position="jitter") + 
+   facet_grid(spp~tempC)+#, scales="free") + 
+   scale_fill_discrete(guide="none")+
+     theme_bw()
+ 
+ # plot summarized data for each treatment
+ conc.sum2 <- conc.comp2 %>%
+   group_by(spp, tempC, color, conclevel) %>%
+   summarize(mean.perc.mort = mean(perc.mort), 
+             se.perc.mort = sd(perc.mort)/n(), 
+             nrep = n(), 
+             nfish = sum(total.accounted.for) ) %>%
+   data.frame()
+     conc.sum2$se.perc.mort[is.na(conc.sum2$se.perc.mort)] <- 0
+     add.nomconc2 = data.frame(conclevel = 0:5,
+                         nomconc = c(0,10,100,500,1000,2000) )
+     conc.sum2 = merge(conc.sum2, add.nomconc2, all.x=T)
+
+ # basic plot
+ mean.mort.plot2 = ggplot(data=conc.sum2, aes(x=log(nomconc+1), y=mean.perc.mort, fill=factor(spp))) + 
+   geom_errorbar(aes(ymin = mean.perc.mort - se.perc.mort, 
+                     ymax = mean.perc.mort + se.perc.mort,
+                     width=0.75)) + 
+   geom_point(pch=21, size=2) + 
+   facet_grid(spp~tempC, #scales="free", 
+              labeller = labeller(tempC = c("12"="12C", "15"="15C", "18"="18C")) ) + 
+   scale_fill_manual(values=c("green3","grey80"), guide="none") + 
+   #scale_fill_manual(values=c("turquoise1","turquoise3","turquoise4"), guide="none") +
+   scale_x_continuous(name = "Bifenthrin Concentration (ng/L)",
+                      breaks = log(c(0,10,100,1000)+1),                                               labels=c(0,10,100,1000) ) + 
+   theme_bw() 
+ 
+ # plot with y-scale from 0-50%
+ mean.mort.plot2 + scale_y_continuous(name = "Mean Mortality (%)", 
+                                      breaks = seq(0,.5,.1), 
+                                      labels = seq(0,50,10), 
+                                      limits=c(0,.5) )
+ # plot with y-scale from 0-10%
+ mean.mort.plot2 + scale_y_continuous(name = "Mean Mortality (%)", 
+                                      breaks = seq(0,.1, .02), 
+                                      labels=seq(0,10,2), 
+                                      limits=c(0,.1) ) 
+
+# tiff("figures/Mortality_GSWS_bifbytemp_forreport.jpeg",  width=600, height=300, units="px", compression="lzw", res=100)
+#  mean.mort.plot2 + scale_y_continuous(name = "Mean Mortality (%)", breaks = seq(0,.1,.02), labels=seq(0,10,2), limits = c(0,.1)) 
+# dev.off()
+```
+
+```{r WS/GS comparing2 deformed by temp, echo=FALSE}
+ conc.comp2 <- mdat %>%
+   filter(year %in% c(2022, 2023)) %>%
+   data.frame()
+   
+
+ # plot summarized data for each treatment
+ conc.sum2.def <- conc.comp2 %>%
+   mutate(def96hr = deformed96hrs_transferred + deformed96hrs_euthanized) %>%
+   mutate(alive96hr = def96hr + final.tally) %>%
+   group_by(spp, tempC, color, conclevel) %>%
+   summarize(mean.perc.def = mean(def96hr/alive96hr), 
+             se.perc.def = sd(def96hr/alive96hr)/n(), 
+             nrep = n(), 
+             nfish = sum(alive96hr) ) %>%
+   data.frame()
+   conc.sum2.def$se.perc.def[is.na(conc.sum2.def$se.perc.def)] <- 0
+   add.nomconc2 = data.frame(conclevel = 0:5,
+                         nomconc = c(0,10,100,500,1000,2000) )
+   conc.sum2.def = merge(conc.sum2.def, add.nomconc2, all.x=T)
+
+ # basic plot
+ mean.def.plot2 = ggplot(data=conc.sum2.def, 
+                         aes(x=log(nomconc+1), y=mean.perc.def, 
+                             fill=factor(spp))) + 
+   geom_errorbar(aes(ymin = mean.perc.def - se.perc.def, 
+                     ymax = mean.perc.def + se.perc.def, 
+                     width=0.75)) + 
+   geom_point(pch=21, size=3) + 
+   facet_grid(spp~tempC, scales="free", 
+              labeller = labeller(tempC = c("12"="12C", "15"="15C", "18"="18C")) ) + 
+   #scale_fill_manual(values=c("turquoise1","turquoise3","turquoise4"), guide="none") +
+   scale_fill_manual(values=c("green3","grey80"), guide="none")+ 
+   scale_x_continuous(name = "Nominal Pesticide Concentration",                                            breaks = log(c(0,10,100,1000,10000)+1),                                               labels=c(0,10,100,1000,10000) ) + 
+   theme_bw() 
+ 
+ # plot with y-scale from 0-50%
+ mean.def.plot2 + scale_y_continuous(name = "Deformity Rate at 96hrs", 
+                                       breaks = seq(0,.42,.1),
+                                      # labels = seq(0,42,10), 
+                                       limits=c(0,.42) )
+ 
+tiff("figures/Deformities_WSGS_bytemp_forreport.jpeg",  width=600, height=300, units="px", compression="lzw", res=100)
+  mean.def.plot2 + scale_y_continuous(name = "Deformity Rate at 96hrs", 
+                                       breaks = seq(0,.42,.1), limits=c(0,.42))
+dev.off()
+
+
+## plot only controls to look at temp*spp effect
+ mean.control.def.plot2 = ggplot(data=filter(conc.sum2.def, nomconc==0),
+                         aes(x=tempC, y=mean.perc.def, 
+                             fill=factor(spp))) + 
+   geom_errorbar(aes(ymin = mean.perc.def - se.perc.def, 
+                     ymax = mean.perc.def + se.perc.def)) + 
+   geom_point(pch=21, size=3) + 
+   facet_wrap(~spp, scales="free",
+              labeller = labeller(spp = c("GS"="Green Sturgeon",
+                                          "WS"="White Sturgeon")) ) + 
+  # scale_fill_manual(values=c("turquoise1","turquoise3","turquoise4"), guide="none") +
+   scale_fill_manual(values=c("green3","grey80"), guide="none")+ 
+   scale_x_continuous(name = "Exposure Temperature (C)",                                            breaks = c(12,15,18))+ 
+   scale_y_continuous(name = "Deformities at 96hrs (%)", 
+        breaks = seq(0,.3, .05), labels=seq(0,30,5), limits=c(0,.3) ) +
+   theme_bw() 
+ 
+ 
+ 
+ # scaled to control plot
+ cont.scales = filter(conc.sum2.def, nomconc==0)[,c(2,3,5)]
+  names(cont.scales)[3] <- "cont.mean.perc.def"
+ conc.sum2.def2 = merge(conc.sum2.def, cont.scales) 
+ conc.sum2.def2$def.difference = conc.sum2.def2$mean.perc.def - conc.sum2.def2$cont.mean.perc.def
+ 
+ mean.def.cont.plot2 = ggplot(data=conc.sum2.def2, 
+                         aes(x=log(nomconc+1), y=def.difference, 
+                             fill=factor(spp))) + 
+   geom_errorbar(aes(ymin = def.difference - se.perc.def, 
+                     ymax = def.difference + se.perc.def, 
+                     width=.75)) + 
+   geom_point(pch=21, size=3) + 
+   facet_grid(spp~tempC, #scales="free", 
+              labeller = labeller(tempC = c("12"="12C", "15"="15C", "18"="18C")) ) + 
+   #scale_fill_manual(values=c("turquoise1","turquoise3","turquoise4"), guide="none") +
+   scale_fill_manual(values=c("green3","grey80"), guide="none")+ 
+   scale_x_continuous(name = "Nominal Pesticide Concentration",                                            breaks = log(c(0,10,100,1000,10000)+1),                                               labels=c(0,10,100,1000,10000) ) + 
+  scale_y_continuous(name = "Standardized Deformity Rate at 96hrs", 
+                                      breaks = seq(-0.1, .2,.05)) +
+  geom_hline(yintercept=0, linetype="dashed", lwd=.2)+
+   theme_bw() 
+ 
+tiff("figures/DeformitiesStandardized_WSGS_bytemp_forreport.jpeg",  width=600, height=300, units="px", compression="lzw", res=100)
+ mean.def.cont.plot2
+dev.off() 
+ 
+```
+
+## stats for WS/GS by temp, bif (comp 2)
+```{r stats for WS/GS comparing2 mort by temp, echo=FALSE}
+chemanaly.bif = filter(chemanaly, contaminant=="bifenthrin", year %in% c(2022,2023))
+#chemanaly.WS = filter(chemanaly.WS, !(contaminant %in% c("fipronil desulfinyl",
+#                                                    "desulfinyl fipronil amide",
+#                                                    "fipronil amide")))
+
+conc.comp.bif <- mdat %>%
+   filter(contaminant=="bifenthrin") %>%
+   filter(year %in% c(2022,2023)) %>%
+   data.frame()
+
+conc.comp.bif2 = merge(conc.comp.bif, chemanaly.bif, all.X=T)
+ conc.comp.bif2$calcconc <- as.numeric(conc.comp.bif2$calcconc)
+
+conc.comp.bif2$logcalcconc = log(conc.comp.bif2$calcconc+1)                  
+
+
+comp2.lm = lm(perc.mort ~ spp*logcalcconc*tempC, data=conc.comp.bif2)
+plot(comp2.lm)
+summary(comp2.lm)
+
+# cbind is morts and survivors; all those deformed and euthanized on last day considerd survivors
+comp2.glm.int = glm(cbind(total.exposure.morts, (total.accounted.for-total.exposure.morts)) ~ spp*logcalcconc + spp*tempC + logcalcconc*tempC, data=conc.comp.bif2, family="binomial",na.action=na.fail)
+plot(comp2.glm.int ) # residuals look better here
+summary(comp2.glm.int ) # nothing is significant 
+dredge(comp2.glm.int ) # best model with only species, then spp+temp, then conc+spp (deltaAIC2.25). No support for interactions in model
+
+comp2.glm.add = glm(cbind(total.exposure.morts, (total.accounted.for-total.exposure.morts)) ~ spp+logcalcconc+tempC, data=conc.comp.bif2, family="binomial",na.action=na.fail)
+plot(comp2.glm.add ) # residuals look better here than the basic lm, same as glm.int
+summary(comp2.glm.add ) # spp is now a significant variable
+dredge(comp2.glm.add ) # AIC weights the same as glm.int (obviously)
+
+# take home point: there is different mortality by species, but there is no effect of temperature or pesticide concentration (or thier interaction) on the mortality rates during the 96 hours of the trial.
+```
+
+```{r stats for WS/GS comparing2 deformity by temp, echo=FALSE}
+chemanaly.bif = filter(chemanaly, contaminant=="bifenthrin", year %in% c(2022,2023))
+
+conc.compdef.bif <- mdat %>%
+   filter(contaminant=="bifenthrin") %>%
+   filter(year %in% c(2022,2023)) %>%
+   mutate(def96hr = deformed96hrs_transferred + deformed96hrs_euthanized) %>%
+   mutate(alive96hr = def96hr + final.tally) %>%
+   data.frame()
+
+conc.compdef.bif2 = merge(conc.compdef.bif, chemanaly.bif, all.X=T)
+ conc.compdef.bif2$calcconc <- as.numeric(conc.compdef.bif2$calcconc)
+
+conc.compdef.bif2$logcalcconc = log(conc.compdef.bif2$calcconc+1)                  
+
+
+compdef2.lm = lm(def96hr ~ spp*logcalcconc*tempC, data=conc.compdef.bif2)
+plot(compdef2.lm)
+summary(compdef2.lm)
+
+# cbind is morts and survivors; all those deformed and euthanized on last day considerd survivors
+compdef2.glm.int = glm(cbind(def96hr, (alive96hr-def96hr)) ~ spp*logcalcconc*tempC, data=conc.compdef.bif2, family="binomial",na.action=na.fail)
+plot(compdef2.glm.int ) # residuals look better here, a few with strong leverage
+summary(compdef2.glm.int ) # spp and temp significant variables
+dredge(compdef2.glm.int ) # best model with temp and species and thier interaction, but adding concentration and conc*spp isn't too far behind (Delta AIC 1.55 with both, 1.83 with onlt conc)
+
+compdef2.glm.partadd = glm(cbind(def96hr, (alive96hr-def96hr)) ~ spp*tempC + logcalcconc, data=conc.compdef.bif2, family="binomial",na.action=na.fail)
+plot(compdef2.glm.partadd ) # fixes a few of the extreme residuals
+summary(compdef2.glm.partadd ) # spp is only significant variable
+
+```
+
+
+## comparison 3 -> species specific responses, WS/GS at 15C, fip
+```{r WS/GS comparing3 fip by spp, echo=FALSE}
+conc.comp3 <- mdat %>%
+   filter(tempC==15) %>%
+   filter(contaminant=="fipronil") %>%
+   data.frame()
+   
+ ggplot(data=conc.comp3, 
+        aes(x=factor(nomconc), y=perc.mort, fill=contaminant)) + 
+   geom_point(pch=21) + facet_grid(contaminant~spp)+#, scales="free") + 
+   scale_fill_discrete(guide="none")+
+     theme_bw()
+ 
+## add measured concentrations before plotting
+chemanaly.fip = filter(chemanaly, contaminant!="bifenthrin", sample=="spike")
+  
+  chemanaly.fip$log = log(as.numeric(chemanaly.fip$calcconc)+1)
+   chemanaly.fip$calcconc <- NULL
+  chemanaly.fipwide <- chemanaly.fip%>%  spread(key=contaminant, value=log)
+    #fix column names
+    names(chemanaly.fipwide)[5:10] <- paste0("log_",names(chemanaly.fipwide)[5:10])
+    names(chemanaly.fipwide) <- str_replace_all(names(chemanaly.fipwide), " ", "_")
+
+
+conc.comp.fip3 = merge(conc.comp3, chemanaly.fipwide, all.X=T)
+  
+ 
+ conc.sum3 <- conc.comp.fip3 %>%
+   group_by(spp, tempC, contaminant, color, conclevel, nomconc, log_fipronil) %>%
+   summarize(mean.perc.mort = mean(perc.mort), se.perc.mort = sd(perc.mort)/n(), nrep = n(),nfish = sum(total.accounted.for ) ) %>%
+   data.frame()
+ conc.sum3$se.perc.mort[is.na(conc.sum3$se.perc.mort)] <- 0
+
+
+ mean.mort.plot3 = ggplot(data=conc.sum3, aes(x=log_fipronil, y=mean.perc.mort, fill=factor(spp))) + 
+   geom_errorbar(aes(ymin = mean.perc.mort - se.perc.mort, 
+                     ymax = mean.perc.mort + se.perc.mort,
+                     width=.5)) + 
+   geom_point(pch=21, size=2) + 
+   facet_grid(spp~tempC, scales="free", labeller = labeller(tempC = c("15" = "15C")))+
+   #             labeller = labeller(contaminant = c("bifenthrin" = "Bifenthrin, ng/L",
+   #                                                "fipronil" = "Fipronil, ug/L"),
+   #                                 spp = c("WS" = "White Sturgeon",
+   #                                         "GS" = "Green Sturgeon")) ) + 
+   scale_fill_manual(values=c("green3","grey80"), guide="none") + 
+   scale_x_continuous(name = "Fipronil Concentration (ug/L)", breaks = log(c(0,1,10,100,1000)+1), labels=c(0,1,10,100,1000) ) + 
+   theme_bw() 
+ 
+ # mean.mort.plot3 + scale_y_continuous(name = "Mean Mortality", breaks = seq(0,.5,.1), labels=paste0(seq(0,50,10), "%"), limits=c(0,.5) )
+
+ mean.mort.plot3 + scale_y_continuous(name = "Mean Mortality (%)", breaks = seq(0,.1,.02), labels=seq(0,10,2), limits = c(0,.1)) 
+
+# tiff("figures/Mortality_GSWS_15C_forreport.jpeg",  width=600, height=300, units="px", compression="lzw", res=100)
+#  mean.mort.plot3 + scale_y_continuous(name = "Mean Mortality (%)", breaks = seq(0,.1,.02), labels=seq(0,10,2), limits = c(0,.1)) 
+# dev.off()
+```
+
+## stats for WS/GS at 15C, fip (comp 3)
+```{r stats for WS/GS comparing3 fip by spp, echo=FALSE}
+chemanaly.fip = filter(chemanaly, contaminant!="bifenthrin", sample=="spike")
+#chemanaly.fip = filter(chemanaly.fip, !(contaminant %in% c("fipronil desulfinyl",
+#                                                    "desulfinyl fipronil amide",
+#                                                    "fipronil amide")))
+
+chemanaly.fip$log = log(as.numeric(chemanaly.fip$calcconc)+1)
+ chemanaly.fip$calcconc <- NULL
+chemanaly.fipwide <- chemanaly.fip%>%  spread(key=contaminant, value=log)
+#fix column names
+names(chemanaly.fipwide)[5:10] <- paste0("log_",names(chemanaly.fipwide)[5:10])
+names(chemanaly.fipwide) <- str_replace_all(names(chemanaly.fipwide), " ", "_")
+
+
+conc.comp.fip <- mdat %>%
+   filter(contaminant!="bifenthrin") %>%
+   data.frame()
+
+conc.comp.fip3 = merge(conc.comp.fip, chemanaly.fipwide, all.X=T)
+ 
+
+comp3.lm1 = lm(perc.mort ~ spp + log_fipronil + log_fipronil_sulfide + log_fipronil_sulfone, data=conc.comp.fip3, na.action="na.fail")
+plot(comp3.lm1)
+summary(comp3.lm1)
+car::vif(comp3.lm1) # very high VIF for the fip degredates (obviously)
+ # fipronil sulfone has strongest effect size and smallest proportional se. Could use this, or could use fip because it's easier to describe
+
+comp3.lm1a = lm(perc.mort ~ spp*log_fipronil, data=conc.comp.fip3, na.action="na.fail")
+plot(comp3.lm1a)
+summary(comp3.lm1a)
+
+comp3.lm1b = lm(perc.mort ~ spp*log_fipronil_sulfone, data=conc.comp.fip3, na.action="na.fail")
+plot(comp3.lm1b)
+summary(comp3.lm1b)
+
+# neither pesticide is significant, and the spp effect doesn't change. Use fip for ease of explanation
+
+dredge(comp3.lm1a)
+ # interaction not useful
+ # best model is additive, without fip
+
+comp3.lm2 = lm(perc.mort ~ spp + log_fipronil, data=conc.comp.fip3, na.action="na.fail")
+plot(comp3.lm2)
+summary(comp3.lm2)
+
+
+
+comp3.glm = glm(cbind(total.exposure.morts, final.tally) ~ spp+ log_fipronil + log_fipronil_sulfide + log_fipronil_sulfone, data=conc.comp.fip3, family="binomial",na.action=na.fail)
+plot(comp3.glm) # looks good
+summary(comp3.glm) # spp is the largest / significant effect
+dredge(comp3.glm) # model with oly spp is best, with 1.81AIC difference to model2 with pesticide concentration
+
+
+
+
+## con't know where conc.sum3 came from upon revisiting code. re-wrote it...=/
+ # mean.mort.plot3b = ggplot(data=conc.sum3, aes(x=log(calcconc+1), y=mean.perc.mort, fill=factor(spp), group=factor(spp)) ) + 
+ #   geom_errorbar(aes(ymin = mean.perc.mort - se.perc.mort, 
+ #                     ymax = mean.perc.mort + se.perc.mort),
+ #                 width=.5) + 
+ #   geom_point(pch=21, size=3) + 
+ #   facet_grid(contaminant~spp, #scales="free", 
+ #               labeller = labeller(contaminant = c("bifenthrin" = "Bifenthrin, ng/L",
+ #                                                  "fipronil" = "Fipronil, ug/L")) ) + 
+ #   scale_fill_manual(values=c("green4","grey80"), guide="none") + 
+ #   scale_x_continuous(name = "Nominal Pesticide Concentration", breaks = log(c(0,10,100,1000,10000)+1), labels=c(0,10,100,1000,10000) ) + 
+ #   theme_bw() 
+ 
+ mean.mort.plot3b = ggplot(data=conc.comp.fip3, aes(x=log_fipronil, y=mean.perc.mort, fill=factor(spp), group=factor(spp)) ) + 
+   geom_errorbar(aes(ymin = mean.perc.mort - se.perc.mort, 
+                     ymax = mean.perc.mort + se.perc.mort),
+                 width=.5) + 
+   geom_point(pch=21, size=3) + 
+   facet_grid(contaminant~spp, #scales="free", 
+               labeller = labeller(contaminant = c("bifenthrin" = "Bifenthrin, ng/L",
+                                                  "fipronil" = "Fipronil, ug/L")) ) + 
+   scale_fill_manual(values=c("green4","grey80"), guide="none") + 
+   scale_x_continuous(name = "Nominal Pesticide Concentration", breaks = log(c(0,10,100,1000,10000)+1), labels=c(0,10,100,1000,10000) ) + 
+   theme_bw() 
+ 
+ 
+mean.mort.plot3b + scale_y_continuous(name = "Mean Mortality (%)", breaks = seq(0,.1,.02), labels=seq(0,10,2), limits = c(0,.1)) 
+
+tiff("figures/Mortality_GSWSfip_15C_forreport.jpeg",  width=400, height=400, units="px", compression="lzw", res=100)
+mean.mort.plot3b + scale_y_continuous(name = "Mean Mortality (%)", breaks = seq(0,.1,.02), labels=seq(0,10,2), limits = c(0,.1))
+dev.off()
+
+
+# take home: there isn't a difference in mortality by concentration
+
+```
+
+
+## compiled plots
+```{r patchwork plots for mortality and deformity, echo=FALSE}
+
+
+
+tiff("figures/Mortality_GSWS_all_forreport.jpeg",  width=650, height=325, units="px", compression="lzw", res=100)
+
+  (mean.mort.plot2 + scale_y_continuous(name = "Mean Mortality (%)", 
+                                        breaks = seq(0,.1,.02), 
+                                        labels=seq(0,10,2), limits = c(0,.1)) ) + 
+
+   (mean.mort.plot3 + scale_y_continuous(name = "", 
+                                        breaks = seq(0,.1,.02), 
+                                        labels=seq(0,10,2), limits = c(0,.1)) )+ 
+
+ plot_layout(ncol=2,  widths = c(3, 1)) + 
+  
+  plot_annotation(tag_levels = 'a')
+
+dev.off()
+
+```
+
+
+## output tables from models
+```{r stats tables for spp, pesticide, temp, conc}
+
+# bifenthin
+comp2.glm.add = glm(cbind(total.exposure.morts, (total.accounted.for-total.exposure.morts)) ~ spp+logcalcconc+tempC, data=conc.comp.bif2, family="binomial",na.action=na.fail)
+summary(comp2.glm.add ) # spp is only significant variable
+
+comp2.glm.add %>% tbl_regression(exponentiate=TRUE) %>%
+  add_global_p()
+  
+
+#fipronil
+comp3.glm = glm(cbind(total.exposure.morts, final.tally) ~ spp + log_fipronil + log_fipronil_sulfide + log_fipronil_sulfone, data=conc.comp.fip3, family="binomial",na.action=na.fail)
+
+comp3.glm %>% tbl_regression(exponentiate=TRUE) %>%
+  add_vif() %>%
+  add_global_p()
+  
+
+      comp3.glm.fip = glm(cbind(total.exposure.morts, final.tally) ~ spp + 
+                            log_fipronil, 
+                          data=conc.comp.fip3, family="binomial",na.action=na.fail)
+      
+      comp3.glm.fip %>% tbl_regression(exponentiate=TRUE) %>%
+        add_vif() %>%
+        add_global_p()
+      ## will use this, as the AIC and model fitting don't suggest any degredate is better than any other, and this is the parent compound so seems most reasonable to include. Can discuss the degredates in the paper but not the final report.  
+      
+      comp3.glm.fipsd = glm(cbind(total.exposure.morts, final.tally) ~ spp + 
+                              log_fipronil_sulfide, 
+                            data=conc.comp.fip3, family="binomial",na.action=na.fail)
+      
+      comp3.glm.fipsd %>% tbl_regression(exponentiate=TRUE) %>%
+        add_vif() %>%
+        add_global_p()
+      
+      comp3.glm.fipsn = glm(cbind(total.exposure.morts, final.tally) ~ spp + 
+                              log_fipronil_sulfone, 
+                            data=conc.comp.fip3, family="binomial",na.action=na.fail)
+      
+      comp3.glm.fipsn %>% tbl_regression(exponentiate=TRUE) %>%
+        add_vif() %>%
+        add_global_p()
+
+
+      AIC(comp3.glm.fipsn, comp3.glm.fipsd, comp3.glm.fip) # i order, but very tiny differences)
+      
+      
+# WS by bif and fip
+comp.glm = glm(cbind(total.exposure.morts, final.tally) ~ contaminant*logcalcconc, data=conc.comp2, family="binomial", na.action=na.fail)
+summary(comp.glm)
+
+comp.glm %>% tbl_regression(exponentiate=TRUE) %>%
+  add_global_p()
+
+
+## deformities for bif by temp
+
+compdef2.glm.partadd = glm(cbind(def96hr, (alive96hr-def96hr)) ~ spp*tempC + logcalcconc, data=conc.compdef.bif2, family="binomial",na.action=na.fail)
+summary(compdef2.glm.partadd)
+
+compdef2.glm.partadd %>% tbl_regression(exponentiate=TRUE) %>%
+  add_global_p()
+# significant interaction term, but likely because there is no deformities in WS the temperature effect can't exist for WS, so there has to be an interaction term
+
+
+compdef2.glm.add = glm(cbind(def96hr, (alive96hr-def96hr)) ~ spp + tempC + logcalcconc, data=conc.compdef.bif2, family="binomial",na.action=na.fail)
+summary(compdef2.glm.add)
+
+compdef2.glm.add %>% tbl_regression(exponentiate=TRUE) %>%
+  add_global_p()
+# when we take out the interaction, there is a tiny probability of mortality for the WS (else it was an odd ratio very close to zero), amd the odds ratio for temperature is only slightly higher (0,75 vs 0..73 or so). 
+
+
+```

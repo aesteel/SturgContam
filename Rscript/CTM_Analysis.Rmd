@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 
 library(tidyverse)
+library(emmeans)
+library(MuMIn)
 
 ```
 
@@ -17,32 +19,47 @@ library(tidyverse)
 
 ### Read in data file
 ```{r read data}
-CTM_WS20bif15C = read.csv("rawData/CTM_WS2020_bif15C.csv")
+#CTM_WS20bif15C = read.csv("rawData/CTM_WS2020_bif15C.csv")
+ # this will be pilot data only, because we non-randomly selected fish for the trials based on deformities
+CTM_GS21fip15C = read.csv("rawData/CTM_GS2021_fip15C.csv")
+CTM_WS21fip15C = read.csv("rawData/CTM_WS2021_fip15C.csv")
 
+CTM_WS22bifTemp = read.csv("rawData/CTM_WS2022_bifTemp_clean.csv")
+CTM_GS23bifTemp = read.csv("rawData/CTM_GS2023_bifTemp_all.csv")
 ```
 
 ```{r clean data, echo=FALSE}
-#shorten name: 
-  ctm_dat <- CTM_WS20bif15C
+#combine and shorten name: 
+listall.dat = list(CTM_GS21fip15C, CTM_WS21fip15C, CTM_WS22bifTemp, CTM_GS23bifTemp)
+  ctm_dat <- do.call(rbind, listall.dat)
 
-# remove stock trial of larval fish
-  ctm_dat2 <- ctm_dat[!(ctm_dat$dosage_name == "STOCK"), ] 
+# make the colors all lowercase
+  ctm_dat$treatmentColor <- tolower(ctm_dat$treatmentColor) 
 
-# format dates
-ctm_dat2$date = as.Date(ctm_dat2$date, format="%m/%d/%y") 
-ctm_dat2$acclimtemp = as.factor(ctm_dat2$acclimtemp)
-ctm_dat2$dosage_ng.l = as.factor(ctm_dat2$dosage_ng.l)
+# format columns
+ctm_dat$date = as.Date(ctm_dat$date, format="%m/%d/%y") 
+ctm_dat$acclimtemp = as.factor(ctm_dat$acclimtemp)
 
-ctm_dat2$dosage_name <- factor(ctm_dat2$dosage_name, 
-                              levels = c("Control","Low",
-                                         "Med_Low", "High_Med",
-                                         "Highish", "Lethal")) #"STOCK", 
+# add year column
+ctm_dat$year = as.POSIXlt(ctm_dat$date)$year+1900
+
+# set coloir factor levels
+ctm_dat$treatmentColor <- factor(ctm_dat$treatmentColor, 
+                              levels = c("white","green",
+                                         "yellow", "red",
+                                         "pink", "blue")) #"STOCK", 
+
+# adjust juvenile and early metamorph to match
+ctm_dat$stage = sapply(ctm_dat$stage, function(v) {
+  ifelse(v=="early metamorph",v<- "juvenile",v<-v)
+})
+ctm_dat$stage = factor(ctm_dat$stage, levels=c("larvae","juvenile"))
 
 ```
 
 ```{r summarize data, echo=FALSE, message=FALSE}
-ctm_sum <- ctm_dat2 %>% 
-  group_by(dosage_ng.l, stage) %>% 
+ctm_sum <- ctm_dat %>% 
+  group_by(nomconc, contaminant, stage, acclimtemp, spp) %>% 
   summarize(mean_ctm = mean(ctm_c, na.rm=T),
             sd_ctm = sd(ctm_c, na.rm=T),
             mean_mass = mean(mass_g, na.rm=T),
@@ -55,65 +72,498 @@ ctm_sum <- ctm_dat2 %>%
 ```
   
 ## Quick Visualization Plots
-```{r basic plots, echo=FALSE}
+```{r basic plots rawdata 15C by age, echo=FALSE}
 
-# All Points
-ggplot(ctm_dat2, aes(x = dosage_ng.l, y=ctm_c, color = stage))+
-  geom_point(size=3, position = position_dodge(width = 0.1), alpha=0.3)+
-  geom_boxplot(data = ctm_dat2[ctm_dat2$stage=="juvenile",], color="salmon", fill=NA) + 
-  geom_boxplot(data = ctm_dat2[ctm_dat2$stage=="larvae",], color="steelblue3", fill=NA) + 
-  scale_color_manual(values=c("salmon","steelblue3"), name="Life Stage") +
-  ggtitle("White Sturgeon")+
-  xlab("Nominal Concentration (ng/L)") + ylab(expression("Critical Thermal Maxium " ( degree*C)) )+
-  theme_bw() + theme(legend.position=c(0.17,0.2), legend.box.background=element_rect(color="grey60"))
+# All Points for larvae (not all juv entered yet for 2023, so not including in report
+larv_ctm15_dat = filter(ctm_dat, stage=="larvae", acclimtemp==15)
+all_larvae15C_CTM = ggplot(larv_ctm15_dat, 
+       aes(x = factor(nomconc), y=ctm_c, fill=spp, group=factor(nomconc)))+
+  geom_point(size=3, position = position_dodge(width = 0.1), alpha=0.3, pch=21)+
+  geom_boxplot(data = filter(larv_ctm15_dat, spp=="GS"), color="green3", fill=NA) + 
+  geom_boxplot(data = filter(larv_ctm15_dat, spp=="WS"), color="grey70", fill=NA) + 
+  scale_fill_manual(guide=FALSE, values=c("green3","grey70"), name="Species") +
+  xlab("Nominal Concentration") + 
+  ylab(expression("Critical Thermal Maxium " ( degree*C)) )+
+  facet_grid(spp~contaminant, labeller = labeller( contaminant = c("Fipronil" = "Fipronil (ug/L)", "Bifenthrin" = "Bifenthrin (ng/L)"), spp=c("GS"="Green Sturgeon", "WS" = "White Sturgeon")) ) + coord_cartesian(ylim=c(22, 33)) +
+  theme_bw()  
+  #theme(legend.position=c(0.9,0.15),horiz=TRUE, legend.box.background=element_rect(color="grey60"))
 
-# Summary plot by dosage - integer
-ggplot(ctm_sum, aes(x = dosage_ng.l, y = mean_ctm, color = dosage_ng.l, shape = stage))+
+juv_ctm15_dat = filter(ctm_dat, stage=="juvenile", acclimtemp==15)
+all_juv15C_CTM = ggplot(juv_ctm15_dat, 
+       aes(x = factor(nomconc), y=ctm_c, fill=spp, group=factor(nomconc)))+
+  geom_point(size=3, position = position_dodge(width = 0.1), alpha=0.3, pch=21)+
+  geom_boxplot(data = filter(juv_ctm15_dat, spp=="GS"), color="green3", fill=NA) + 
+  geom_boxplot(data = filter(juv_ctm15_dat, spp=="WS"), color="grey70", fill=NA) + 
+  scale_fill_manual(guide=FALSE, values=c("green3","grey70"), name="Species") +
+  xlab("Nominal Concentration") + 
+  ylab(expression("Critical Thermal Maxium " ( degree*C)) )+
+  facet_grid(spp~contaminant, labeller = labeller( contaminant = c("Fipronil" = "Fipronil (ug/L)", "Bifenthrin" = "Bifenthrin (ng/L)"), spp=c("GS"="Green Sturgeon", "WS" = "White Sturgeon")) ) + coord_cartesian(ylim=c(22, 33)) +
+  theme_bw()  
+  #theme(legend.position=c(0.9,0.15),horiz=TRUE, legend.box.background=element_rect(color="grey60"))
+
+
+tiff("figures/CTM_WSGS_larvae_FipBif_forreport.jpeg",  width=650, height=775, units="px", compression="lzw", res=100)
+  all_larvae15C_CTM + all_juv15C_CTM + 
+    plot_layout(ncol=1) + plot_annotation(tag_levels = 'a')
+dev.off()
+```
+
+```{r basic plots rawdata 15C by contam-spp, echo=FALSE}
+
+# All Points for larvae (not all juv entered yet for 2023, so not including in report
+fip15_ctm_dat = filter(ctm_dat, contaminant=="Fipronil", acclimtemp==15)
+
+all_fip15C_CTM = ggplot(fip15_ctm_dat, 
+       aes(x = factor(nomconc), y=ctm_c, fill=spp, group=factor(nomconc)))+
+  geom_point(size=3, position = position_dodge(width = 0.1), alpha=0.3, pch=21)+
+  geom_boxplot(data = filter(fip15_ctm_dat, spp=="GS"), color="green3", fill=NA) + 
+  geom_boxplot(data = filter(fip15_ctm_dat, spp=="WS"), color="grey70", fill=NA) + 
+  scale_fill_manual(guide=FALSE, values=c("green3","grey70"), name="Species") +
+  xlab("Nominal Concentration") + 
+  ylab(expression("Critical Thermal Maxium " ( degree*C)) )+
+  facet_grid(spp~stage, 
+             labeller = labeller(spp=c("GS"="Green Sturgeon", "WS"="White Sturgeon")) ) + 
+  coord_cartesian(ylim=c(22, 33)) +
+  theme_bw()  
+
+bif15_ctm_dat = filter(ctm_dat, contaminant=="Bifenthrin",  acclimtemp==15)
+all_bif15C_CTM = ggplot(bif15_ctm_dat, 
+       aes(x = factor(nomconc), y=ctm_c, fill=spp, group=factor(nomconc)))+
+  geom_point(size=3, position = position_dodge(width = 0.1), alpha=0.3, pch=21)+
+  geom_boxplot(data = filter(bif15_ctm_dat, spp=="GS"), color="green3", fill=NA) + 
+  geom_boxplot(data = filter(bif15_ctm_dat, spp=="WS"), color="grey70", fill=NA) + 
+  scale_fill_manual(guide=FALSE, values=c("green3","grey70"), name="Species") +
+  xlab("Nominal Concentration") + 
+  ylab(expression("Critical Thermal Maxium " ( degree*C)) )+
+  facet_grid(spp~stage, 
+             labeller = labeller(spp=c("GS"="Green Sturgeon", "WS"="White Sturgeon")) ) + 
+  coord_cartesian(ylim=c(22, 33)) +
+  theme_bw()  
+
+tiff("figures/CTM_WSGS_byStage_FipBif_forreport.jpeg",  width=650, height=775, units="px", compression="lzw", res=100)
+  all_fip15C_CTM + all_bif15C_CTM + 
+    plot_layout(ncol=1) + plot_annotation(tag_levels = 'a')
+dev.off()
+```
+
+```{r basic plots summary, echo=FALSE}
+# fip
+Fip_sumstat = ggplot(filter(ctm_sum, contaminant=="Fipronil"), 
+                     aes(x = factor(nomconc), y = mean_ctm, 
+                         color = log(nomconc+1), shape = stage))+
   geom_point(size=4.0, position = position_dodge(width = 0.1))+ 
   geom_errorbar(aes(ymin=(mean_ctm - sd_ctm), 
                     ymax=(mean_ctm + sd_ctm),
                     width=0.5))+
-  xlab("Bifenthrin Dosage (ng/l)") + ylab("CTM (?C)")+
+  scale_x_discrete(breaks=c(0,1,10,100,500,1000), name="Nominal Concentration (ug/L)") + 
+  ylab(expression("Critical Thermal Maxium " ( degree*C)) )+
+  facet_grid(spp~contaminant, labeller = labeller(spp=c("GS"="Green Sturgeon", 
+                                                        "WS" = "White Sturgeon"),
+                                                  contaminant = c("Fipronil" = "Fipronil (15C)")))+
+  
+  scale_shape_discrete(name="Stage")+
+  scale_color_continuous(guide=FALSE )+
+  #scale_shape_discrete(guide=FALSE)+
+  #scale_color_continuous(name="Nominal\nConcentration", 
+  #                       breaks=log(c(1,2,11,101,1001)), labels=c(0,1,10,100,1000) )+
   theme_bw()
 
-# summary growth plot 
-ggplot(ctm_sum, aes(x = dosage_ng.l, y = mean_mass, color = stage))+
-  geom_point(size=4, position = position_dodge(width = 0.1))+ 
-  geom_errorbar(aes(ymin=(mean_mass - sd_mass), 
-                    ymax=(mean_mass + sd_mass),
+tiff("figures/CTM_WSGS_MeanSE_FipOnly_forreport.jpeg",  width=450, height=350, units="px", compression="lzw", res=100)
+ Fip_sumstat
+dev.off()
+
+### Bif 15C plots
+# prep dataset
+bif15_ctm_sum =filter(ctm_sum, contaminant=="Bifenthrin", acclimtemp==15)
+ bif15_ctm_sum$lognomconc = log(bif15_ctm_sum$nomconc+1)
+  # add blanks for 1 and 1000 for plotting
+  filler = bif15_ctm_sum[!duplicated(bif15_ctm_sum[,c("contaminant","stage","spp")]),]
+  filler = rbind(filler, filler)
+     filler$nomconc <- rep(c(1,1000), each=4)
+     filler$mean_ctm <- NA
+     filler$sd_ctm <- NA
+     filler$mean_mass <- NA
+     filler$sd_mass <- NA
+     filler$mean_tl <- NA
+     filler$sd_tl <- NA
+     filler$nreps <- NA
+     filler$lognomconc <- log(filler$nomconc+1)
+     
+bif15_ctm_sum = rbind(bif15_ctm_sum,filler)
+
+Bif15_sumstat = ggplot(bif15_ctm_sum, 
+                       aes(x = factor(nomconc), y = mean_ctm, 
+                           color = lognomconc, shape = stage))+
+  geom_point(size=4.0, position = position_dodge(width = 0.1))+ 
+  geom_errorbar(aes(ymin=(mean_ctm - sd_ctm), 
+                    ymax=(mean_ctm + sd_ctm),
                     width=0.5))+
-  xlab("Bifenthrin Dosage") + ylab("Mean Mass (g)")+
+  xlab("Nominal Concentration (ug/L)") + 
+  ylab(expression("Critical Thermal Maxium " ( degree*C)) )+
+  facet_grid(spp~contaminant, labeller = labeller(spp=c("GS"="Green Sturgeon", 
+                                                        "WS" = "White Sturgeon"),
+                                                contaminant = c("Bifenthrin" = "Bifenthrin (15C)") 
+                                                  )) + 
+  scale_shape_discrete(name="Stage")+
+ scale_color_continuous(name="Nominal\nConcentration", 
+                         breaks=log(c(1,2,11,101,1001)), labels=c(0,1,10,100,1000) )+
   theme_bw()
+
+tiff("figures/CTM_WSGS_byStage_MeanSE_FipBif_forreport.jpeg",  width=650, height=775, units="px", compression="lzw", res=100)
+ Fip_sumstat + Bif15_sumstat + plot_layout(ncol=1) + plot_annotation(tag_levels = 'a')
+dev.off()
+
+
+## Bif by temp
+
+BifTemp_sumstat = ggplot(filter(ctm_sum, contaminant=="Bifenthrin"), 
+                       aes(x = factor(nomconc), y = mean_ctm, 
+                           color = log(nomconc+1), shape = stage))+
+  geom_point(size=4.0, position = position_dodge(width = 0.1))+ 
+  geom_errorbar(aes(ymin=(mean_ctm - sd_ctm), 
+                    ymax=(mean_ctm + sd_ctm),
+                    width=0.5))+
+  xlab("Nominal Concentration (ng/L)") + 
+  ylab(expression("Critical Thermal Maxium " ( degree*C)) )+
+  facet_grid(spp~acclimtemp, labeller = labeller(spp=c("GS"="Green Sturgeon", 
+                                                        "WS" = "White Sturgeon"),
+                                                 acclimtemp = c("12"="Bifenthrin (12C)",
+                                                                "15"="Bifenthrin (15C)",
+                                                                "18"="Bifenthrin (18C)") )) + 
+  scale_shape_discrete(name="Stage")+
+  scale_color_continuous(guide=FALSE)+
+  theme_bw()
+
+tiff("figures/CTM_WSGS_MeanSE_BifTemp_forreport.jpeg",  width=750, height=400, units="px", compression="lzw", res=100)
+ BifTemp_sumstat
+dev.off()
 
 ```
 
 ## Simple stats
-```{r simple ctm stats, fig.height=3, fig.width=3}
+```{r piecemeal anova  stats, fig.height=3, fig.width=3, eval=FALSE}
+ctm_dat$nomconc = factor(ctm_dat$nomconc)
 
-# with all data
-larvae_dat <- ctm_dat2[ctm_dat2$stage=="larvae", ]
-juv_dat <- ctm_dat2[ctm_dat2$stage=="juvenile", ]
+# split data
+ctm_dat$nomconc = factor(ctm_dat$nomconc)
+
+larvae_dat.bifWS <- ctm_dat[ctm_dat$stage=="larvae" & ctm_dat$spp=="WS" & ctm_dat$contaminant=="Bifenthrin", ]
+larvae_dat.fipWS <- ctm_dat[ctm_dat$stage=="larvae" & ctm_dat$spp=="WS" & ctm_dat$contaminant=="Fipronil", ]
+larvae_dat.bifGS <- ctm_dat[ctm_dat$stage=="larvae" & ctm_dat$spp=="GS" & ctm_dat$contaminant=="Bifenthrin", ]
+larvae_dat.fipGS <- ctm_dat[ctm_dat$stage=="larvae" & ctm_dat$spp=="GS" & ctm_dat$contaminant=="Fipronil", ]
+
+
+juv_dat.bifWS <- ctm_dat[ctm_dat$stage=="juvenile" & ctm_dat$spp=="WS" & ctm_dat$contaminant=="Bifenthrin", ]
+juv_dat.fipWS <- ctm_dat[ctm_dat$stage=="juvenile" & ctm_dat$spp=="WS" & ctm_dat$contaminant=="Fipronil", ]
+juv_dat.bifGS <- ctm_dat[ctm_dat$stage=="juvenile" & ctm_dat$spp=="GS" & ctm_dat$contaminant=="Bifenthrin", ]
+juv_dat.fipGS <- ctm_dat[ctm_dat$stage=="juvenile" & ctm_dat$spp=="GS" & ctm_dat$contaminant=="Fipronil", ]
 
   
-  lar_anova <- aov(ctm_c ~ dosage_ng.l, data = larvae_dat)
-  summary(lar_anova)
+  lbw_anova <- aov(ctm_c ~ nomconc, data = larvae_dat.bifWS)
+  summary(lbw_anova)# as continuous: F = 0.232, P=0.631; as factor: F = 0.091, P=0.965
+  lfw_anova <- aov(ctm_c ~ nomconc, data = larvae_dat.fipWS)
+  summary(lfw_anova)# as continuous: F = 14.93, P=0.0002; as factor: F = 3.155, P=0.0114*
+   TukeyHSD(lfw_anova) #1000 vs 0, p.adj = 0.122; 1000 vs 1 p.adj = 0.036; 
+                       #1000 vs 10, p.adj = 0.062; 1000 va 100, p.adj=0.015
+  lbg_anova <- aov(ctm_c ~ nomconc, data = larvae_dat.bifGS)
+  summary(lbg_anova)# as continuous: F = 0.232, P=0.856; as factor: F = 
+  lfg_anova <- aov(ctm_c ~ nomconc, data = larvae_dat.fipGS)
+  summary(lfg_anova)# as continuous: F = 0.048, P=0.827; as factor: F = 
+
+  jbw_anova <- aov(ctm_c ~ nomconc, data = juv_dat.bifWS)
+  summary(jbw_anova)#non-sig
+  jfw_anova <- aov(ctm_c ~ nomconc, data = juv_dat.fipWS)
+  summary(jfw_anova)#*non-sig
+  jfg_anova <- aov(ctm_c ~ nomconc, data = juv_dat.fipGS)
+  summary(jfg_anova)#non-sig
+
+```
+
+```{r slightly better lm stats, since not partitioned}
+  # # this doesn't have measured concentraitons in it yet; harumph
+  # ctm_dat15 = filter(ctm_dat, acclimtemp==15, !is.na(ctm_c))
+  # fullmod15 = lm(ctm_c ~ spp*contaminant + spp*nomconc + nomconc*contaminant, data = ctm_dat15, na.action="na.fail")
+  # plot(fullmod15)
+  # summary(fullmod15)
+  # dredge(fullmod15) # best model is without interactions
+  # 
+  # addmod15 = lm(ctm_c ~ spp + contaminant + nomconc, data = ctm_dat15, na.action="na.fail")
+  # 
+  # plot(addmod15)
+  # summary(addmod15)
+  # dredge(addmod15) # best model is with only app, spp + contam is 1.98 AIC higher, summary suggests general trend od decreasing CTM with increasing nomconc (factor, not linear)
+  # 
+  # addmod15 = lm(ctm_c ~ spp + contaminant + I(as.numeric(as.character(nomconc))), data = ctm_dat15, na.action="na.fail")
+  # 
+  # plot(addmod15)
+  # summary(addmod15)
+  # dredge(addmod15) # best model is with only app, spp + contam is 1.98 AIC higher when fit with nomconc as a factor, summary suggests general trend od decreasing CTM with increasing nomconc (factor, not linear). fit with nomconc as numeric and the same model is still selected, with a nearly equal model including nomconc (tiny effect size, deltaAIC 0.25)
+
+# this doesn't have measured concentraitons in it yet; harumph
+ctm_datFip= filter(ctm_dat, contaminant=="Fipronil", !is.na(ctm_c))
+fullmod_fip = lm(ctm_c ~ spp*I(log(nomconc+1)) + spp*dph + dph*nomconc, data = ctm_datFip, na.action="na.fail")
+  plot(fullmod_fip) # pretty great
+  summary(fullmod_fip)
+  dredge(fullmod_fip) # best model has two interactions, both by spp
+
+  ctm_datFipGS= filter(ctm_datFip, spp=="GS", !is.na(ctm_c))
+  fullmod_fipGS1 = lm(ctm_c ~ dph*I(log(nomconc+1)), data = ctm_datFipGS, na.action="na.fail")
+    plot(fullmod_fipGS1) # pretty good
+    summary(fullmod_fipGS1)
+    dredge(fullmod_fipGS1) # best model only has age/recovery time
+    
+####### used this one #######  
+  fullmod_fipGS2 = lm(ctm_c ~ dph+I(log(nomconc+1)), data = ctm_datFipGS, na.action="na.fail")
+    plot(fullmod_fipGS2) # pretty good
+    summary(fullmod_fipGS2)
   
-  juv_anova <- aov(ctm_c ~ dosage_ng.l, data = juv_dat)
-  summary(juv_anova)
+    
+  ctm_datFipWS= filter(ctm_datFip, spp=="WS", !is.na(ctm_c))
+  fullmod_fipWS1 = lm(ctm_c ~ dph*I(log(nomconc+1)), data = ctm_datFipWS, na.action="na.fail")
+    plot(fullmod_fipWS1) # pretty good
+    summary(fullmod_fipWS1)
+    dredge(fullmod_fipWS1) # best model with everything, but next best is addirive, with deltaAIC=1.59 ... tough call
+    
+####### used this one #######
+  fullmod_fipWS2 = lm(ctm_c ~ dph+I(log(nomconc+1)), data = ctm_datFipWS, na.action="na.fail")
+  plot(fullmod_fipWS2) # pretty good
+  summary(fullmod_fipWS2) # contam is very significant if small in effect size, but this does seem to be only for the larval size class so I'm inclined to keep the interaction term and all it's messiness
+
+  fullmod_fipWS3 = lm(ctm_c ~ stage*nomconc, data = ctm_datFipWS, na.action="na.fail")
+  plot(fullmod_fipWS3) # pretty good
+  summary(fullmod_fipWS3) # contam is very significant if small in effect size, but this does seem to be only for the larval size class so I'm inclined to keep the interaction term and all it's messiness
 
 
-# remove highest dosages from larval df and repeat
-larvae_dat2 <- larvae_dat[!(larvae_dat$dosage_ng.l == "1000" ),]
-larvae_dat2 <- larvae_dat2[!(larvae_dat2$dosage_ng.l == "2000" ),]
-
-  lar_anova2 <- aov(ctm_c ~ dosage_ng.l, data = larvae_dat2)
-  summary(lar_anova2)
-
-
-# ah ah eeeh eeeh tukey tukey!
-tukey_lar <- TukeyHSD(lar_anova2)
- plot(tukey_lar)
+ctm_datBifTemp = filter(ctm_dat, contaminant=="Bifenthrin", !is.na(ctm_c))
+ctm_datBifTemp$acclimtemp = as.numeric(as.character(ctm_datBifTemp$acclimtemp))
+ctm_datBifTemp$lognomconc = log(ctm_datBifTemp$nomconc+1)
  
-tukey_juv <- TukeyHSD(juv_anova)
- plot(tukey_juv)
+# change nomconc to real chem analysis numbers, and make both conc and temp into numeric for next round...
+fullmodtemp1 = lm(ctm_c ~ spp*acclimtemp + spp*lognomconc + spp*dph + lognomconc*acclimtemp + lognomconc*dph + dph*acclimtemp, data = ctm_datBifTemp, na.action="na.fail")
+  plot(fullmodtemp1) # okay, not stellar, strange lower tail on normal plot and slight negative trend in residuals
+  summary(fullmodtemp1)
+  dredge(fullmodtemp1) # best model is without nomconc or any pairwise interaction with nomconc
+
+fullmodtemp2 = lm(ctm_c ~ spp*acclimtemp + spp*lognomconc + spp*stage + lognomconc*acclimtemp + lognomconc*stage + stage*acclimtemp, data = ctm_datBifTemp, na.action="na.fail")
+  plot(fullmodtemp2) # same as above
+  summary(fullmodtemp2)
+  dredge(fullmodtemp2) # same as model wtih dph
+
+  fullmodtemp3 = lm(ctm_c ~ spp*acclimtemp + dph*acclimtemp + spp*dph + lognomconc, data = ctm_datBifTemp, na.action="na.fail")
+  plot(fullmodtemp3) # look same as model 1; slight nonlinear trend in residuals, more pronounced non-normal tail...ick
+  summary(fullmodtemp3)
+
+  
+  
+ctm_datBifTempGS = filter(ctm_datBifTemp, spp=="GS")
+  GSModtemp1 = lm(ctm_c ~ lognomconc*acclimtemp + lognomconc*dph + dph*acclimtemp, data = ctm_datBifTempGS, na.action="na.fail")
+    plot(GSModtemp1) # look same as model 1; slight nonlinear trend in residuals, more pronounced non-normal tail...ick
+    summary(GSModtemp1)
+    dredge(GSModtemp1)
+    
+####### used this one #######
+    GSModtemp3 = lm(ctm_c ~ dph*acclimtemp + lognomconc, data = ctm_datBifTempGS, na.action="na.fail")
+    plot(GSModtemp3) # look same as model 1; slight nonlinear trend in residuals, more pronounced non-normal tail...ick
+    summary(GSModtemp3)
+
+    
+    
+ctm_datBifTempWS = filter(ctm_datBifTemp, spp=="WS")
+  WSModtemp1 = lm(ctm_c ~ lognomconc*acclimtemp + lognomconc*dph + dph*acclimtemp, data = ctm_datBifTempWS, na.action="na.fail")
+    plot(WSModtemp1) # look same as model 1; slight nonlinear trend in residuals, more pronounced non-normal tail...ick
+    summary(WSModtemp1)
+    dredge(WSModtemp1) 
+    
+  ####### used this one #######
+  WSModtemp3 = lm(ctm_c ~ dph*acclimtemp + lognomconc, data = ctm_datBifTempWS, na.action="na.fail")
+    plot(WSModtemp3) # look same as model 1; slight nonlinear trend in residuals, more pronounced non-normal tail...ick
+    summary(WSModtemp3)  
+    
+```
+
+
+
+## Plots and stats to match exposure analysis (as of Dec 15, 2021)
+```{r more plots and stats}
+
+ctm_dat.cont = ctm_dat[ctm_dat$nomconc==0, c("spp","contaminant","dph","stage","condition", "ctm_c","mass_g","tl_mm")]
+    ctm_dat.cont = ctm_dat.cont %>%
+      group_by(spp, contaminant, dph, stage) %>%
+      summarize(ctm_mncontrol = mean(ctm_c),
+                mass_mncontrol = mean(mass_g, na.rm=T), 
+                tl_mncontrol = mean(tl_mm, na.rm=T),
+                ctm_sdcontrol = sd(ctm_c),
+                mass_sdcontrol = sd(mass_g, na.rm=T), 
+                tl_sdcontrol = sd(tl_mm, na.rm=T)) %>%
+      data.frame()
+  
+ctm_dat.treat = ctm_dat[ctm_dat$nomconc!=0, c("spp","contaminant","dph","stage","condition","nomconc", "ctm_c","mass_g","tl_mm")]
+
+PercChg_CTM = merge(ctm_dat.treat, ctm_dat.cont, all.x=T)
+
+PercChg_CTM$PercChg_ctm = (PercChg_CTM$ctm_c - PercChg_CTM$ctm_mncontrol)/ PercChg_CTM$ctm_mncontrol
+
+PercChg_CTM$stage = factor(PercChg_CTM$stage, levels=c("larvae","juvenile"))
+
+trash.fip = lm(PercChg_ctm ~ 0 + factor(nomconc) + spp + stage, data = 
+                 PercChg_CTM[PercChg_CTM$contaminant=="Fipronil",])
+ summary(emmeans(trash.fip, specs="nomconc", by=c("spp", "stage")), infer=T)
+ 
+
+trash.bif = lm(PercChg_ctm ~ 0 + factor(nomconc) + stage, data = 
+                 PercChg_CTM[PercChg_CTM$contaminant=="Bifenthrin",])
+
+ summary(emmeans(trash.bif, specs="nomconc", by=c("stage")), infer=T)
+ 
+
+ 
+ 
+
+ PercChg_CTM.GSfip = lm(PercChg_ctm ~ 0 + factor(nomconc)*stage, 
+                     data = PercChg_CTM[PercChg_CTM$spp=="GS" &
+                                          PercChg_CTM$contaminant=="Fipronil",])
+  summary(emmeans(PercChg_CTM.GSfip, specs="nomconc", by="stage"), infer=T)
+      #  stage = juvenile:
+      #  nomconc   emmean      SE  df lower.CL upper.CL t.ratio p.value
+      #        1  0.01027 0.00961 148 -0.00873   0.0293  1.068  0.2874 
+      #       10 -0.00378 0.00961 148 -0.02278   0.0152 -0.394  0.6944 
+      #      100  0.00736 0.00961 148 -0.01164   0.0264  0.766  0.4451 
+      #      500 -0.00846 0.00961 148 -0.02746   0.0105 -0.879  0.3806 
+      #     1000  0.00320 0.00961 148 -0.01580   0.0222  0.332  0.7401 
+      # 
+      # stage = larvae:
+      #  nomconc   emmean      SE  df lower.CL upper.CL t.ratio p.value
+      #        1  0.02526 0.00848 148  0.00851   0.0420  2.980  0.0034 **
+      #       10  0.00617 0.00848 148 -0.01059   0.0229  0.728  0.4680 
+      #      100  0.00332 0.00873 148 -0.01392   0.0206  0.381  0.7040 
+      #      500 -0.00694 0.00873 148 -0.02418   0.0103 -0.795  0.4277 
+      #     1000  0.01140 0.00848 148 -0.00536   0.0282  1.344  0.1810 
+
+     
+    PercChg_CTM.WSfip = lm(PercChg_ctm ~ 0 + factor(nomconc)*stage, 
+                     data = PercChg_CTM[PercChg_CTM$spp=="WS" & 
+                                          PercChg_CTM$contaminant=="Fipronil",])
+    summary(emmeans(PercChg_CTM.WSfip, specs="nomconc", by="stage"), infer=T)
+      # stage = juvenile:
+      #  nomconc   emmean      SE  df lower.CL upper.CL t.ratio p.value
+      #        1 -0.00442 0.00535 150 -0.01499  0.00615 -0.826  0.4099 
+      #       10  0.01354 0.00535 150  0.00297  0.02411  2.532  0.0124 *
+      #      100  0.00187 0.00535 150 -0.00870  0.01243  0.349  0.7275 
+      #      500 -0.00137 0.00535 150 -0.01194  0.00920 -0.256  0.7983 
+      #     1000 -0.00442 0.00535 150 -0.01498  0.00615 -0.826  0.4103 
+      # 
+      # stage = larvae:
+      #  nomconc   emmean      SE  df lower.CL upper.CL t.ratio p.value
+      #        1  0.00401 0.00535 150 -0.00656  0.01458  0.750  0.4544 
+      #       10  0.00234 0.00535 150 -0.00823  0.01291  0.437  0.6626 
+      #      100  0.00652 0.00535 150 -0.00405  0.01708  1.218  0.2250 
+      #      500 -0.00884 0.00535 150 -0.01941  0.00172 -1.653  0.1003 
+      #     1000 -0.02096 0.00535 150 -0.03152 -0.01039 -3.918  0.0001 ***
+    
+  
+      
+    PercChg_CTM.WSbifdat1 = PercChg_CTM[PercChg_CTM$spp=="WS" & 
+                                          PercChg_CTM$contaminant=="Bifenthrin",]
+    PercChg_CTM.WSbif1 = lm(PercChg_ctm ~ 0 + factor(nomconc)*stage, 
+                     data = PercChg_CTM.WSbifdat1)
+    summary(emmeans(PercChg_CTM.WSbif1, specs="nomconc", by="stage"), infer=T)
+      #  stage = juvenile:
+      #  nomconc   emmean     SE df lower.CL upper.CL t.ratio p.value
+      #        5  0.00469 0.0170 52  -0.0294   0.0387  0.276  0.7833 
+      #      100  0.00394 0.0170 52  -0.0301   0.0380  0.232  0.8175 
+      #      500 -0.00253 0.0170 52  -0.0366   0.0315 -0.149  0.8819 
+      #     1000   nonEst     NA NA       NA       NA     NA      NA 
+      #     2000   nonEst     NA NA       NA       NA     NA      NA 
+      # 
+      # stage = larvae:
+      #  nomconc   emmean     SE df lower.CL upper.CL t.ratio p.value
+      #        5 -0.01718 0.0294 52  -0.0762   0.0418 -0.585  0.5613 
+      #      100 -0.01064 0.0294 52  -0.0696   0.0483 -0.362  0.7189 
+      #      500 -0.12099 0.0208 52  -0.1627  -0.0793 -5.821  <.0001 ***
+      #     1000 -0.20295 0.0294 52  -0.2619  -0.1440 -6.904  <.0001 ***
+      #     2000 -0.21619 0.0294 52  -0.2752  -0.1572 -7.355  <.0001 ***
+      
+    PercChg_CTM.WSbifdat2  = PercChg_CTM[PercChg_CTM$spp=="WS" & 
+                                          PercChg_CTM$condition!="poor" &
+                                          PercChg_CTM$contaminant=="Bifenthrin",]
+    PercChg_CTM.WSbif2 = lm(PercChg_ctm ~ 0 + factor(nomconc) + stage, 
+                     data = PercChg_CTM.WSbifdat2)
+    summary(emmeans(PercChg_CTM.WSbif2, specs="nomconc", by="stage"), infer=T)
+      #  stage = juvenile:
+      #  nomconc   emmean      SE df lower.CL upper.CL t.ratio p.value
+      #        5  0.00738 0.00625 45 -0.00520  0.01997  1.182  0.2436 
+      #      100  0.00846 0.00625 45 -0.00413  0.02104  1.353  0.1828 
+      #      500 -0.00974 0.00625 45 -0.02233  0.00284 -1.559  0.1259 
+      #     1000 -0.02136 0.01854 45 -0.05870  0.01598 -1.152  0.2553 
+      # 
+      # stage = larvae:
+      #  nomconc   emmean      SE df lower.CL upper.CL t.ratio p.value
+      #        5 -0.02526 0.00838 45 -0.04215 -0.00838 -3.013  0.0042 **
+      #      100 -0.02419 0.00838 45 -0.04108 -0.00731 -2.885  0.0060 **
+      #      500 -0.04239 0.00838 45 -0.05928 -0.02551 -5.056  <.0001 ***
+      #     1000 -0.05401 0.01677 45 -0.08778 -0.02023 -3.221  0.0024 **
+
+
+
+
+# All points, match style of exposure plots
+
+CTM_percChgplot.fip= ggplot(PercChg_CTM[PercChg_CTM$contaminant=="Fipronil",], 
+                         aes(y=PercChg_ctm, x=factor(nomconc),
+                             fill=factor(nomconc)) ) + 
+                       geom_hline(yintercept = 0, lwd=.6, 
+                                  linetype="dashed", color="black")+
+                       geom_boxplot(outlier.shape=NA) +                      
+                       geom_hline(yintercept = c(-0.2), lwd=.3, 
+                              linetype="dashed", color="red") +
+                       facet_grid(spp~stage, labeller = labeller(
+                         spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                         #contaminant = c("Fipronil" = "Fipronil (ug/L)", "Bifenthrin" = 
+                         #                   "Bifenthrin (ng/L)"),
+                         scales="free" ))+
+                        ylab(expression("Proportional Change in\nCritical Thermal Maxium " ( degree*C)) ) + 
+                        xlab("Fipronil Nominal Concentration") +
+                       scale_fill_viridis_d(guide=F)+
+                       theme_bw() + theme(plot.margin =  margin(6,6,6,18))
+
+CTM_percChgplot.bif= ggplot(PercChg_CTM[PercChg_CTM$contaminant=="Bifenthrin",], 
+                         aes(y=PercChg_ctm, x=factor(nomconc),
+                             fill=factor(nomconc)) ) + 
+                       geom_hline(yintercept = 0, lwd=.6, 
+                                  linetype="dashed", color="black")+
+                       geom_boxplot(outlier.shape=NA) +                      
+                       geom_hline(yintercept = c(-0.2), lwd=.3, 
+                              linetype="dashed", color="red") +
+                       facet_grid(spp~stage, labeller = labeller(
+                         spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                         #contaminant = c("Fipronil" = "Fipronil (ug/L)", "Bifenthrin" = 
+                         #                   "Bifenthrin (ng/L)"),
+                         scales="free" ))+
+                        ylab(expression("Proportional Change in\nCritical Thermal Maxium " ( degree*C)) ) + 
+                        xlab("Bifenthrin Nominal Concentration") +
+                       scale_fill_viridis_d(guide=F)+
+                       theme_bw() + theme(plot.margin = margin(6,6,6,18))
+
+
+tiff("/Users/Anna/Documents/ResearchGit/SturgContam/figures/CTM_perchgCont_fip_snglecol.tiff", 
+     width=80,
+     height=90,
+     units="mm",
+     res=600)
+
+  CTM_percChgplot.fip + theme(text = element_text(size = 8))
+  
+  dev.off()  
+  
+
+tiff("/Users/Anna/Documents/ResearchGit/SturgContam/figures/CTM_perchgCont_bif20_snglecol.tiff", 
+     width=85,
+     height=50,
+     units="mm",
+     res=600)
+
+  CTM_percChgplot.bif + theme(text = element_text(size = 8))
+  
+  dev.off()    
+
 ```

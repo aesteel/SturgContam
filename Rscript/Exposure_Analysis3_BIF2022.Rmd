@@ -15,7 +15,9 @@ library(rethinking)
 library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
 library(patchwork)
 library(circular)
+library(chron)
 library(rstatix)
+library(MuMIn)
 library(viridis)
 
 knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
@@ -59,15 +61,22 @@ circ.disp.na = function(x) {
 
 ## Read in Cleaned Data ("Exposure_Analysis1.Rmd")
 ```{r read in clean data}
-DataSum2496bif.raw = read.csv("outputData/Exposure_Outputdata/Bifenthrin_2020_Cleaned_FullData.csv")
+DataSum96temp.raw = read.csv("outputData/Exposure_Outputdata/Bifenthrin_2022_Cleaned_NoConc_96hrs.csv")
 
-DataSum96bif.raw = DataSum2496bif.raw[DataSum2496bif.raw$ExposureHrs==96,]
-
+# can repeat for more exposure timepoints later, if desired
 ```
-# this includes measured concentrations, input directly into data csv
 
+## Add measured concentrations (versus nominal)
+```{r chem analysis results}
+ chemcsvtemp.raw = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Bifenthrin_2022_WSSummary.csv")
 
-## Add water temps at end of trial - not completed for 2020! Collected?
+DataSum96temp.cc <- merge(DataSum96temp.raw, chemcsvtemp.raw, by.x=c("nomconc_ngL"), by.y=c("nomconc_ngL"), all.x=T)
+  DataSum96temp.cc$calcConc[DataSum96temp.cc$calcConc=="ND"] = 0
+  DataSum96temp.cc$calcConc = as.numeric(DataSum96temp.cc$calcConc)
+ 
+```
+
+## Add water temps at end of trial
 ```{r add indiv water temp increase}
 # gstemp = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_IndivBehaviorVideo_GS2021_Temps.csv")
 # wstemp = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_IndivBehaviorVideo_WS2021_Temps.csv")
@@ -97,663 +106,328 @@ DataSum96bif.raw = DataSum2496bif.raw[DataSum2496bif.raw$ExposureHrs==96,]
 ```
 
 
+### remove results for WS trial 45 (tray C, 96hr, 189C) until can review them in ethovision
+```{r remove trial 45-WS}
+DataSum96temp = DataSum96temp.cc[!(DataSum96temp.cc$tray=="C"),]
+
+```
+
+
+# plots and exploration are in Exposure_Analysis2, with select plots copied here
+
+
 
 # Statistical Models, predictions, and other posterior queries for each metric (Total distance travelled, Mean velocity, Meander and Turn angle, Use of center zone (% time), Time Active, Full Rotations vs distance traveled) 
 
 
-## Distance Models #####
+## Distance #####
 ```{r distance data, echo=F}
-
 ## Summarize to take total distance (sum moved in a trial) for each fish replicates
-  # DataSum2496bif.dist = DataSum2496bif.raw %>%
-  #   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, Tray, RepID) %>%
-  #   summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100)) %>%
-  #   ungroup()  %>%
-  #   
-  #   mutate(lnCalcConc = log(calcConc+1)) %>%
-  #   mutate(lnCalcConcC= scale(lnCalcConc, scale=FALSE)) %>%
-  #   mutate(lnCalcConcC2 = lnCalcConcC^2 ) %>% 
-  #    # order of transformations matters (log then scale then square)
-  # 
-  #   mutate(ExposureHrsC = scale(ExposureHrs, scale=FALSE)) %>%
-  #   data.frame()
-  # 
-  # MeanDist0bif = DataSum2496bif.dist %>%
-  #   subset(Treatment==0) %>%
-  #   group_by(Spp, ExposureHrs) %>%
-  #   summarize(mean0_dist = mean(TotalfishDist_m)) %>%
-  #   ungroup()  %>%
-  #   # mutate(lnCalcConcC= scale(lnCalcConc, scale=FALSE)) %>%
-  #   # mutate(lnCalcConcC2 = lnCalcConcC^2) %>%
-  #   data.frame()
-  # 
-  # DataSumDiffbif.dist = merge(DataSum2496bif.dist, MeanDist0bif, all.x=T)
-  # DataSumDiffbif.dist$DistDiff = DataSumDiffbif.dist$TotalfishDist_m - DataSumDiffbif.dist$mean0_dist
-
-
-## Summarize to take total distance (sum moved in a trial) for each fish replicates
-DataSum96bif.dist = DataSum96bif.raw %>%
-  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp) %>% #, Tray, RepID, pred.endtemp) %>%
+DataSum96temp.dist = DataSum96temp %>%
+  group_by(Arena, rep, ExposureHrs, nomconc_ngL, calcConc, tray, temp) %>%
   summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100)) %>%
   ungroup()  %>%
+  
   mutate(lnCalcConc = log(calcConc+1)) %>%
   mutate(lnCalcConc2 = (log(calcConc+1))^2) %>%
   #mutate(lnCalcConcC= scale(lnCalcConc, scale=FALSE)) %>%
   #mutate(lnCalcConcC2 = lnCalcConcC^2 ) %>% 
    # order of transformations matters (log then scale then square)
+
   data.frame()
 
 
 ```
-```{r plots from Analysis2}
-# classic veridis box plots
-totfishdist96Bif = ggplot(DataSum96bif.dist, 
-                          aes(fill=factor(Treatment), 
-                               y=TotalfishDist_m, 
-                               x=factor(ExposureHrs) ) ) + 
+
+```{r distance rawdata plots}
+## with 96
+totfishdist96.bif22 = ggplot(DataSum96temp.dist, 
+                             aes(fill=factor(nomconc_ngL), y=TotalfishDist_m, 
+                               x=factor(nomconc_ngL) ) ) + 
                       geom_boxplot(outlier.size = .75) + 
-                      facet_wrap(~Spp, labeller = labeller(
-                        Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),#)+
-                        scales="free") +
+                      facet_wrap(~temp) + #, labeller = labeller(
+                       # Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),#)+
+                       # scales="free") +
                       ylab("Total Trial Distance (m)") + 
-                      xlab("Exposure Hours") +
-                      scale_fill_viridis_d(name="Nominal Fpironil\nConcentration (ug/L)") + 
+                      xlab("Nominal Bifenthrin Concentration (ng/L)") +
+                      scale_fill_viridis_d(name="") + 
                       theme_bw()
 
-totfishdist96Bif
-```
+totfishdist96.bif22
 
+## with 96, by temperature
+viridis_6col = viridis(6)
+totfishdist96.bif22.temp = ggplot(DataSum96temp.dist, 
+                             aes(fill=factor(nomconc_ngL), y=TotalfishDist_m, 
+                               x=factor(temp) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_grid(~nomconc_ngL, labeller = labeller(
+                        nomconc_ngL = c("0"="0 ng/L bifenthrin",
+                                        "10"="10 ng/L bifenthrin",
+                                        "100"="100 ng/L bifenthrin",
+                                        "500"="500 ng/L bifenthrin")) )+
+                       # scales="free") +
+                      ylab("Total Trial Distance (m)") + 
+                      xlab("Water Temperature (\u00B0C)") +
+                      scale_fill_manual(guide=F, values=viridis_6col[1:4]) + 
+                      theme_bw()
+
+totfishdist96.bif22.temp
+
+
+```
 
 
 ```{r distance frequentist models}
 
-DataSum96bif.distGS = DataSum96bif.dist[DataSum96bif.dist$Spp=="GS",]
-DataSum96bif.distWS = DataSum96bif.dist[DataSum96bif.dist$Spp=="WS",]
-
-dist.lmGSbif = lm(TotalfishDist_m ~ lnCalcConc + lnCalcConc2,
-               data=DataSum96bif.distGS, na.action=na.fail) 
- summary(dist.lmGSbif) 
- plot(dist.lmGSbif) 
- dredge(dist.lmGSbif)
-  # linear model is best, not polynomial
-
-dist.lmWSbif = lm(TotalfishDist_m ~ lnCalcConc + lnCalcConc2,
-               data=DataSum96bif.distWS, na.action=na.fail) 
- summary(dist.lmWSbif) 
- plot(dist.lmWSbif) 
- dredge(dist.lmWSbif)
-  # polynomial model is best
+disttemp.lmWS = lm(TotalfishDist_m ~ lnCalcConc*temp + lnCalcConc2*temp,
+               data=DataSum96temp.dist, na.action=na.fail) 
+ summary(disttemp.lmWS)  # no significance
+ dredge(disttemp.lmWS) # best model has polynomial and temp and interaction
 
  
- # basic linear models with treatment as factor, to provide significance for boxplots
-dist.lmfactGS.bif20 = lm(TotalfishDist_m ~ factor(Treatment),#lnCalcConc, # 
-               data=DataSum96bif.distGS)
-dist.aovGS = summary(aov(dist.lmfactGS.bif20))
-dist.aovGS
- TukeyHSD(aov(dist.lmfactGS.bif20)) # 2000 is just ABRELY significant (0.046)
+disttemp.lmWS2 = lm(TotalfishDist_m ~ lnCalcConc + lnCalcConc2*temp,
+               data=DataSum96temp.dist, na.action=na.fail) 
+ summary(disttemp.lmWS2)  # now lncalcConc2 and interaction with temp is significant
+ dredge(disttemp.lmWS2)
  
-dist.lmfactWS = lm(TotalfishDist_m ~ factor(Treatment),#lnCalcConc, # 
-               data=DataSum96bif.distWS)
-dist.aovWS = summary(aov(dist.lmfactWS))
-dist.aovWS
- TukeyHSD(aov(dist.lmfactWS)) # 2000 is sig dif from all others except 1000
- 
- 
- 
+
 ```
-
 
 ## plot frequentist model predictions
 ```{r model predictions}
-preddat.WSbif = data.frame(lnCalcConc= unique(DataSum96bif.distWS$lnCalcConc))
-preddat.WSbif$lnCalcConc2 = preddat.WSbif$lnCalcConc^2
-preddat.WSbif = preddat.WSbif[order(preddat.WSbif$lnCalcConc),]
+preddat.temp.WS = expand.grid(lnCalcConc= unique(DataSum96temp.dist$lnCalcConc), temp = c(12,15,18)) 
+                        
+preddat.temp.WS$lnCalcConc2 = preddat.temp.WS$lnCalcConc^2
+preddat.temp.WS = preddat.temp.WS[order(preddat.temp.WS$lnCalcConc),]
                                            
-WSpreds.bif = predict(dist.lmWSbif, newdata=preddat.WSbif, se.fit=TRUE) 
-preddat.WSbif$predTotalDist_m = WSpreds.bif$fit
-preddat.WSbif$predSE_TotalDist_m = WSpreds.bif$se.fit
-  preddat.WSbif$spp="WS"
+WSpreds.temp = predict(disttemp.lmWS2, newdata=preddat.temp.WS, se.fit=TRUE) 
+
+preddat.temp.WS$predTotalDist_m = WSpreds.temp$fit
+preddat.temp.WS$predSE_TotalDist_m = WSpreds.temp$se.fit
+  preddat.temp.WS$spp="WS"
 
                 
-                
-preddat.GSbif = data.frame(lnCalcConc= unique(DataSum96bif.distGS$lnCalcConc))
-preddat.GSbif$lnCalcConc2 = preddat.GSbif$lnCalcConc^2
-preddat.GSbif = preddat.GSbif[order(preddat.GSbif$lnCalcConc),]
-                        
-GSpreds.bif = predict(dist.lmGSbif, newdata=preddat.GSbif, se.fit=TRUE) 
-preddat.GSbif$predTotalDist_m = GSpreds.bif$fit
-preddat.GSbif$predSE_TotalDist_m = GSpreds.bif$se.fit
-  preddat.GSbif$spp="GS"
-  
- preddat.bif = rbind(preddat.GSbif, preddat.WSbif)
 
  # plot model predictions with raw conc scale
-ggplot(preddat.bif, aes(x=exp(lnCalcConc), y=predTotalDist_m, fill=spp)) +
+ggplot(preddat.temp.WS, aes(x=exp(lnCalcConc), y=predTotalDist_m, group=temp, fill=temp)) +
   geom_errorbar(aes(ymin = predTotalDist_m - predSE_TotalDist_m, 
                     ymax = predTotalDist_m + predSE_TotalDist_m)) + 
   geom_line(size=0.7) + 
   geom_point(pch=21, size=3) + 
-  scale_fill_manual(values=c("GS"="green3","WS"="grey80"),
-                    labels=c("Green Sturgeon","White Sturgeon"),
-                    name="Species") + 
+  #scale_fill_manual(values=c("GS"="green3","WS"="grey80"),
+                    # labels=c("Green Sturgeon","White Sturgeon"),
+                    # name="Species") + 
   scale_y_continuous(name="Total Distance Traversed (cm)", 
-                     breaks=seq(0,30,5), 
-                     labels=seq(0,30,5)*100, 
-                     limits=c(0,29)) + 
+                     breaks=seq(0,40,5), 
+                     labels=seq(0,40,5)*100, 
+                     limits=c(0,43)) + 
   xlab("Bifenthrin Concentration (ng/L)") +
   theme_bw()
 
  # plot model predictions with log conc scale
-ggplot(preddat.bif, aes(x=(lnCalcConc), y=predTotalDist_m, fill=spp)) +
+ggplot(preddat.temp.WS, aes(x=(lnCalcConc), y=predTotalDist_m, group=temp, fill=temp)) +
   geom_errorbar(aes(ymin = predTotalDist_m - predSE_TotalDist_m, 
                     ymax = predTotalDist_m + predSE_TotalDist_m)) + 
   geom_smooth(method="loess", color="black", size=.7) + 
   geom_point(pch=21, size=3) + 
-  scale_fill_manual(values=c("GS"="green3","WS"="grey80"),
-                    labels=c("Green Sturgeon","White Sturgeon"),
-                    name="Species") + 
+  # scale_fill_manual(values=c("GS"="green3","WS"="grey80"),
+  #                   labels=c("Green Sturgeon","White Sturgeon"),
+  #                   name="Species") + 
   scale_y_continuous(name="Total Distance Traversed (cm)", 
-                     breaks=seq(0,30,5), 
-                     labels=seq(0,30,5)*100, 
-                     limits=c(0,29)) + 
+                     breaks=seq(0,40,5), 
+                     labels=seq(0,40,5)*100, 
+                     limits=c(0,43)) + 
   xlab("Bifenthrin Concentration (ng/L)") +
   theme_bw()
 
 
 ## plot model predictions over raw boxplots
-preddat2.bif = merge(preddat.bif,
-                     DataSum96bif.dist[,c("Spp","lnCalcConc","calcConc","Treatment")], 
-                     all.x=T, by.x=c("spp","lnCalcConc"), by.y=c("Spp","lnCalcConc"))
-preddat2.bif= rename(preddat2.bif, Spp=spp)
+treat.ref = unique(DataSum96temp.dist[,c("lnCalcConc","nomconc_ngL")])
+preddat.temp.WS = merge(preddat.temp.WS, treat.ref, all.x=T)
+preddat.temp.WS$calcConc = exp(preddat.temp.WS$lnCalcConc)-1 
 
-totfishdist96bif.pred = ggplot(DataSum96bif.dist, 
-                            aes(fill=factor(Treatment), y=TotalfishDist_m, 
-                               x=factor(Treatment)) ) + 
+fourcolors = viridis(6)[1:4]
+
+totfishdist96.bif22 = ggplot(DataSum96temp.dist, 
+                             aes(fill=factor(nomconc_ngL), y=TotalfishDist_m, 
+                               x=factor(nomconc_ngL) ) ) + 
                       geom_boxplot(outlier.size = .75) + 
-                      geom_errorbar(data=preddat2.bif, 
-                                    aes(x=factor(Treatment), y=predTotalDist_m,
+                      geom_errorbar(data=preddat.temp.WS, 
+                                    aes(x=factor(nomconc_ngL), y=predTotalDist_m,
                                         ymin = predTotalDist_m - predSE_TotalDist_m, 
                                         ymax = predTotalDist_m + predSE_TotalDist_m),
                                     color="grey30", width=.2, size=.3) + 
-                      geom_point(data=preddat2.bif, 
-                                 aes(x=factor(Treatment), y=predTotalDist_m), 
+                      geom_point(data=preddat.temp.WS, 
+                                 aes(x=factor(nomconc_ngL), y=predTotalDist_m), 
                                  pch=21, size=3, fill="grey60", color="grey30") +
-                      facet_wrap(~Spp, labeller = labeller(
-                        Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),#)+
-                        scales="free") +
-                      scale_y_continuous(name="Total Distance Traversed (cm)", 
-                                         breaks=seq(0,40,5), 
-                                         labels=seq(0,40,5)*100, 
-                                         limits=c(0,39)) + 
+                      facet_wrap(~temp) + #, labeller = labeller(
+                       # Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),#)+
+                       # scales="free") +
+                      scale_y_continuous(name="Total Distance Traversed (cm)",
+                                         breaks=seq(0,65,10),
+                                         labels=seq(0,65,10)*100,
+                                         limits=c(0,64)) +
                       xlab("Nominal Bifenthrin Concentration (ng/L)") +
-                      scale_fill_viridis_d()+#name="Nominal Bifenthrin\nConcentration (ng/L)")+ 
+                      #scale_fill_viridis_d(name="") +
+                      scale_fill_manual(values=fourcolors, name="") + 
                       theme_bw()
-totfishdist96bif.pred
+
+totfishdist96.bif22
 
 
-tiff("figures/Exposure_OutputFigs/TotalDistance_Bif2020_GSWS_withPreds.tiff", width=140, height=70, units="mm", compression="lzw", res=150)
-totfishdist96bif.pred
+tiff("figures/Exposure_OutputFigs/TotalDistance_Bif2022_WS_withPreds.tiff", width=140, height=70, units="mm", compression="lzw", res=150)
+totfishdist96.bif22
 dev.off()        
 
-```                  
 
 
-```{r quick frequentist model sig}       
+totfishdist96.bif22.temp = ggplot(DataSum96temp.dist, 
+                             aes(fill=factor(nomconc_ngL), y=TotalfishDist_m*100, 
+                               x=factor(temp) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                       geom_errorbar(data=preddat.temp.WS, 
+                                    aes(x=factor(temp), y=predTotalDist_m*100,
+                                        ymin = predTotalDist_m*100 - predSE_TotalDist_m*100, 
+                                        ymax = predTotalDist_m*100 + predSE_TotalDist_m*100),
+                                    color="grey30", width=.2, size=.3) + 
+                      geom_point(data=preddat.temp.WS, 
+                                 aes(x=factor(temp), y=predTotalDist_m*100), 
+                                 pch=21, size=3, fill="grey60", color="grey30") +
+                      facet_grid(~nomconc_ngL, 
+                                 labeller = labeller( nomconc_ngL = c("0"="0 ng/L bifenthrin",
+                                        "10"="10 ng/L bifenthrin",
+                                        "100"="100 ng/L bifenthrin",
+                                        "500"="500 ng/L bifenthrin")) )+
+                       # scales="free") +
+                      ylab("Total Trial Distance (cm)") + ylim(c(0,6500)) + 
+                      xlab("Water Temperature (\u00B0C)") +
+                      scale_fill_manual(guide=F, values=viridis_6col[1:4]) + 
+                      theme_bw()
+
+totfishdist96.bif22.temp
+
+
+       
 # are the estimates different from control?      
- summary(dist.lmGSbif)
-  summary(aov(dist.lmGSbif))
- # none of the concentrations are significantly different for GS, but close
- trashGS = lm(TotalfishDist_m ~ factor(lnCalcConc) + factor(lnCalcConc2),
-               data=DataSum96bif.distGS) 
-    summary(trashGS) 
-    plot(trashGS)
-      TukeyHSD(aov(trashGS))
-      # most (only) significant is control vs 2000 (p=0.046)
-      
- summary(dist.lmWSbif)
-  summary(aov(dist.lmWSbif))
-  
-  trashWS = lm(TotalfishDist_m ~ factor(lnCalcConc) + factor(lnCalcConc2),
-               data=DataSum96bif.distWS) 
-    summary(trashWS) 
-    plot(trashWS)
-      TukeyHSD(aov(trashWS))
-  # if this is a legit way to model it, 2000 is different from all other levels
+ summary(dist.lmGS.redu)
+  summary(aov(dist.lmGS.redu))
+ # none of the concentrations are significantly different for GS
+ summary(dist.lmWS.redu)
+  summary(aov(dist.lmWS.redu))
+  trash = lm(TotalfishDist_m ~ factor(lnCalcConc) + factor(lnCalcConc2) + pred.endtemp,
+               data=DataSum96.distWS[DataSum96.distWS$Treatment %in% c(0,1,10,100),]) 
+    summary(trash) 
+    plot(trash)
+      TukeyHSD(aov(trash))
+  # if this is a legit way to model it, the 100 is sig dif from 0. 
 
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
 ```{r distance multi-level Bayesmodels selection, echo=F, eval=F}
 # try setting up the linear model in a bayesian form, same as frequentist model above
 
-DSdist_bmoddat = DataSum2496.dist[,c("TotalfishDist_m","lnCalcConcC","lnCalcConcC2",
-                                     "ExposureHrs","Spp","RepID")]
-#DSdist_bmoddat$TotalfishDistcm = DSdist_bmoddat$TotalfishDist/10
-DSdist_bmoddat$lnCalcConcC = as.numeric(DSdist_bmoddat$lnCalcConcC) 
-DSdist_bmoddat$lnCalcConcC2 = as.numeric(DSdist_bmoddat$lnCalcConcC2) 
+DataSum96.dist$lnCalcConcMod = DataSum96.dist$lnCalcConc+1
+DataSum96.dist$lnCalcConc2Mod = (DataSum96.dist$lnCalcConcMod^2)
+DSdist_bmoddat = DataSum96.dist[ ,c("TotalfishDist_m","lnCalcConcMod","lnCalcConc2Mod","Spp","Tray")]
 DSdist_bmoddat$SppDummy <- ifelse(DSdist_bmoddat$Spp=="GS", 0,1)
-DSdist_bmoddat$ExposeDummy <- ifelse(DSdist_bmoddat$ExposureHrs=="24", 0,1)
 
-# remove fish with only one timepoint of detection, because cant add random slope with one timepoint
-DSdist_bmoddat = DSdist_bmoddat[!(DSdist_bmoddat$RepID %in% paste0(c(0,5,100,500,1000,2000), "-WS-4")),]
-DSdist_bmoddat$RepID = as.factor(as.character(DSdist_bmoddat$RepID))
+# remove fish from Tray D, GS, 96hrs because I suspect strange tracks (Dec 2021)
+DSdist_bmoddat = DSdist_bmoddat[!(DSdist_bmoddat$Tray=="D" & DSdist_bmoddat$Spp=="GS"),]
 
-distspp.blm_int1.rise = map2stan(
+set.seed(1995)
+fipdist.blm_int1.ri = map2stan(
   alist(
     TotalfishDist_m ~ dnorm(mu, sigma),
-      mu  <- a_fish[RepID] + 
-             be_fish[RepID]*ExposeDummy + 
+      mu  <- a_tray[Tray] + 
               bs*SppDummy + 
-              bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-              bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-        # Wrong way of extending a random intercept; doesn't include correlation between slope and intercept for the same individual
-        # a_fish[RepID] ~ dnorm(a,a_sig),
-        #   a ~ dcauchy(0,10),
-        #   a_sig ~ dcauchy(0,10),
-        # be_fish[RepID] ~ dnorm(be,be_sig),
-        #   be ~ dcauchy(0,10),
-        #   be_sig ~ dcauchy(0,10),
-        # Right way, because includes correlation by individual
-           c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be), sigma=sigma_fish, Rho=Rho),
-           a ~ dnorm(0,10),
-           be ~ dnorm(0,10),
-           sigma_fish ~ dcauchy(0,10),
-           Rho ~ dlkjcorr(2),
-             # not as flat as (1) but biases against strong correlations of intercept and slope
+              bt*(lnCalcConcMod) + 
+              bt2*(lnCalcConc2Mod) + 
+              bts*(SppDummy)*(lnCalcConcMod) + 
+              bts2*(SppDummy)*(lnCalcConc2Mod),
+          a_tray[Tray] ~ dnorm(a,a_sig),
+            a ~ dnorm(0,10),
+            a_sig ~ dcauchy(0,10),
+        bs ~ dnorm(0,10),
         bt ~ dnorm(0,10),
         bt2 ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
-    ) ,
-  data = DSdist_bmoddat, iter = 2000, warmup = 500, chains = 4)
-
-
-
-distspp.blm_int2.rise = map2stan(
-  alist(
-    TotalfishDist_m ~ dnorm(mu, sigma),
-    mu  <- a_fish[RepID] +
-           be_fish[RepID]*ExposeDummy +
-             bs*SppDummy +
-             bt*(lnCalcConcC) + bt2*(lnCalcConcC2) +
-             bse*(SppDummy)*(ExposeDummy) +
-             bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2) +
-             bte1*(ExposeDummy)*(lnCalcConcC) + bte2*(ExposeDummy)*(lnCalcConcC2),
-         # does the interaction also need to have the random effect? I hope not =/
-           c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu = c(a,be), sigma=sigma_fish, Rho=Rho), 
-           a ~ dnorm(0,10),
-           be ~ dnorm(0,10),
-           sigma_fish ~ dcauchy(0,10),
-           Rho ~ dlkjcorr(2),
-             # not as flat as (1) but biases against strong correlations of intercept and slope
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-        bte1 ~ dnorm(0,10),
-        bte2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
-    ) ,
-  data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4)
-
-
-
-# same parameters as the center zone model, with bse added; more intuitive to me...lets each of the four categorical groups have a unique slope and curvature for the effect of treatment
-distspp.blm_int3.rise = map2stan( # the true 'full' model as far as I can figure
-  alist(
-    TotalfishDist_m ~ dnorm(mu, sigma),
-    mu  <- a_fish[RepID] +
-           be_fish[RepID]*ExposeDummy +
-             bs*SppDummy +
-             bt*(lnCalcConcC) + 
-             bse*(SppDummy)*(ExposeDummy) +
-             bte*(lnCalcConcC)*(ExposeDummy) +
-             bts*(lnCalcConcC)*(SppDummy) + 
-             bt2*(lnCalcConcC2) +
-             bt2e*(lnCalcConcC2)*(ExposeDummy)+
-             bt2s*(lnCalcConcC2)*(SppDummy),
-
-           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),# 
-           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
-           be ~ dnorm(0,10),
-           sigma_fish ~ dcauchy(0,2),
-           Rho ~ dlkjcorr(2),
-    
-        bs ~ dnorm(0,10),
-        bt ~ dnorm(0,10),
-        bte ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
         bts ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        bt2e ~ dnorm(0,10),
-        bt2s ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
-    ) ,
-  data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4)
-## trace plots look fine. Not great, but definitely fine. Rhat are fine, and n_eff are fine (again, not great). large error bars on a and be (with random effects) so taht seems reasonable, and narrow errors for all the other parametes. bte, bt2e, and bt2s are near zero, bs and bt2 are large effects (relative) and bt2s is also not zero. bt and bt2 are likely no zero but small. All in all, this seems like a good model, and it runs well...still should use WAIC to compare to other options here. 
-
-distspp.blm_int5.rise.2 = map2stan( # same as int3.rise except for the two interactions between treatmen/treatment^2 and exposure
-  alist(
-    TotalfishDist_m ~ dnorm(mu, sigma),
-    mu  <- a_fish[RepID] + 
-           be_fish[RepID]*ExposeDummy + 
-             bs*SppDummy + 
-             bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-             bse*(SppDummy)*(ExposeDummy) +
-             bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),# 
-           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
-           be ~ dnorm(0,10),
-           sigma_fish ~ dcauchy(0,2),
-           Rho ~ dlkjcorr(2),
-             # not as flat as (1) but biases against strong correlations of intercept and slope
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,2)
-    ) ,
-  data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4)
-# see notes below for thoughts on traceplots etc. take home = it's fine
-
-plot(compare(distspp.blm_int5.rise.2, distspp.blm_int3.rise))
-# the less complex model (without interaction between exposure time and concentration) is better; dWAIC = 9.2, weight for model int5.rise.2 is 99%. 
-
-
-distspp.blm_int5.rise.2.offset = map2stan(
-  alist(
-    TotalfishDist_m ~ dnorm(mu, sigma),
-    mu  <- a + a_fish[RepID] +
-           be + be_fish[RepID]*ExposeDummy +
-             bs*SppDummy +
-             bt*(lnCalcConcC) + bt2*(lnCalcConcC2) +
-             bse*(SppDummy)*(ExposeDummy) +
-             bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-           c(a_fish,be_fish)[RepID] ~ dmvnorm2(0,sigma=sigma_fish, Rho=Rho),#
-           a ~ dnorm(4,5), # approximate mean of base case (GS-24hr)
-           be ~ dnorm(0,5),
-           sigma_fish ~ dcauchy(0,2),
-           Rho ~ dlkjcorr(2),
-             # not as flat as (1) but biases against strong correlations of intercept and slope
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,2)
-    ) ,
-  data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4, cores=2)
-
-
-
-# distspp.blm_int5.rise.2.lkj3 = map2stan(
-#   alist(
-#     TotalfishDist_m ~ dnorm(mu, sigma),
-#     mu  <- a_fish[RepID] + 
-#            be_fish[RepID]*ExposeDummy + 
-#            bs*SppDummy + 
-#            bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-#            bse*(SppDummy)*(ExposeDummy) +
-#            bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-#         c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be),sigma=sigma_fish, Rho=Rho),# 
-#              a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
-#              be ~ dnorm(0,10),
-#              sigma_fish ~ dcauchy(0,2),
-#              Rho ~ dlkjcorr(3),
-#         
-#         bt ~ dnorm(0,10),
-#         bt2 ~ dnorm(0,10),
-#         bs ~ dnorm(0,10),
-#         bse ~ dnorm(0,10),
-#         bts1 ~ dnorm(0,10),
-#         bts2 ~ dnorm(0,10),
-#     sigma ~ dcauchy(0,2)
-#     ) ,
-#   data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4, cores=2)
-#  
-# 
-# 
-# distspp.blm_int5.rise.2.lkj1 = map2stan(
-#   alist(
-#     TotalfishDist_m ~ dnorm(mu, sigma),
-#     mu  <- a_fish[RepID] + 
-#            be_fish[RepID]*ExposeDummy + 
-#            bs*SppDummy + 
-#            bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-#            bse*(SppDummy)*(ExposeDummy) +
-#            bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-#     
-#         c(a_fish,be_fish)[RepID] ~ dmvnorm2(Mu=c(a,be),sigma=sigma_fish, Rho=Rho),# 
-#                  a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
-#                  be ~ dnorm(0,10),
-#                  sigma_fish ~ dcauchy(0,2),
-#                  Rho ~ dlkjcorr(1),
-#     
-#         bs ~ dnorm(0,10),
-#         bt ~ dnorm(0,10),
-#         bt2 ~ dnorm(0,10),
-#         bse ~ dnorm(0,10),
-#         bts1 ~ dnorm(0,10),
-#         bts2 ~ dnorm(0,10),
-#     sigma ~ dcauchy(0,2)
-#     ) ,
-#   data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4, cores=2)
-#  
-# distspp.blm_int5.rise.NC = map2stan(
-#   alist(
-#     TotalfishDist_m ~ dnorm(mu, sigma),
-#     mu  <- a_fish[RepID] +
-#            be_fish[RepID]*ExposeDummy +
-#              bs*SppDummy +
-#              bse*(SppDummy)*(ExposeDummy) +
-#              bt*(lnCalcConcC) + bt2*(lnCalcConcC2) +
-#              bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-#          # does the interaction also need to have the random effect? I hope not =/
-#            c(a_fish,be_fish)[RepID] ~ dmvnormNC(sigma=sigma_fish, Rho=Rho),#
-#            #a ~ dnorm(0,10),
-#            #be ~ dnorm(0,10),
-#            sigma_fish ~ dcauchy(0,10),
-#            Rho ~ dlkjcorr(2),
-#              # not as flat as (1) but biases against strong correlations of intercept and slope
-#         bt ~ dnorm(0,10),
-#         bt2 ~ dnorm(0,10),
-#         bs ~ dnorm(0,10),
-#         bse ~ dnorm(0,10),
-#         bts1 ~ dnorm(0,10),
-#         bts2 ~ dnorm(0,10),
-#     sigma ~ dcauchy(0,10)
-#     ) ,
-#   data = DSdist_bmoddat, iter = 2000, warmup = 500, chains = 4)
-
-distspp.blm_int5.ri = map2stan(
-  alist(
-    TotalfishDist_m ~ dnorm(mu, sigma),
-    mu  <- a_fish[RepID] + 
-           bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-           be*ExposeDummy + 
-           bs*SppDummy + 
-           bse*(SppDummy)*(ExposeDummy) +
-           bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-             a_fish[RepID] ~ dnorm(a,a_sig),
-             a ~ dcauchy(0,10),
-             a_sig ~ dcauchy(0,10),
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        be ~ dnorm(0,10),
-        bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
         bts2 ~ dnorm(0,10),
     sigma ~ dcauchy(0,10)
     ) ,
   data = DSdist_bmoddat, iter = 2000, warmup = 500, chains = 4)
 
+precis(fipdist.blm_int1.ri)
+plot(precis(fipdist.blm_int1.ri))
+plot(fipdist.blm_int1.ri)
 
- plot(distspp.blm_int1.rise)
- plot(distspp.blm_int2.rise)
- plot(distspp.blm_int5.rise.2)
- #plot(distspp.blm_int5.rise.NC)
- plot(distspp.blm_int5.ri)
- 
- precis(distspp.blm_int1.rise, prob = .95, digits=3)
- precis(distspp.blm_int2.rise, prob = .95, digits=3)
- precis(distspp.blm_int5.rise.2, prob = .95, digits=3)
- #precis(distspp.blm_int5.rise.NC, prob = .95, digits=3)
- precis(distspp.blm_int5.ri, prob = .95, digits=3)
-  # compare these later two to see how removing the random slope changes the effect of Be and Bs  
-  # turns out it doesn't change it much! So...
-
- plot(precis(distspp.blm_int1.rise, prob = .95))
- plot(precis(distspp.blm_int2.rise, prob = .95))
- plot(precis(distspp.blm_int5.rise.2, prob = .95, depth=2))
- plot(precis(distspp.blm_int5.ri, prob = .95, depth=2))
-
-compare(distspp.blm_int1.rise, #distspp.blm_int2.rise,
-        distspp.blm_int5.rise.2, distspp.blm_int5.ri)
-
-plot(compare(distspp.blm_int1.rise, #distspp.blm_int2.rise,
-             distspp.blm_int5.rise.2, distspp.blm_int5.ri))
-
-```
-### I'm guess I'm happy with model int5.rise.2, that accounts for the repeated measures of an individual across time ('distspp.blm_int5.rise.2'). The trace plots have better mixing for int5.2 than int5.NC and Zack says that there's more to parameterizing the NC approach than is covered in the rethinking book chapter. The trace plots aren't great but it seems relatively stable as I change small things, so Zack says it's probably good enough. If I really cared I could go tweek parameters more and document the changes to the estimated parameters. I tried estimating the overall interept and slope seperately, with offsets for the individual IDs, but the variance for the overall parameters was huge and largely dependant on the prior. I'm going to move on and assume the model is good enough. 
-
-
-```{r distance multi-level Bayesmodels final, echo=F}
-
-DSdist_bmoddat = DataSum2496.dist[,c("TotalfishDist_m","lnCalcConcC","lnCalcConcC2",
-                                     "ExposureHrs","Spp","RepID")]
-#DSdist_bmoddat$TotalfishDistcm = DSdist_bmoddat$TotalfishDist/10
-DSdist_bmoddat$lnCalcConcC = as.numeric(DSdist_bmoddat$lnCalcConcC) 
-DSdist_bmoddat$lnCalcConcC2 = as.numeric(DSdist_bmoddat$lnCalcConcC2) 
-DSdist_bmoddat$SppDummy <- ifelse(DSdist_bmoddat$Spp=="GS", 0,1)
-DSdist_bmoddat$ExposeDummy <- ifelse(DSdist_bmoddat$ExposureHrs=="24", 0,1)
-
-# remove fish with only one timepoint of detection, because cant add random slope with one timepoint
-DSdist_bmoddat = DSdist_bmoddat[!(DSdist_bmoddat$RepID %in% paste0(c(0,5,100,500,1000,2000), "-WS-4")),]
-DSdist_bmoddat$RepID = as.factor(as.character(DSdist_bmoddat$RepID))
-
-set.seed(1983)
-distspp.blm_int5.rise.2 = map2stan(
+set.seed(1995)
+fipdist.blm_int2.ri = map2stan(
   alist(
     TotalfishDist_m ~ dnorm(mu, sigma),
-    mu  <- a_fish[RepID] + 
-           be_fish[RepID]*ExposeDummy + 
-             bs*SppDummy + 
-             bt*(lnCalcConcC) + bt2*(lnCalcConcC2) + 
-             bse*(SppDummy)*(ExposeDummy) +
-             bts1*(SppDummy)*(lnCalcConcC) + bts2*(SppDummy)*(lnCalcConcC2),
-    
-           c(a_fish,be_fish)[RepID] ~ dmvnorm2(c(a, be),sigma_fish, Rho),# 
-           a ~ dnorm(4,10), # approximate mean of base case (GS-24hr)
-           be ~ dnorm(0,10),
-           sigma_fish ~ dcauchy(0,2),
-           Rho ~ dlkjcorr(2), # not as flat as (1) but biases against strong correlations of intercept and slope
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
+      mu  <- a_tray[Tray] + 
+              bs*SppDummy + 
+              bt*(lnCalcConc) + 
+              bts*(SppDummy)*(lnCalcConc) + 
+              bts2*(SppDummy)*(lnCalcConc2),
+          a_tray[Tray] ~ dnorm(a,a_sig),
+            a ~ dnorm(0,10),
+            a_sig ~ dcauchy(0,10),
         bs ~ dnorm(0,10),
-        bse ~ dnorm(0,10),
-        bts1 ~ dnorm(0,10),
+        bt ~ dnorm(0,10),
+        bts ~ dnorm(0,10),
         bts2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,2)
+    sigma ~ dcauchy(0,10)
     ) ,
-  data = DSdist_bmoddat, iter = 4000, warmup = 1000, chains = 4)
+  data = DSdist_bmoddat, iter = 2000, warmup = 500, chains = 4)
 
+precis(fipdist.blm_int2.ri)
+plot(precis(fipdist.blm_int2.ri))
+plot(fipdist.blm_int2.ri)
 
-# check model
- precis(distspp.blm_int5.rise.2, prob = .95, digits=3)
- plot(precis(distspp.blm_int5.rise.2, prob = .95))
- plot(precis(distspp.blm_int5.rise.2, prob = .95, depth=2))
-
- plot(distspp.blm_int5.rise.2)
+# the models run fine, but the curve that is produced by the quadratic isn't the right shape for the data. How do I pick something else? 
 
 ```
+###
 
 
 ```{r distance multi-level Bayesmodels predict, echo=F, eval=F}
 
 # pull posterior from model:
 set.seed(42)
-post = extract.samples(distspp.blm_int5.rise.2)
+post = extract.samples(fipdist.blm_int1.ri)
 
 # set up dataframe to plot posterior predictions
 preddat = list(CalcConc=rep(seq(0, 2250, 2), 4), 
                lnCalcConc=log(rep(seq(0, 2250, 2),4)+1), 
                lnCalcConcC=(log(rep(seq(0, 2250, 2),4)+1)) - 
-                 mean(DataSum2496.dist$lnCalcConc) ,
+                 mean(DataSum96.dist$lnCalcConc) ,
                lnCalcConcC2=((log(rep(seq(0, 2250, 2),4)+1)) - 
-                 mean(DataSum2496.dist$lnCalcConc))^2 ,               
-               ExposeDummy = rep(c(0,1), each=1126*2), 
-               SppDummy = rep(rep(c(0,1),each=1126),2), 
-               RepID = rep(2,4504))
+                 mean(DataSum96.dist$lnCalcConc))^2 ,               
+              SppDummy = rep(rep(c(0,1),each=1126),2), 
+               Tray = rep(2,4504))
 
 # make zeros for individual random effects to predict to mean only -> model doesn't have any 'a' this way
-a_fish_zeros = matrix(0,12000,90)
-be_fish_zeros = matrix(0,12000,90)
-
-# use estimated posteriors for population of individuals to simulate new fish; shapes of distributions between model posteriors and predicted posteriors are nearly identical, not what I want...but it does predict uncertainty across individuals, but might as well just take predictions for individual fish are put them in as the data...not quote grasping this
-a_fish_sim = matrix(rnorm(12000*90, mean(post$a_fish), mean(post$sigma_fish[,1])),12000,90)
-be_fish_sim = matrix(rnorm(12000*90, mean(post$be_fish), mean(post$sigma_fish[,2])),12000,90)
-
-# replace individual fish estimates with global estimate; this should predict to the average individual in a population...so since I want to get at the population level response this seems more appropriate.
-a_global = matrix(post$a,12000,90)
-be_global = matrix(post$be,12000,90)
+a_tray_zeros = matrix(0,6000,90)  # use this to make the tray-offset zero
+a_global = matrix(post$a,6000,90) # use this if model built with a single intercept (not a global intercept + offset)
 
 # use link to predict to mean only
-link.int5.rise.2 <- link(distspp.blm_int5.rise.2, n=1000, data= preddat, 
-                         replace = list(a_fish = a_global, 
-                                        be_fish = be_global) )
-#                         replace = list(a_fish = a_fish_sim, 
-#                                        be_fish = be_fish_sim) )
-
+link.1.ri <- link(fipdist.blm_int1.ri, n=1000, data= preddat, 
+                         replace = list(a_tray = a_global) )
+                  
 preddat.df <- data.frame(sapply(preddat,c)) # thanks stack overflow! https://stackoverflow.com/questions/4227223/convert-a-list-to-a-data-frame
 
-preddat.df$link_mu_mn <- apply(link.int5.rise.2, 2, mean) 
-preddat.df$link_PI05 = apply(link.int5.rise.2, 2, PI, .95)[1,] 
-preddat.df$link_PI95 = apply(link.int5.rise.2, 2, PI, .95)[2,] 
+preddat.df$link_mu_mn <- apply(link.1.ri, 2, mean) 
+preddat.df$link_PI05 = apply(link.1.ri, 2, PI, .95)[1,] 
+preddat.df$link_PI95 = apply(link.1.ri, 2, PI, .95)[2,] 
 
-
-# # predict from posteriors (on transformed scale)
-#   link_pred <- link(distspp.blm_int2.rise, data = preddat, n=1000) 
-#   preddat$link_mu_mn <- apply(link_pred, 2, mean)
-#   preddat$link_PI05 = apply(link_pred, 2, PI, .95)[1,]
-#   preddat$link_PI95 = apply(link_pred, 2, PI, .95)[2,]
-#   
-#  # predict with sim; it's my understanding that this integrates the error estimates too?
-#   sim_pred <- sim(distspp.blm_int2.rise, data = preddat, n=1000) 
-#   preddat$sim_mu_mn <- apply(sim_pred, 2, mean)
-#   preddat$sim_PI05 = apply(sim_pred, 2, PI, .95)[1,]
-#   preddat$sim_PI95 = apply(sim_pred, 2, PI, .95)[2,]
-#  
-  # plot back-transformed data
+# plot data
   preddat.df$Spp <- ifelse(preddat.df$SppDummy==0,"GS","WS")
-  preddat.df$ExposureHrs <- ifelse(preddat.df$ExposeDummy==0,"24","96")
 
-
-DistPred_transf_plot2 = ggplot() + 
-  geom_point(data=DataSum2496.dist,
+DistPred_transf_plot = ggplot() + 
+  geom_point(data=DataSum96.dist,
              aes(x=(lnCalcConcC),                          
                  y=TotalfishDist_m, 
                  color=factor(Spp))) + 
@@ -761,17 +435,16 @@ DistPred_transf_plot2 = ggplot() +
               ymin=link_PI05, ymax=link_PI95), 
               alpha=.4, col="grey70")+
   geom_line(data = preddat.df, aes(x=(lnCalcConcC), y=link_mu_mn), lwd=.2)+
-    facet_grid(Spp~ExposureHrs, scales="free", labeller = labeller(
-      ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure"),
+    facet_grid(Spp~., scales="free", labeller = labeller(
       Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
     scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
     ylab("Total Distance Traveled (m)") + 
-    scale_x_continuous(name="Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
+    scale_x_continuous(name="Fipronil Concentration (ug/L)") +
     theme_bw()
 
 
-DistPred_orig_plot2 = ggplot() + 
-  geom_point(data=DataSum2496.dist,
+DistPred_orig_plot = ggplot() + 
+  geom_point(data=DataSum96.dist,
              aes(x=(calcConc),                          
                  y=TotalfishDist_m, 
                  color=factor(Spp))) + 
@@ -779,40 +452,28 @@ DistPred_orig_plot2 = ggplot() +
               ymin=link_PI05, ymax=link_PI95), 
               alpha=.4, col="grey70")+
   geom_line(data = preddat.df, aes(x=(CalcConc), y=link_mu_mn), lwd=.2)+
-  facet_grid(Spp~ExposureHrs, scales="free", labeller = labeller(
-    ExposureHrs = c("24"="24 Hours Exposure","96"="96 Hours Exposure"),
-    Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
-  scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
-  ylab("Total Distance Traveled (cm)") + 
-  scale_x_continuous(name="Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
-  theme_bw()
-
-
-
-DistPred_orig_plot_96 = ggplot() + 
-  geom_point(data=DataSum2496.dist[DataSum2496.dist$ExposureHrs==96,],
-             aes(x=(calcConc),                          
-                 y=TotalfishDist_m, 
-                 color=factor(Spp))) + 
-  geom_ribbon(data = preddat.df[preddat.df$ExposureHrs==96,], aes(x=(CalcConc), 
-              ymin=link_PI05, ymax=link_PI95), 
-              alpha=.4, col="grey70")+
-  geom_line(data = preddat.df[preddat.df$ExposureHrs==96,], aes(x=(CalcConc), y=link_mu_mn), lwd=.2)+
   facet_grid(Spp~., scales="free", labeller = labeller(
     Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
   scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
   ylab("Total Distance Traveled (cm)") + 
-  scale_x_continuous(name="Bifenthrin Concentration (ng/L)") + #, breaks = seq(-7.5,5, 2.5), labels=(seq(-7.5,5, 2.5)+3.73) ) +
+  scale_x_continuous(name="Fipronil Concentration (ug/L)") + 
   theme_bw()
 
+DistPred_transf_plot
+DistPred_orig_plot
 
-DistPred_transf_plot2
-DistPred_orig_plot2 
+ = ggplot(data=DataSum96.dist,
+             aes(x=log(calcConc),                          
+                 y=log(TotalfishDist_m), 
+                 color=factor(Spp), group=
+                   Spp)) + 
+  geom_point() +
+  geom_smooth()
 
 ```
  
  
-### Distance Contrasts
+### Distance Contrasts (bayesian models)
 
 ### Study questions: 
 
@@ -822,7 +483,7 @@ DistPred_orig_plot2
 
 ###  3) Does the magnitude of the effect vary between species
 
-```{r distance multi-level model density plots, echo=F}
+```{r distance multi-level model density plots, echo=F, eval=F}
 set.seed(1983) 
 postdist = extract.samples(distspp.blm_int5.rise.2)  # maybe change to distspp.blm_int3.rise, and if so, change the model prediction parts in the following chunk and the next. Argh. 
 
@@ -1080,7 +741,7 @@ posterior.preds = data.frame(PredGroupNames = PredGroupNames,
 #### if use this in a paper, recolor to a more intuitive gradient and add legend
  
  
-```{r distance multi-level model time and spp contrasts, echo=F}
+```{r distance multi-level model time and spp contrasts, echo=F, eval=F}
 # this uses the predicted posteriors for distance moved, calculated above
 
 # GS vs WS

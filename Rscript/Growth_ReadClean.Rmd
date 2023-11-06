@@ -7,6 +7,8 @@ output: html_document
 
 ```{r setup, include=FALSE}
 library(tidyverse)
+library(patchwork)
+library(MuMIn)
 
 # set wd to the location of the project, not the script file
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
@@ -27,39 +29,647 @@ GrowGS21_fip15C <- read.csv("rawData/GrowthMeasurements_GSFIP.csv")
 
 GrowWS21_fip15C <- read.csv("rawData/GrowthMeasurements_WSFIP.csv")
 
+GrowWS22_bifTemp <- read.csv("rawData/GrowthMeasurements_WSBIF_temp.csv")
+
+GrowGS23_bifTemp <- read.csv("rawData/GrowthMeasurements_GSBIF_temp.csv")
 ```
 
 ### Covert into tidy data
 ```{r clean data}
 Grow2020 = rbind(GrowGS20_bif15C, GrowWS20_bif15C)
 Grow2021 = rbind(GrowGS21_fip15C, GrowWS21_fip15C)
+GrowTemp = rbind(GrowWS22_bifTemp, GrowGS23_bifTemp)
 
 ```
 
+### add measurement bins
+```{r measurement bins, echo=FALSE}
+table(Grow2020$dph, Grow2020$nomconc, Grow2020$spp)
+## 2020: 
+  # 7-9 = m1, 
+  # 13-15 = remove, WS only
+  # 18-19 = m3
+  # 42-43 = m4
+  # >49 remove
+Grow2020$measurebin = cut(Grow2020$dph, breaks=c(0,10,16,35,47,200), labels=paste0("m",1:5))
+
+table(Grow2021$dph, Grow2021$nomconc, Grow2021$spp)
+## 2021: 
+  # 7 = m1 
+  # 27-28 = m3
+  # 38-46 = m4
+Grow2021$measurebin = cut(Grow2021$dph, breaks=c(0,10,16,35,47,200), labels=paste0("m",1:5))
+
+
+table(GrowTemp$dph, GrowTemp$nomconc, GrowTemp$spp)
+## 2022 & 3: 
+  # 7 = m1 
+  # 11-12 = m2
+  # 25, 28, 29 with 6 each; not sure if size selected so drop for now
+  # 26-27 = m3
+  # 34-35 with 6 and 9; not sure if size selected so drop for now
+  # 36-37 = m4
+  # 41-42
+GrowTemp$measurebin = cut(GrowTemp$dph, breaks=c(0,10,16,35,47,200), labels=paste0("m",1:5))
+ table(GrowTemp$dph, GrowTemp$measurebin, GrowTemp$spp)
+
+```
+
+### Add Chem Analysis
+```{r add chem analy}
+# add measured concentrations to the dataframe
+ChemAnalysis = read.csv("rawData/ChemAnalysisResults_CompiledforR.csv")
+fipChem_reduced = filter(ChemAnalysis, Contaminant=="Fipronil", Sample=="spike")
+
+Grow2021.tempr <- merge(Grow2021, fipChem_reduced, all.x=T)
+  Grow2021.tempr$CalcConc = as.numeric(Grow2021.tempr$CalcConc)
+  Grow2021 = Grow2021.tempr
+
+    
+bifChem_reduced = filter(ChemAnalysis, Contaminant=="Bifenthrin", Sample=="spike")
+
+Grow2020.tempr <- merge(Grow2020, filter(bifChem_reduced, year==2020), all.x=T)
+  Grow2020.tempr$CalcConc = as.numeric(Grow2020.tempr$CalcConc)
+  Grow2020 = Grow2020.tempr
+
+GrowTemp.tempr <- merge(GrowTemp, filter(bifChem_reduced, year!=2020), all.x=T)
+  GrowTemp.tempr$CalcConc = as.numeric(GrowTemp.tempr$CalcConc)
+  GrowTemp = GrowTemp.tempr
+
+```
+  
 ### Plot 
-```{r basic plots, echo=FALSE}
+```{r basic plots bif 2020, echo=FALSE, fig.height=8, fig.width=6}
 
-#plotdat = Grow2020[Grow2020$dph<100,]
-plotdat = Grow2021[Grow2021$dph<100,]
+## Bifenthrin range tests 2020
+ plotdatBif <- Grow2020
+ # remove data for top two conc for WS b/c no growth after 18dph
+plotdatBif = plotdatBif[!(plotdatBif$spp=="WS" & plotdatBif$nomconc %in% c(1000,2000)),]
+ # remove stock measurements
+plotdatBif = plotdatBif[plotdatBif$nomconclab!="stock",]
+ # remove unwated intermediate sizes
+plotdatBif = plotdatBif[plotdatBif$measurebin %in% c("m1","m3","m4"),]
 
-ggplot(data = plotdat, aes(x=dph, y=mass_g, group=spp, color=spp)) + geom_point() +
- # facet_wrap(~spp) + 
- facet_wrap(~nomconclab)+#, scales="free_y") + 
-#  geom_smooth(method = "lm") +
+ggplot(data = plotdatBif, aes(x=dph, y=mass_g, group=factor(nomconc), color=factor(nomconc))) +
+  geom_point() +
+  geom_smooth(method = "loess", span=3, degree=0) +
+  #geom_smooth(method = "glm") +
+  scale_color_viridis_d()+
+# facet_wrap(~spp) + 
+  facet_grid(spp~nomconc) + 
+  ylab("Mass (g)") + xlab("Days Post Hatch") +
+ theme_bw()
+
+
+
+# mass at measure-point 1
+m1b.mass = ggplot(data = filter(plotdatBif, measurebin=="m1"), 
+       aes(x=log(CalcConc+1), y=mass_g,group=spp, color=spp)) + 
+  geom_point() +
+  geom_smooth(method="lm")+
+  facet_wrap(~spp) + 
+  ylab("Mass at 7-9 dph (g)")  + 
+  scale_x_continuous(name= "Bifenthrin Concentration (ng/L)", 
+                     breaks = log(c(0,1, 10, 100, 1000)+1), 
+                     labels=c(0,1,10, 100, 1000) ) +
+   scale_color_discrete(guide="none") + 
   theme_bw()
 
-ggplot(data = plotdat, aes(x=nomconclab, y=mass_g, group=spp, color=spp)) + geom_point() +
-  facet_wrap(~dph) + 
+#  mass at measure-point 2
+m2b.mass = ggplot(data = filter(plotdatBif, measurebin=="m3"), 
+       aes(x=log(CalcConc+1), y=mass_g,group=spp, color=spp)) + 
+  geom_point() +
+  geom_smooth(method="lm")+
+  facet_wrap(~spp) + 
+  ylab("Mass at 18-19 dph (g)") + 
+  scale_x_continuous(name= "Bifenthrin Concentration (ng/L)", 
+                     breaks = log(c(0,1, 10, 100, 1000)+1), 
+                     labels=c(0,1,10, 100, 1000) ) +  scale_color_discrete(guide="none") + 
   theme_bw()
 
-ggplot(data = plotdat, aes(x=nomconclab, y=mass_g, group=spp, color=spp)) + geom_point() +
-  facet_wrap(~dph) + 
+# final mass at measure-point 3
+m3b.mass = ggplot(data = filter(plotdatBif, measurebin=="m4"), 
+       aes(x=log(CalcConc+1), y=mass_g,group=spp, color=spp)) + 
+  geom_point() +
+  geom_smooth(method="lm")+
+  facet_wrap(~spp) + 
+  ylab("Mass at 42-43 dph (g)") + 
+  scale_x_continuous(name= "Bifenthrin Concentration (ng/L)", 
+                     breaks = log(c(0,1, 10, 100, 1000)+1), 
+                     labels=c(0,1,10, 100, 1000) ) +  scale_color_discrete(guide="none") + 
   theme_bw()
+
+m1b.mass + m2b.mass + m3b.mass + plot_layout(ncol=1)
+
+```
+
+```{r basic plots fip 2021, echo=FALSE, fig.height=8, fig.width=6}
+
+## Fipronil range tests 2021
+plotdatFip = Grow2021
+
+ # remove data for top two conc for WS b/c bad spike
+plotdatFip = plotdatFip[!(plotdatFip$nomconc %in% c(500, 1000)),]
+
+ # remove unwated intermediate sizes
+plotdatFip = plotdatFip[plotdatFip$measurebin %in% c("m1","m3","m4"),]
+
+ggplot(data = plotdatFip, aes(x=dph, y=mass_g, group=factor(nomconc), color=factor(nomconc))) +
+  geom_point() +
+  geom_smooth(method = "loess", span=3, degree=0) +
+  #geom_smooth(method = "glm") +
+  scale_color_viridis_d()+
+# facet_wrap(~spp) + 
+  facet_grid(spp~nomconc) + 
+  ylab("Mass (g)") + xlab("Days Post Hatch") +
+ theme_bw()
+
+
+
+# mass at measure-point 1
+m1f.mass = ggplot(data = filter(plotdatFip, measurebin=="m1"), 
+       aes(x=log(CalcConc+1), y=mass_g,group=spp, fill=spp)) + 
+  geom_smooth(method="lm", aes(color=spp))+
+  geom_point(pch=22) +
+  facet_grid(spp~targettempC, labeller = labeller(targettempC = c("15" = "15C"))) + 
+  ylab("Mass at 7 dph (g)")  +
+  scale_fill_manual(values=c("green3","grey80"), guide="none") + 
+  scale_color_manual(values=c("green3","grey65"), guide="none") + 
+  scale_x_continuous(name= "Fipronil Concentration (ug/L)", 
+                     breaks = log(c(0,1, 10, 100)+1), 
+                     labels=c(0,1,10, 100) ) +
+  theme_bw()
+
+#  mass at measure-point 2
+m2f.mass = ggplot(data = filter(plotdatFip, measurebin=="m3"), 
+       aes(x=log(CalcConc+1), y=mass_g,group=spp, fill=spp)) + 
+  geom_smooth(method="lm", aes(color=spp))+
+  geom_point(pch=22) +
+  facet_grid(spp~targettempC, labeller = labeller(targettempC = c("15" = "15C"))) + 
+  ylab("Mass at 27-28 dph (g)") + 
+  scale_fill_manual(values=c("green3","grey80"), guide="none") + 
+  scale_color_manual(values=c("green3","grey65"), guide="none") + 
+  scale_x_continuous(name= "Fipronil Concentration (ug/L)", 
+                     breaks = log(c(0,1, 10, 100)+1), 
+                     labels=c(0,1,10, 100) ) +
+  theme_bw()
+
+# final mass at measure-point 3
+m3f.mass = ggplot(data = filter(plotdatFip, measurebin=="m4"), 
+       aes(x=log(CalcConc+1), y=mass_g,group=spp, fill=spp)) + 
+  geom_smooth(method="lm", aes(color=spp))+
+  geom_point(pch=22) +
+  facet_grid(spp~targettempC, labeller = labeller(targettempC = c("15" = "15C"))) + 
+  ylab("Mass at 38-46 dph (g)") + 
+  scale_fill_manual(values=c("green3","grey80"), guide="none") + 
+  scale_color_manual(values=c("green3","grey65"), guide="none") + 
+  scale_x_continuous(name= "Fipronil Concentration (ug/L)", 
+                     breaks = log(c(0,1, 10, 100)+1), 
+                     labels=c(0,1,10, 100) ) +
+  theme_bw()
+
+m1f.mass + m2f.mass + m3f.mass + plot_layout(ncol=1)
+```
+
+```{r basic plots temp 2022 2023, echo=FALSE, fig.height=8, fig.width=6}
+
+## Bif by Temp tests 2022 & 2023
+plotdatTemp = GrowTemp
+ # remove size-selected assays
+plotdatTemp = plotdatTemp[!(plotdatTemp$group %in% c("cardiac2","foraging")),]
+ # remove unwanted intermediate sizes
+plotdatTemp = plotdatTemp[plotdatTemp$measurebin %in% c("m1","m3","m4"),]
+
+ # remove bloated fish with exceptionally high mass
+plotdatTemp = plotdatTemp[!(plotdatTemp$notes=="bloating"),]
+
+gsBytemp = ggplot(data = filter(plotdatTemp, spp=="GS"), aes(x=dph, y=mass_g, group=factor(nomconc), color=factor(nomconc))) +
+  geom_point() +
+  geom_smooth(method = "loess", span=3) +
+  #geom_smooth(method = "glm") +
+  scale_color_viridis_d()+
+  facet_grid(nomconc~targettempC) + 
+  ylab("Mass (g)") + xlab("Days Post Hatch") +
+ theme_bw()
+wsBytemp = ggplot(data = filter(plotdatTemp, spp=="WS"), aes(x=dph, y=mass_g, group=factor(nomconc), color=factor(nomconc))) +
+  geom_point() +
+  geom_smooth(method = "loess", span=3) +
+  #geom_smooth(method = "glm") +
+  scale_color_viridis_d()+
+  facet_grid(nomconc~targettempC) + 
+  ylab("Mass (g)") + xlab("Days Post Hatch") +
+ theme_bw()
+
+gsBytemp + wsBytemp + plot_layout(ncol=1)
+
+
+
+# mass at measure-point 1
+m1t.mass = ggplot(data = filter(plotdatTemp, measurebin=="m1"), 
+       aes(x=log(CalcConc+1), y=mass_g,group=spp, fill=spp)) + 
+  geom_smooth(method="lm", aes(color=spp))+
+  geom_point(pch=21) +
+  facet_grid(spp~targettempC) + 
+  ylab("Mass at 7 dph (g)")  + 
+  scale_fill_manual(values=c("green3","grey80"), guide="none") + 
+  scale_color_manual(values=c("green3","grey65"), guide="none") + 
+  scale_x_continuous(name= "Bifenthrin Concentration (ng/L)", 
+                     breaks = log(c(0,1, 10, 100)+1), 
+                     labels=c(0,1,10, 100) ) +
+  theme_bw()
+
+#  mass at measure-point 2
+m2t.mass = ggplot(data = filter(plotdatTemp, measurebin=="m3"), 
+       aes(x=log(CalcConc+1), y=mass_g,group=spp, fill=spp)) + 
+  geom_smooth(method="lm", aes(color=spp))+
+  geom_point(pch=21) +
+  facet_grid(spp~targettempC) + 
+  ylab("Mass at 26-27 dph (g)") + 
+  scale_fill_manual(values=c("green3","grey80"), guide="none") + 
+  scale_color_manual(values=c("green3","grey65"), guide="none") + 
+  scale_x_continuous(name= "Bifenthrin Concentration (ng/L)", 
+                     breaks = log(c(0,1, 10, 100)+1), 
+                     labels=c(0,1,10, 100) ) +
+  theme_bw()
+
+# final mass at measure-point 3
+m3t.mass = ggplot(data = filter(plotdatTemp, dph%in% c(36,37)), 
+       aes(x=log(CalcConc+1), y=mass_g,group=spp, fill=spp)) + 
+  geom_smooth(method="lm", aes(color=spp))+
+  geom_point(pch=21) +
+  facet_grid(spp~targettempC) + 
+  ylab("Mass at 36-37 dph (g)") + 
+  scale_fill_manual(values=c("green3","grey80"), guide="none") + 
+  scale_color_manual(values=c("green3","grey65"), guide="none") + 
+  scale_x_continuous(name= "Bifenthrin Concentration (ng/L)", 
+                     breaks = log(c(0,1, 10, 100)+1), 
+                     labels=c(0,1,10, 100) ) +
+  theme_bw()
+
+m1t.mass + m2t.mass + m3t.mass + plot_layout(ncol=1)
+```
+
+```{r basic plots bif all, echo=FALSE, fig.height=8, fig.width=6}
+# combine all bid data
+  plotdatBall = rbind(select(plotdatBif,-Notes), select(plotdatTemp, -rep, -physioID, -notes) )
+  # reformat temp so its consistent
+   plotdatBall$targettempC = str_sub(plotdatBall$targettempC, 1,2)
+ # make factor to group 2020 seperartely from 2022/2023
+  plotdatBall$trialtype = NA
+   plotdatBall$trialtype[plotdatBall$year==2020] = "range"
+   plotdatBall$trialtype[plotdatBall$year%in% c(2022,2023)] = "temperature"
+
+   
+# mass at measure-point 1
+m1b.mass = ggplot(data = filter(plotdatBall, measurebin=="m1"), 
+       aes(x=log(CalcConc+1), y=mass_g, group=spp, fill=spp)) + 
+  geom_smooth(method="lm", aes(color=spp))+
+  geom_point(data=filter(plotdatBall, measurebin=="m1", trialtype=="temperature"), pch=21) + 
+  geom_point(data=filter(plotdatBall, measurebin=="m1", trialtype=="range"), pch=24) +
+  facet_grid(spp~targettempC, labeller = labeller(targettempC = c("12" = "12C",
+                                                                  "15" = "15C",
+                                                                  "18" = "18C")) ) + 
+  ylab("Mass at 7 dph (g)")  + 
+  scale_fill_manual(values=c("green3","grey80"), guide="none") + 
+  scale_color_manual(values=c("green3","grey65"), guide="none") + 
+  scale_x_continuous(name= "Bifenthrin Concentration (ng/L)", 
+                     breaks = log(c(0,1, 10, 100, 1000)+1), 
+                     labels=c(0,1,10, 100, 1000) ) +
+  theme_bw()
+
+#  mass at measure-point 2
+m2b.mass = ggplot(data = filter(plotdatBall, measurebin=="m3"), 
+       aes(x=log(CalcConc+1), y=mass_g,group=spp, fill=spp)) + 
+  geom_smooth(method="lm", aes(color=spp))+
+  geom_point(data=filter(plotdatBall, measurebin=="m3", trialtype=="temperature"), pch=21) + 
+  geom_point(data=filter(plotdatBall, measurebin=="m3", trialtype=="range"), pch=24) +
+  facet_grid(spp~targettempC, labeller = labeller(targettempC = c("12" = "12C",
+                                                                  "15" = "15C",
+                                                                  "18" = "18C")) ) + 
+  ylab("Mass at 26-27 dph (g)") + 
+  scale_fill_manual(values=c("green3","grey80"), guide="none") + 
+  scale_color_manual(values=c("green3","grey65"), guide="none") + 
+  scale_x_continuous(name= "Bifenthrin Concentration (ng/L)", 
+                     breaks = log(c(0,1, 10, 100, 1000)+1), 
+                     labels=c(0,1,10, 100, 1000) ) +
+  theme_bw()
+
+# final mass at measure-point 3
+m3b.mass = ggplot(data = filter(plotdatBall, dph%in% c(36,37)), 
+       aes(x=log(CalcConc+1), y=mass_g,group=spp, fill=spp)) + 
+  geom_smooth(method="lm", aes(color=spp))+
+  geom_point(data=filter(plotdatBall, measurebin=="m4", trialtype=="temperature"), pch=21) + 
+  geom_point(data=filter(plotdatBall, measurebin=="m4", trialtype=="range"), pch=24) +
+  facet_grid(spp~targettempC, labeller = labeller(targettempC = c("12" = "12C",
+                                                                  "15" = "15C",
+                                                                  "18" = "18C")) ) + 
+  ylab("Mass at 36-37 dph (g)") + 
+  scale_fill_manual(values=c("green3","grey80"), guide="none") + 
+  scale_color_manual(values=c("green3","grey65"), guide="none") + 
+  scale_x_continuous(name= "Bifenthrin Concentration (ng/L)", 
+                     breaks = log(c(0,1, 10, 100, 1000)+1), 
+                     labels=c(0,1,10, 100, 1000) ) +
+  theme_bw()
+
+m1b.mass + m2b.mass + m3b.mass + plot_layout(ncol=1)
+```
+
+
+```{r combine plots, echo=FALSE, fig.height=5, fig.width=8}
+
+
+# both ages
+
+tiff("figures/Growth_WSGS_m1m3_FipBif_forreport.jpeg",  width=800, height=500, units="px", compression="lzw", res=100)
+
+(m1b.mass + 
+   scale_y_continuous(name="Mass at 7 dph (g)", breaks=seq(0.02,0.08,0.02)) + 
+   coord_cartesian(ylim=c(0.02, 0.08), xlim=c(-.1, 7.7 ) ) ) + 
+  
+  (m1f.mass + 
+     scale_y_continuous(name="", breaks=seq(0,0.08,0.02))  + 
+     coord_cartesian(ylim=c(0.02, 0.08), xlim=c(-.1, 5.7 ) ) ) + 
+  
+    (m3b.mass + 
+       scale_y_continuous(name="Mass at 36-43 dph (g)", breaks=seq(0,1.6,0.5)) + 
+       coord_cartesian(ylim=c(0,1.6), xlim=c(-.1, 7.7 ) ) )  + 
+  
+      (m3f.mass + 
+         scale_y_continuous(name="", breaks=seq(0,1.6,0.5)) + 
+         coord_cartesian(ylim=c(0,1.6), xlim=c(-.1, 5.7 ) ) )  +
+
+  plot_layout(ncol=2,  widths = c(3, 1))+ 
+  
+  plot_annotation(tag_levels = 'a')
+
+dev.off()
+
+
+
+# larval only
+
+tiff("figures/Growth_WSGS_m1_FipBif_forreport.jpeg",  width=650, height=325, units="px", compression="lzw", res=100)
+
+(m1b.mass + 
+   scale_y_continuous(name="Mass at 7 dph (g)", breaks=seq(0.02,0.08,0.02)) + 
+   coord_cartesian(ylim=c(0.02, 0.08), xlim=c(-.1, 7.7 ) ) ) + 
+  
+  (m1f.mass + 
+     scale_y_continuous(name="", breaks=seq(0,0.08,0.02))  + 
+     coord_cartesian(ylim=c(0.02, 0.08), xlim=c(-.1, 5.7 ) ) ) + 
+  
+  plot_layout(ncol=2,  widths = c(3, 1)) + 
+  
+  plot_annotation(tag_levels = 'a')
+
+dev.off()
+
+
+# endpoint only (5-6wks old)
+
+tiff("figures/Growth_WSGS_m3_FipBif_forreport.jpeg",  width=650, height=325, units="px", compression="lzw", res=100)
+
+    (m3t.mass + 
+       scale_y_continuous(name="Mass at 36-43 dph (g)", breaks=seq(0,1.6,0.5)) + 
+       coord_cartesian(ylim=c(0,1.6), xlim=c(-.1, 7.7 ) ) )  + 
+  
+      (m3f.mass + 
+         scale_y_continuous(name="", breaks=seq(0,1.6,0.5)) + 
+         coord_cartesian(ylim=c(0,1.6), xlim=c(-.1, 5.7 ) ) )  +
+
+  plot_layout(ncol=2,  widths = c(3, 1))+ 
+  
+  plot_annotation(tag_levels = 'a')
+
+dev.off()
+
+```
+
+### Stats
+```{r fip growth stats}
+## fipronil, 7dph
+fip7dph = filter(plotdatFip, dph==7)
+fip7dph$logmass = log(fip7dph$mass_g) 
+
+fipm1 = lm(mass_g ~ spp*I(log(CalcConc+1)), data = fip7dph, na.action="na.fail")
+plot(fipm1)
+summary(fipm1)
+#summary(aov(fipm1))
+dredge(fipm1)
+ # best model is additive only, without CalcConc
+
+fipm2 = lm(mass_g ~ spp+I(log(CalcConc+1)), data = fip7dph, na.action="na.fail")
+plot(fipm2)
+summary(fipm2)
+
+fipm3 = lm(logmass ~ spp+I(log(CalcConc+1)), data = fip7dph, na.action="na.fail")
+plot(fipm3)
+summary(fipm3)
+# this isn't as good; it was a necessary transformation for bifenthrin at temp, but not here. Huh. Temp effects?
+
+
+## fipronil, 
+fip_sz3 = filter(plotdatFip, dph>30)
+
+fip3_m1 = lmer(mass_g ~ spp*I(log(CalcConc+1)) + (1|tank), data = fip_sz3, na.action="na.fail")
+plot(fip3_m1)
+summary(fip3_m1)
+ranef(fip3_m1)
+  # $tank
+  #      (Intercept)
+  # R1    0.04403035
+  # R1.2 -0.02159565
+  # R2   -0.04257545
+  # R3    0.02936538
+  # R3.4  0.02159565
+  # R4   -0.03082028
+# so the magnitude of the tank effect is the same as the magnitude of the pestiide effect. That's helpful I think
+
+dredge(fip3_m1)
+ # best model is additive without pesticide
+
+
+fip3_m2 = as(lmer(mass_g ~ spp + I(log(CalcConc+1)) + (1|tank), data = fip_sz3, na.action="na.fail", REML=TRUE), "merModLmerTest") # this as() wrapper makes the model compatible with the lmerTest function for obtaining p-values. Uses the Satterthwaite method for obtaining 
+
+plot(fip3_m2)
+summary(fip3_m2)
+  # Fixed effects:
+  #                       Estimate Std. Error        df t value Pr(>|t|)
+  # (Intercept)            0.90933    0.05176   7.17002  17.566 3.71e-07
+  # sppWS                 -0.51584    0.06997   2.73975  -7.372  0.00698
+  # I(log(CalcConc + 1))  -0.01747    0.01407 117.99248  -1.241  0.21700
+
+ranef(fip3_m2)
+  # $tank
+  #      (Intercept)
+  # R1    0.04179693
+  # R1.2 -0.02107178
+  # R2   -0.04496709
+  # R3    0.03349231
+  # R3.4  0.02107178
+  # R4   -0.03032216
+# now the tank effects are all larger in magnitude than the pesticide effect (on the log scale); when it's exponentiated it's 1.98, but nothing here is standardizes, so perhaps we can't compare effect size afterall
 
 
 ```
 
-### save to intermediate data for next step of analysis
-```{r save}
-write.csv(Grow2021, "intermedData/Growth_GSWS_2021.csv")
+```{r bif growth stats}
+
+## started by modeling the bif datasets seperately, but then combined them down below #####
+    # ## bif2020
+    # bif7dph = filter(plotdatBif, dph%in%c(7:9))
+    # 
+    # bifm1 = lm(mass_g ~ spp*I(log(CalcConc+1)), data = bif7dph, na.action="na.fail")  #+ (1|tray)
+    # plot(bifm1)
+    # summary(bifm1)
+    # #summary(aov(bifm1))
+    # dredge(bifm1)
+    #  # best model is additive only, without CalcConc        
+    # bifm2 = lm(mass_g ~ spp+I(log(CalcConc+1)), data = bif7dph, na.action="na.fail")  #+ (1|tray)
+    # plot(bifm2)
+    # summary(bifm2)
+    # 
+    # 
+    # ## bifTemp
+    # temp7dph = filter(plotdatTemp, dph==7)
+    #  # make temp a numeric
+    #   temp7dph$targettempNum = as.numeric(str_sub(temp7dph$targettemp, 1,2))
+    #   
+    # tempm1 = lm(mass_g ~ spp + targettempNum + I(log(CalcConc+1)), data = temp7dph, na.action="na.fail")  #+ (1|tray)
+    # plot(tempm1)
+    # summary(tempm1)
+    # 
+    # tempm2 = lm(mass_g ~ spp + targettempNum*I(log(CalcConc+1)), data = temp7dph, na.action="na.fail")  #+ (1|tray)
+    # plot(tempm2)
+    # summary(tempm2)
+    # 
+    # tempm3 = lm(mass_g ~ spp*targettempNum + spp*I(log(CalcConc+1)) + targettempNum*I(log(CalcConc+1)), data = temp7dph, na.action="na.fail")  #+ (1|tray)
+    # plot(tempm3)
+    # summary(tempm3)
+    # 
+    # tempm4 = lm(mass_g ~ spp*targettempNum + spp*I(log(CalcConc+1)), data = temp7dph, na.action="na.fail")  #+ (1|tray)
+    # plot(tempm4)
+    # summary(tempm4)
+    # 
+    # tempm4 = lm(mass_g ~ targettempNum + spp*I(log(CalcConc+1)), data = temp7dph, na.action="na.fail")  #+ (1|tray)
+    # plot(tempm4)
+    # summary(tempm4)
+    # 
+    # AIC(tempm1, tempm2, tempm3, tempm4, tempm5)
+    # 
+    # dredge(tempm3)
+    #  # model is best with temp*conc and spp*comc interactions, but only by 0.1-0.2 AIC with nearly equal weights (second best drops temp*conc and becomes tempm4)
+    #  
+    # # final model will be tempm4; most parsimonious within the set of models that are less than 2-AIC points from the lowest
+    # 
+    # summary(tempm4)
+#####
+
+## All bif together
+bif7dph_all = rbind(select(bif7dph,-Notes), select(temp7dph, -rep, -physioID, -targettempNum, -notes))
+  # make temp a numeric
+  bif7dph_all$targettempNum = as.numeric(str_sub(bif7dph_all$targettempC, 1,2))
+  # make factor to group 2020 seperartely from 2022/2023
+  bif7dph_all$trialtype = NA
+   bif7dph_all$trialtype[bif7dph_all$year==2020] = "range"
+   bif7dph_all$trialtype[bif7dph_all$year%in% c(2022,2023)] = "temperature"
+   
+allbm1 = lmer(mass_g ~ spp*targettempNum + spp*I(log(CalcConc+1)) + targettempNum*I(log(CalcConc+1)) + (1|trialtype), data = bif7dph_all, na.action="na.fail")  #+ (1|tray)
+plot(allbm1)
+summary(allbm1)
+
+dredge(allbm1)
+# best model is spread across 6 models within 2 AIC if don't use lmer with (1|year) 
+# best is very clearly the additive only model with only temperature  when add random effect for year. Spp probably drops out because it's so strongly correlated with year for 2022/2023
+# best model is still additive when replace random year with random 'trialtype', and spp comes back
+
+allbm2 = lmer(mass_g ~ spp + targettempNum + I(log(CalcConc+1)) + (1|trialtype), data = bif7dph_all, na.action="na.fail") 
+plot(allbm2)
+summary(allbm2)
+
+# try this with lm instead of lmer
+allbm3 = lm(mass_g ~ spp*targettempNum + spp*I(log(CalcConc+1)) + targettempNum*I(log(CalcConc+1)), data = bif7dph_all, na.action="na.fail") 
+plot(allbm3)
+summary(allbm3)
+
+dredge(allbm3)
+
+allbm4 = lm(mass_g ~ spp + targettempNum + I(log(CalcConc+1)), data = bif7dph_all, na.action="na.fail") 
+plot(allbm4)
+summary(allbm4)
+ # the summary output is identical for the fixed effects when there is no random effect. Use this for report
+
+
+
+
+## bifenthrin, all data, final measurement point
+bifall_sz3 = filter(plotdatBall, dph>30)
+bifall_sz3 = bifall_sz3[!is.na(bifall_sz3$mass_g),] # remove to fit model
+bifall_sz3$targettempC = as.numeric(bifall_sz3$targettempC)
+
+bifall3_m1 = lm(mass_g ~ spp*I(log(CalcConc+1)) + spp*targettempC + targettempC*I(log(CalcConc+1)), #+ (1|tank), 
+                  data = bifall_sz3, na.action="na.fail") # don't have tank ID for 2023, so can't run the random effects model. =/ huge bummer!!!
+plot(bifall3_m1)
+summary(bifall3_m1)
+
+dredge(bifall3_m1)
+ # best model includes conc*temp and spp*temp
+
+
+
+## bifenthrin, 2022/23 only, 
+bif_sz3 = filter(plotdatTemp, dph>30)
+bif_sz3 = bif_sz3[!is.na(bif_sz3$mass_g),] # remove to fit model
+bif_sz3$targettempC = as.numeric(str_sub(bif_sz3$targettempC,1,2))
+bif_sz3$logMassg = log(bif_sz3$mass_g)
+
+
+bif3_m1 = lm(logMassg ~ spp*I(log(CalcConc+1)) + spp*targettempC + targettempC*I(log(CalcConc+1)), #+ (1|tank), 
+                  data = bif_sz3, na.action="na.fail") # don't have tank ID for 2023, so can't run the random effects model. =/ huge bummer!!!
+plot(bif3_m1) # questionable homogeneity of variance without the log mass
+summary(bif3_m1)
+
+dredge(bif3_m1)
+ # best model includes conc*temp and spp*temp, regardless of whether the response is logged
+
+
+bif3_m2 = lm(logMassg ~ spp*targettempC + targettempC*I(log(CalcConc+1)), 
+                  data = bif_sz3, na.action="na.fail") 
+plot(bif3_m2) # questionable homogeneity of variance...
+summary(bif3_m2)
+
+dredge(bif3_m2)
+
+## predicted values, with interaction terms; don't trust these....
+WS12C.cont = exp(-5.006034 + 0.139348 + 0.265441*12 - 0.065059*12)
+ # 0.085 g @ 12C
+GS12C.cont = exp(-5.006034 + 0.265441*12)
+ # 0.162 g @ 12C
+
+WS15C.cont = exp(-5.006034 + 0.139348 + 0.265441*15 - 0.065059*15)
+ # 0.156 g @ 12C
+GS15C.cont = exp(-5.006034 + 0.265441*15)
+ # 0.359 g @ 12C
+
+WS18C.cont = exp(-5.006034 + 0.139348 + 0.265441*18 - 0.065059*18)
+ # 0.284 g @ 12C
+GS18C.cont = exp(-5.006034 + 0.265441*18)
+ # 0.796 g @ 12C
+
+WS12C.100 = exp(-5.006034 + 0.139348 + 0.265441*12 - 0.268293*log(101) - 0.065059*12 - 0.018765*12*log(101))
+ # 0.009 g @ 12C, 100ng/L
+GS12C.100 = exp(-5.006034 + 0.265441*12 - 0.268293*log(101) - 0.018765*12*log(101))
+ # 0.017 g @ 12C, 100ng/L
+
+WS15C.100 = exp(-5.006034 + 0.139348 + 0.265441*15 - 0.268293*log(101) - 0.065059*15 - 0.018765*15*log(101))
+ # 0.012 g @ 15C, 100ng/L
+GS15C.100 = exp(-5.006034 + 0.265441*15 - 0.268293*log(101) - 0.018765*12*log(101))
+ # 0.037 g @ 15C, 100ng/L
+
+WS18C.100 =  exp(-5.006034 + 0.139348 + 0.265441*18 - 0.268293*log(101) - 0.065059*18 - 0.018765*18*log(101))
+ # 0.017 g @ 18C, 100ng/L
+GS18C.100 = exp(-5.006034 + 0.265441*18 - 0.268293*log(101) - 0.018765*12*log(101))
+ # 0.0816 g @ 18C, 100ng/L
+
+## after report is done, come back here and use 'predict' to get effects with interaction terms. 
 ```
