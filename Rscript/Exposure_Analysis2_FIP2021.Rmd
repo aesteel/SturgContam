@@ -13,9 +13,10 @@ library(tidyverse)
 library(readtext) # need this because the ethovision output .txt files have unusual encoding as UTF-16
 library(lme4)
 library(circular)
-library(rethinking)
+#library(rethinking)
 library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
 library(rstatix)
+library(chron)
 
 knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
 ```
@@ -108,6 +109,9 @@ ggplot(tempdat, aes(x=endtemp, y=pred.endtemp, color=species)) + geom_point() + 
 DataSum96.T = merge(DataSum96, tempdat, by.x=c("Spp","ExposureHrs","Tray","Replicate"), by.y=c("species","Exposure.Hr","Tray","rep"), all.x=T)
  # this uses the control as a sample for all of the corresponding replicate numbers
 DataSum96 = DataSum96.T
+
+DataSumAll.T = merge(DataSumAll, tempdat, by.x=c("Spp","ExposureHrs","Tray","Replicate"), by.y=c("species","Exposure.Hr","Tray","rep"), all.x=T)
+ # this uses the control as a sample for all of the corresponding replicate numbers
 ```
 
 
@@ -548,7 +552,7 @@ DistnChgfish.dist.median
 
 ```
   
-```{r}  
+```{r diff btwn 24 and 96hrs}  
 # look at the change between 24 and 96 hours for each replicated individual
  
 DataSum2496.dist$ExposureHrsChr = paste0("ExpHr",DataSum2496.dist$ExposureHrs)
@@ -589,10 +593,10 @@ DataSumChg.dist = DataSum2496.dist %>%
                   theme_bw()
   
   chngfishdist.py
-  
+```  
   
 # do individuals consistently respond in the same way? Should I add a multilevel term for intercept or slope. Or both?
-  
+```{r individual repeatability}  
 ggplot(DataSum2496.dist, aes(x=ExposureHrs, y=TotalfishDist_m, group=RepID, color=RepID)) + geom_point() + geom_line() + facet_grid(Spp~Treatment, scales="free") + theme(legend.position="none")
 # looks like there is often a trend, but not always. I think a random slope between the two time points would be really helpful. 
 
@@ -1105,3 +1109,26 @@ activefish
 CenterC.plot
 ```
 
+```{r final summarized datasets for opendata}
+
+DataSumAll.summarized = DataSumAll.T %>%
+  filter(!is.na(InZoneC)) %>%  
+  group_by(Spp, Contaminant, ExposureHrs, Treatment, calcConc, 
+           Tray, Replicate, index, RepID, endtemp, pred.endtemp) %>%
+  summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100),
+            MnVel = mean(MnVel, na.rm=T),
+            MnTurnAngle = deg(circ.mean.na(rad(TurnAngleCirc))), 
+            VarTurnAngle = deg(circ.disp.na(rad(TurnAngleCirc))$var), # circular variance
+            MnMeander = mean(MeanderCirc, na.rm=T),
+            SDMeander = sd(MeanderCirc, na.rm=T),
+            CVMeander = sd(MeanderCirc, na.rm=T)/abs(mean(MeanderCirc, na.rm=T)),
+            InZoneC = sum(InZoneC, na.rm=T), 
+            npos = n()) %>%
+  mutate(PercZoneC.1 = InZoneC / npos) %>%
+  ungroup()  %>%
+  data.frame()
+
+write.csv(DataSumAll.summarized, "/Users/Anna/Documents/ResearchGit/SturgContam/outputData/Exposure_Outputdata/Fipronil_2021_Cleaned_Conc_Summarized.csv")
+
+
+```

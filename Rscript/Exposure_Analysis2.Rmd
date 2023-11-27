@@ -12,7 +12,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(readtext) # need this because the ethovision output .txt files have unusual encoding as UTF-16
 library(lme4)
-library(rethinking)
+#library(rethinking)
+library(chron)
 library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
 
 knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
@@ -210,7 +211,6 @@ dev.off()
 
 ```
 
-
 ```{r other ways of visualizing distance}
 ## these were written prior to deciding how to visualize and plot change from control
 #(which was updated Dec 2021)
@@ -395,7 +395,6 @@ DataSumChg.Vel = DataSum2496.vel %>%
   
 ```
 # the trends look the same as distance, so for now I won't run models on velocity. Can add later if needed. 
-
 
 
 
@@ -758,3 +757,30 @@ activefish
 CenterC.plot
 ```
 
+
+```{r final summarized datasets for opendata}
+
+DataSum2496$TurnAngleCirc = abs(DataSum2496$TurnAngleCirc)
+DataSum2496$MeanderCirc = abs(DataSum2496$MeanderCirc)
+
+DataSum.summarized = DataSum2496 %>%
+  filter(!is.na(InZoneC)) %>%  
+  group_by(Spp, Contaminant, ExposureHrs, Treatment, calcConc, 
+           Replicate, RepID) %>%
+  summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100),
+            MnVel = mean(MnVel, na.rm=T),
+            MnTurnAngle = deg(circ.mean.na(rad(TurnAngleCirc))), 
+            VarTurnAngle = deg(circ.disp.na(rad(TurnAngleCirc))$var), # circular variance
+            MnMeander = mean(MeanderCirc, na.rm=T),
+            SDMeander = sd(MeanderCirc, na.rm=T),
+            CVMeander = sd(MeanderCirc, na.rm=T)/abs(mean(MeanderCirc, na.rm=T)),
+            InZoneC = sum(InZoneC, na.rm=T), 
+            npos = n()) %>%
+  mutate(PercZoneC.1 = InZoneC / npos) %>%
+  ungroup()  %>%
+  data.frame()
+
+write.csv(DataSum.summarized, "/Users/Anna/Documents/ResearchGit/SturgContam/outputData/Exposure_Outputdata/Bifenthrin_2020_Cleaned_Conc_Summarized.csv")
+
+
+```

@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(readtext) # need this because the ethovision output .txt files have unusual encoding as UTF-16
 library(lme4)
-library(rethinking)
+#library(rethinking)
 library(circular)
 library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
 
@@ -57,7 +57,7 @@ circ.disp.na = function(x) {
   
 Raw data was acquired but not post-processed in ethovision, as of Dec 2021.  
   
-With Bifenthrin tracks, For nearly all instances where there is missing data for fish it is because the fish was still. The ethovision program either lost the fish and didn't record any locations, or the program recorded a moving reflection while the fish was still (much less prevalent with 2021 video setup). For fipronil tracks stlil haven't evaluated this (Dec 2021)
+With Bifenthrin tracks, For nearly all instances where there is missing data for fish it is because the fish was still. The ethovision program either lost the fish and didn't record any locations, or the program recorded a moving reflection while the fish was still (much less prevalent with 2021 video setup). For fipronil tracks I still haven't evaluated this (Dec 2021)
 
 
 The data used here were tracked with the filter "____(maybe MDM2 02 5 mm)" in ethovision projects named "Exposure_GSFip_Pilot" and "Exposure_WSFip_Pilot" (maybe).
@@ -76,12 +76,12 @@ WSfilelist = list.files(path=WSdatadir, pattern="Track-Exposure")
   
 # read in hand-made triallist to add experimental data to movement file   - not accurate for these trials; need to get the trial list out of ethovision and never exported it; can i? Can also pull the data from the headers of the files, in the read-in step below
 
-      # GStriallist = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Ethovision Trial List GS2021 Exposure.csv")
-      #     GStriallist$index = paste(GStriallist$Trial, GStriallist$Arena, sep="-")
-      #     
-      # WStriallist = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Ethovision Trial List WS2021 Exposure.csv")
-      #     WStriallist$index = paste(WStriallist$Trial, WStriallist$Arena, sep="-")
-      #     WStriallist$Notes <- NULL
+       GStriallist = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Ethovision Trial List GS2021 Exposure.csv")
+           GStriallist$index = paste(GStriallist$Trial, GStriallist$Arena, sep="-")
+           
+       WStriallist = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Ethovision Trial List WS2021 Exposure.csv")
+           WStriallist$index = paste(WStriallist$Trial, WStriallist$Arena, sep="-")
+           WStriallist$Notes <- NULL
 ```
 
 #### Read in data
@@ -106,8 +106,8 @@ WSfilelist = list.files(path=WSdatadir, pattern="Track-Exposure")
       trialidat = read.csv(paste0(datadir, x), sep=",", skip=40, header=F, fileEncoding="UTF-16")
       trialheader = read.csv(paste0(datadir, x), sep=",",header=F, fileEncoding="UTF-16")[1:40,]
       names(trialidat) = datcolNames
-      trialidat$X <-NULL
-      trialidat$X1 <-NULL
+      trialidat$X <-NULL # this is a 1 because the treatment is the one indicated in the header; not useful because every line in the file is the same
+      trialidat$X1 <-NULL # empty
       
       trialidat$SubjectNotFound <- trialheader[30,2]
       trialidat$nomconcHeader <- trialheader[35,2]
@@ -149,9 +149,9 @@ WSfilelist = list.files(path=WSdatadir, pattern="Track-Exposure")
   
 ```
 
-#### as I reviewed the data, I fing more edits I hadn't made in ethovision, I'll  correct here. None apparent with WS yet (Dec 07, 2021)
+#### as I reviewed the data, I find more edits I hadn't made in ethovision, I'll  correct here. None apparent with WS yet (Dec 07, 2021)
 ```{r corrections}
-#Tray D has very high movement rates when compared to the rest. In notes from video recordings, I said I set the box of glass bottles on the bottom of the recording shelf and shook the shelf at ~17 or 18 minutes. It could be that this shaking made the tracking lose the fish, and the tracks (and high distances moved) were not of the fish but rather jumping around with poor detection. I'll remove them for now, and should check on the videos again in the connon lab when I can get back in there. 
+#Tray D has very high movement rates when compared to the rest. In notes from video recordings, I said I set the box of glass bottles on the bottom of the recording shelf and shook the shelf at ~17 or 18 minutes. It could be that this shaking made the tracking lose the fish, and the tracks (and high distances moved) were not of the fish but rather jumping around with poor detection. I'll remove them for now, and should check on the videos again. 
 
 GSdata = GSdata[!(GSdata$ExposureHrs==96 & GSdata$Spp=="GS" & GSdata$Tray=="D"),]
 
