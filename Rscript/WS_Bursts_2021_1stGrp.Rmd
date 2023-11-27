@@ -10,12 +10,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
 library(lme4)
-library(rethinking)
 library(circular)
-#library(cowplot)
 library(patchwork)
-library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
-
+#library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
 #knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
 ```
 
@@ -72,9 +69,6 @@ chem_dat = read.csv("../rawData/ChemAnalysisResults_CompiledforR.csv")
   ws21_chemdat = filter(chem_dat, Contaminant=="Fipronil", year==2021, spp=="WS", Sample=="spike")
   gs21_chemdat = filter(chem_dat, Contaminant=="Fipronil", year==2021, spp=="GS", Sample=="spike")
   ws22_chemdat = filter(chem_dat, Contaminant=="Bifenthrin", year==2022, spp=="WS", Sample=="spike")
-######*******########********#########**********#########***********#########
-  ### ***** something is off with T30 from 2022; check the output file, the =raw data sheet, and the metadata csv to see what isn't aligning. Note from AES 3/23/2023 **** ###
-######*******########********#########**********#########***********#########
 
 # set one of these datasets for use in the subsequent analysis (may re-arrange this later to make it easier to re-run after troubleshooting is complete) 
 trial_specs = merge(trial_specs21ws, ws21_chemdat[,c("nomconc","CalcConc")], 
@@ -103,8 +97,9 @@ burst.topvels = data.frame(treatmentrep = "EMPTY", burstID = NA, burstQual = as.
 
 # create empty dataframe to record above burst velocity averaged across the the pre-filtered 'good' trials for each fish, as well as sd of bursts and and N good bursts considered
 mean.topvels = data.frame(treatmentrep = filestart, 
-                          mnburstGood = NA, sdburstGood = NA, nburstGood = NA,
-                          mnburstGoodFair = NA, sdburstGoodFair = NA, nburstGoodFair = NA)
+                          mn.top3burstvelGood = NA, sd.top3burstvelGood = NA, nburstGood = NA,
+                          mn.top3burstvelGoodFair = NA, sd.top3burstvelGoodFair = NA, nburstGoodFair = NA)
+
 
 # create empty data frame to record gates with top 25% of inter-gate speeds within a single burst event
 fastPos.comp = data.frame(treatmentrep = "EMPTY", burstID = as.factor(NA), burstQual = NA, 
@@ -112,7 +107,7 @@ fastPos.comp = data.frame(treatmentrep = "EMPTY", burstID = as.factor(NA), burst
                           #, nGatesMissed = NA)
 
 # create empty data frame to collect the burst events that were recorded but not used in analysis (usually false-triggers); need to check and confirm the filtering critera are working well
-check_events = data.frame(burstQual = "EMTPY", BURST_NUMBER=NA, ORIENTATION=NA, START_TIME=NA,  
+check_events = data.frame(burstQual = "EMTPY", stalledAt = "EMPTY", BURST_NUMBER=NA, ORIENTATION=NA, START_TIME=NA,  
 Gate00 = NA, Gate01=NA, Gate02=NA, Gate03=NA, Gate04=NA, Gate05=NA, Gate06=NA, Gate07=NA, Gate08=NA, Gate09 = NA, Gate10=NA, Gate11=NA, Gate12=NA, Gate13=NA, Gate14=NA, n.missed=NA)
 ```
   
@@ -163,7 +158,8 @@ for(f in 1:length(filestart)) {
      metadat = trial_specs[trial_specs$raspPI_filestart==filestart[f],]
       # fix entering error that typed "N/A" 
       metadat[metadat=="N/A"] <- NA
-     
+       # ensure metadat is ordered by burst number
+      metadat = metadat[order(metadat$burst),]       
        
         ##### Unnecessary code from Ken; replaced with single line above #####
         # num_gates <- length(names(dat)[grep("Gate",names(dat))])  
@@ -179,14 +175,16 @@ for(f in 1:length(filestart)) {
 
      
  ## filter out gate trips not made by fish, using metadata ('stalledAt'); will remove 'poor' bursts later in code
-     dat2 = data.frame(burstQual=as.character(NA), dat) # df to be filled in with the following loop
+     dat2 = data.frame(burstQual=as.character(NA),  stalledAt= as.character(NA), dat) # df to be filled in with the following loop
     
      for(b in 1:nrow(dat2)) {                       #  for each row in dat
      #print(b)                                     #  use this line to troubleshoot if the loop is breaking; can see where in the loop something happens, and review that specific iteration
       dat2$burstQual[b] <- metadat[b,"burstQual"]   #   pull metadat for corresponding burst 
       finalgate = as.numeric(metadat[b,"stalledAt"])#   translate 'stalledAt' number to GateXX name
+      dat2$stalledAt[b] <-as.numeric(metadat[b,"stalledAt"])#   translate 'stalledAt' number to GateXX name
       if(is.na(finalgate)) next                     #   fix bug in code if there isn't enough data 
       if(finalgate==25) next
+      
       badcol_index = finalgate+5                    #  save column number where 'bad data' start so you can replace data from columns GateXX and after in next line
       dat2[b,badcol_index:ncol(dat2)] <- -99        # replace any timestamps with -99, to be removed in next stage 
      }
@@ -226,13 +224,15 @@ for(f in 1:length(filestart)) {
       # convert from wide to long format, with one line per gate rather than one line per burst event
       temp.dat.gathered = merge(temp.dat.gathered, tunnel_position, all.x=T) 
        # add the location in the tunnel (from tunnel_specs) to the times at that gate 
-      
+   
+      temp.dat.gathered = filter(temp.dat.gathered, TIMING!=-99)
+     
       ## Use a pipe to calculate more metrics from the positions and times
       temp.dat.gathered = temp.dat.gathered %>%
         filter(TIMING!=-99) %>%
            # removes gates that were missed (no times); do this first for better calcs of spd
-         filter(TIMING - lag(TIMING,1) >= 0) %>%
-           # removes row if the time recorded was before the previous; do before spd calcs 
+        filter(TIMING==0 | TIMING - lag(TIMING,1) >= 0) %>%
+           # removes row if the time recorded was before the previous, unless the row was the first detection of the fish in the tunnel ; do before spd calcs 
         mutate("POSITION_DIFF" = POSITION - lag(POSITION,1)) %>% 
           # Calulates the difference in position between gates
         mutate("TIMING_DIFF" = TIMING - lag(TIMING,1)) %>% 
@@ -262,6 +262,30 @@ for(f in 1:length(filestart)) {
                 row.names=F) }
    
    
+   
+   ## write pdf plots of inter-gate speeds for each burst event for the fish in the current loop
+    if(write.file=="Yes") {
+
+        pdf(paste0(figureoutputfolder,"/filtered_segmentBursts_",filestart[f],".pdf"),
+            onefile=TRUE)
+        for(i in 1:length(burst.df.list)) {
+          if(nrow(burst.df.list[[i]]) == 0) {next} else {
+            burst.df.list[[i]]$GATE_ID = factor(burst.df.list[[i]]$GATE_ID,
+                                                levels=c(paste0("Gate0",0:9), paste0("Gate",10:14)) )
+            print ( ggplot(data = burst.df.list[[i]]) +
+              geom_errorbarh(aes(xmax = as.numeric(GATE_ID), 
+                                 xmin = as.numeric(lag(GATE_ID)), 
+                                 y = VELOCITY, height = 0))+
+              coord_cartesian(xlim=c(1,15))+
+              scale_x_continuous(breaks=1:15,labels=levels(burst.df.list[[i]]$GATE_ID))+  
+              ggtitle(paste("Inter-gate Velocities: Burst",i," (max segment length =",max_distance,")")) +
+              ylab("Velocity (cm/s)")+
+              xlab("Gate Number")+
+              theme(axis.text.x = element_text(angle=90)) ) }
+                   }
+        dev.off()
+      }
+  
    
  # Now this function will be fed each burst event stored in the burst.df.list object above:
     veldat_maxXcm = function(burst) {
@@ -351,13 +375,14 @@ for(f in 1:length(filestart)) {
   ### pull velocity metrics
     #  mean of fastest 3 velocities per burst, after dropping fastest two, 
     
-    topvel_func= function(x,n,d) { ## runs with x = either burst.df.list or clean_vel_data 
+    topvel_func= function(x,n,d) {## runs with x = either burst.df.list (sequential gate velocities) or clean_vel_data (all forward-combinations of gate velocities with max 15cm distance)
       vel.list = sort(x$VELOCITY, decreasing=TRUE) 
       n_vels <- length(vel.list)
       n_avg <- n
       n_dropped <- d
       if(length(vel.list)<(n+d)) {mnvel=NA; sdvel=NA; n_avg<-0} else {
-      mnvel = mean(vel.list[(d+1):(d+n)]); sdvel = sd(vel.list[(d+1):(d+n)]) }
+           mnvel = mean(vel.list[(d+1):(d+n)])
+           sdvel = sd(vel.list[(d+1):(d+n)]) }
       return(data.frame(treatmentrep = filestart[f],
                         burstID = unique(x$BURST_NUMBER), 
                         burstQual = factor(unique(x$burstQual), levels=c("poor","fair","good")),
@@ -375,9 +400,27 @@ for(f in 1:length(filestart)) {
     nn = 3 # average remaining nn
     burst.mntopvels = do.call(rbind, lapply(burst.df.list, topvel_func, n=nn, d=dd)) # seems to give similar answers to results from all (overlapping) gate combinations created in clean_vel_data; not exhaustively or formally evaluated. Using this avoids pseudoreplication, but may be less ideal if there are gaps in data where lasers are frequently missed. 
      # returns NA vel if there are =< n velocity values measured
-   
+        burst.mntopvels$burstID = factor(burst.mntopvels$burstID, levels=c(1:14))
+
     
-    if(write.file=="Yes") {write.csv(burst.mntopvels, paste0(dataoutputfolder,"/Subjective_Rank_Mn_dropTop2_avgNext",nn,"_",filestart[f],".csv"), row.names=F)}
+      if(write.file=="Yes") {
+      write.csv(burst.mntopvels, paste0(dataoutputfolder,
+                  "/Subjective_Rank_Mn_dropTop1_avgNext",nn,"_", filestart[f],".csv"),
+                  row.names=F)
+       
+       pdf(paste0(figureoutputfolder,"/velTrends_within_trial_",filestart[f],".pdf"))
+          print ( ggplot(data = burst.mntopvels, aes(x=burstID, y=mn.topburstvels)) +
+              geom_errorbar(aes(ymax = mn.topburstvels+sd.topburstvels, 
+                                 ymin = mn.topburstvels-sd.topburstvels), width=0.25)+
+              geom_point(size=2.5)+  
+              coord_cartesian(xlim=c(1,8), ylim=c(0,100))+
+              ylab("Est. Max Velocity (cm/s)")+
+              xlab("Burst Event")+
+              theme_bw() )
+        dev.off()
+      
+      }
+  
     
       ## append to empty dataframe so we can collect all of the bursts in one place for later analysis  
     burst.topvels = rbind(burst.topvels, burst.mntopvels)
@@ -399,63 +442,70 @@ for(f in 1:length(filestart)) {
                    fastVel, fastGate, fastPos) ) } # make a new df for each burst event
       }
     
-    fastPos = do.call(rbind, lapply(burst.df.list, fastPos_func)) # rbind all df created with the function above for the burst trial being targetted in the current iteration of this giant loop
-    fastPos$burstID = factor(fastPos$burstID, levels=c(1:15))
-    fastPos$fastGate = factor(fastPos$fastGate, levels=paste0("Gate",1:24))
-    
-      # ggplot(fastPos, aes(y=fastVel,x=burstID, color=burstQual)) + geom_point() + 
-      #   theme_bw() 
-      # ggplot(fastPos, aes(x=fastGate, fill=burstQual)) + geom_histogram(stat="count", position="dodge", color="black") + facet_grid(.~burstQual)+
-      #   theme_bw() 
+    fastPosdf = do.call(rbind, lapply(burst.df.list, fastPos_func)) # rbind all df created with the function above for the burst trial being targetted in the current iteration of this giant loop
+    fastPosdf$burstID = factor(fastPosdf$burstID, levels=c(1:15))
+    fastPosdf$fastGate = factor(fastPosdf$fastGate, levels=c(paste0("Gate0",1:9), paste0("Gate",10:14)) )
+   
     
     # append the burst from the current loop to an existing object that will accumulate ALL data
-    fastPos.comp = rbind(fastPos.comp, fastPos)
+    fastPos.comp = rbind(fastPos.comp, fastPosdf)
     
     
-    # boxplots of mean top speeds within each subjective rank category
-    subjective_rank_spds = ggplot( data = burst.mntopvels[!is.na(burst.mntopvels$mn.topburstvels),],
-            aes(x=burstQual, y=mn.topburstvels)) +
-            geom_boxplot() +
-              geom_point()+
-            theme_bw()
-    
-    
-    if(write.file=="Yes") {
-      pdf(paste0(figureoutputfolder,"/Subjective_Rank_Mn_dropTop2_avgNext",nn,"_",filestart[f],".tiff"), onefile=TRUE)
-      
-        subjective_rank_spds
+  
+           # boxplots of mean and sd top speeds within each subjective rank category
+          burst.mntop.nona = burst.mntopvels[!is.na(burst.mntopvels$mn.topburstvels),]
+          subjective_rank_spds = ggplot( data = burst.mntop.nona,
+                  aes(x=burstQual, y=mn.topburstvels)) +
+                  geom_boxplot() +
+                    geom_point()+
+                  theme_bw()
         
-      dev.off()}
-    
-    
+          subjective_rank_varspds = ggplot( data = burst.mntop.nona,
+                  aes(x=burstQual, y=sd.topburstvels)) +
+                  geom_boxplot() +
+                    geom_point()+
+                  theme_bw()
+          
+          
+          if(write.file=="Yes") {
+            pdf(paste0(figureoutputfolder,"/Subjective_Rank_Mn_dropTop",dd,"_avgNext",nn,"_",filestart[f],".pdf"), onefile=TRUE)
+            
+              subjective_rank_spds + subjective_rank_varspds + plot_layout(ncol=1)
+              
+            dev.off() }
+          
     
     
     
     
     # calculate metrics to output
-    mn.top3goodevents = burst.mntopvels[burst.mntopvels$burstQual=="good"]      
-       mn.top3goodevents = mn.top3goodevents[rev(order(mn.top3goodevents$mn.topburstvels)),][1:3,]
+    GoodBurstdf = burst.mntopvels[burst.mntopvels$burstQual=="good",]      
+      top3burstGood     = GoodBurstdf[rev(order(GoodBurstdf$mn.topburstvels)),][1:3,]
        
-      mn.top3goodfairevents = burst.mntopvels[burst.mntopvels$burstQual%in% c("good","fair")]      
-       mn.top3goodfairevents = mn.top3goodfairevents[rev(order(mn.top3goodfairevents$mn.topburstvels)),][1:3,]     
+   GoodFairBurstdf = burst.mntopvels[burst.mntopvels$burstQual%in% c("good","fair"),]      
+      top3burstGoodFair = GoodFairBurstdf[rev(order(GoodFairBurstdf$mn.topburstvels)),][1:3,]     
     
-    mn.burstvalue = mean(mn.top3goodevents$mn.topburstvels, na.rm=T)
-      mn.burstvalue.gf = mean(mn.top3goodfairevents$mn.topburstvels, na.rm=T)
-    
-    sd.burstvalue = sd(mn.top3goodevents$mn.topburstvels, na.rm=T)
-      sd.burstvalue.gf = sd(mn.top3goodfairevents$mn.topburstvels, na.rm=T)
-   
-    n.burstvalue = length(mn.top3goodevents$mn.topburstvels)
-      n.burstvalue.gf = length(mn.top3goodfairevents$mn.topburstvels)
+    n.burstvel.Good      = length(    GoodBurstdf$mn.topburstvels)
+    n.burstvel.GoodFair  = length(GoodFairBurstdf$mn.topburstvels)
 
+    mn.top3burstvel      = mean(    top3burstGood$mn.topburstvels, na.rm=T)
+    mn.top3burstvel.gf   = mean(top3burstGoodFair$mn.topburstvels, na.rm=T)
+    
+    sd.top3burstvel      = sd(    top3burstGood$mn.topburstvels, na.rm=T)
+    sd.top3burstvel.gf   = sd(top3burstGoodFair$mn.topburstvels, na.rm=T)
+   
     
     # add them to the appropriate row in empty dataframe
-    mean.topvels[mean.topvels$treatmentrep == filestart[f], "mnburstGood"] <- mn.burstvalue
-     mean.topvels[mean.topvels$treatmentrep == filestart[f], "mnburstGoodFair"] <- mn.burstvalue.gf
-    mean.topvels[mean.topvels$treatmentrep == filestart[f], "sdburstGood"] <- sd.burstvalue
-     mean.topvels[mean.topvels$treatmentrep == filestart[f], "sdburstGoodFair"] <- sd.burstvalue.gf
-    mean.topvels[mean.topvels$treatmentrep == filestart[f], "nburstGood"] <- n.burstvalue
-     mean.topvels[mean.topvels$treatmentrep == filestart[f], "nburstGoodFair"] <- n.burstvalue.gf
+    mean.topvels[mean.topvels$treatmentrep == filestart[f], "nburstGood"] <- n.burstvel.Good
+    mean.topvels[mean.topvels$treatmentrep == filestart[f], "nburstGoodFair"] <- n.burstvel.GoodFair
+    
+    mean.topvels[mean.topvels$treatmentrep == filestart[f], "mn.top3burstvelGood"] <- mn.top3burstvel
+    mean.topvels[mean.topvels$treatmentrep == filestart[f], "mn.top3burstvelGoodFair"] <- mn.top3burstvel.gf
+    
+    mean.topvels[mean.topvels$treatmentrep == filestart[f], "sd.top3burstvelGood"] <- sd.top3burstvel
+    mean.topvels[mean.topvels$treatmentrep == filestart[f], "sd.top3burstvelGoodFair"] <- sd.top3burstvel.gf
+     
+
 
 }
 ```
@@ -470,7 +520,7 @@ burst.topvels2 = burst.topvels[burst.topvels$treatmentrep!="EMPTY",]
 fastPos.comp2 = fastPos.comp[fastPos.comp$treatmentrep!="EMPTY",]
 
 # add metadata and fix formatting
-trial_specs_unique = unique(trial_specs[,c("raspPI_filestart","trialIID", "spp","dph","treattemp","color","CalcConc","avgTemp","tl_mm","mass_g")])
+trial_specs_unique = unique(trial_specs[,c("raspPI_filestart","trialIID", "spp","dph","treattemp","triallength","tankrep","color","CalcConc","tunneltemp","tl_mm","mass_g")])
 
 mean.topvels2 = merge(mean.topvels, trial_specs_unique, all.x=T, by.x="treatmentrep", by.y="raspPI_filestart") 
 
@@ -479,17 +529,41 @@ mean.topvels2$color = factor(mean.topvels2$color,
 mean.topvels2$rep = substring(mean.topvels2$treatmentrep, 19,21)
 
 # remove NA burst estimates
-mean.topvels2 = mean.topvels2[!is.na(mean.topvels2$mnburstGood),]
+mean.topvels2 = mean.topvels2[!is.na(mean.topvels2$mn.top3burstvelGood),]
+  # removed 3 trials that did not have enough good bursts; n=91 after this step
 
 # convert CalcConc to numeric
 mean.topvels2$CalcConc= as.numeric(mean.topvels2$CalcConc)
+mean.topvels2$mass_g = as.numeric(mean.topvels2$mass_g)
 
 # add BL/s column
-mean.topvels2$mnburstGood_bls = mean.topvels2$mnburstGood/(mean.topvels2$tl_mm/10) 
-
+mean.topvels2$mnburstGood_bls = mean.topvels2$mn.top3burstvelGood/(mean.topvels2$tl_mm/10) 
+mean.topvels2$mnburstGoodFair_bls = 
+  mean.topvels2$mn.top3burstvelGoodFair/(mean.topvels2$tl_mm/10) 
+mean.topvels2$sdburstGood_bls = mean.topvels2$sd.top3burstvelGood/(mean.topvels2$tl_mm/10) 
 ```
 
-```{r plot study design results}
+
+```{r review possible erronious bursts}
+  hist(burst.topvels2$mn.topburstvels)
+  # look at potentially erronious bursts
+  toofast = burst.topvels2[burst.topvels2$mn.topburstvels>110 & 
+                             !is.na(burst.topvels2$mn.topburstvels),]
+     # examine raw data (outside of R) for:
+        # WSContam2021_Yell_R06_07_23_2021 ---> two >200cm/s measurements for burst 1; removed higher one
+      
+ toovar = burst.topvels2[burst.topvels2$mn.topburstvels>70 & 
+                           burst.topvels2$CV.topburstvels.perc>50 & 
+                             !is.na(burst.topvels2$mn.topburstvels),]
+        # WSContam2021_Whit_R09_07_26_2021 ---> removed one timestamp from each burst 1 and burst 7     
+        # WSContam2021_Whit_R12_07_27_2021 ---> removed one timestamp each from burst 1, 9, 15    
+        # WSContam2021_Yell_R06_07_23_2021 ---> also above, see notes there  
+        # WSContam2021_Yell_R13_07_28_2021 ---> removed one timestamp from burst 10    
+        # WSContam2021_Pink_R08_07_26_2021 ---> fine    
+        # WSContam2021_Blue_R14_07_28_2021 ---> removed one timestamp >750cm/s from burst 1
+```
+
+```{r plot study design results incl tank effects}
 ### review study design and analysis approach first:  
 
   # look at where the fastest burst segment were (for next tunnel design)
@@ -498,193 +572,578 @@ mean.topvels2$mnburstGood_bls = mean.topvels2$mnburstGood/(mean.topvels2$tl_mm/1
       theme_bw() 
     
   ggplot(fastPos.comp2, aes(x=fastGate, fill=burstQual)) + 
-      geom_histogram(stat="count", position="dodge", color="black") + facet_grid(.~burstQual)+
+      geom_histogram(stat="count", position="dodge", color="black") + 
+      facet_grid(.~burstQual)+
       theme_bw() 
   
-  
-  # look at relationship between estimated speed and number of samples or SD of sample
-  hist(mean.topvels2$nburstGoodFair/15, 
-       xlab="Percent of bursts classified as GOOD", 
-       main="Data Quality")
+  ggplot(filter(fastPos.comp2, fastVel>20) , aes(x=fastGate, fill=burstQual)) + 
+      geom_histogram(stat="count", position="dodge", color="black") + 
+      facet_grid(.~burstQual)+
+      scale_x_discrete(guide=guide_axis(angle = 45), name="") + 
+      theme_bw()  
   
   
   # look at speed and trial order
-  ggplot(mean.topvels2, aes(x=as.numeric(str_sub(trialIID,2,3)), y=mnburstGood)) + 
+  ggplot(mean.topvels2, aes(x=as.numeric(str_sub(trialIID,2,3)), y=mn.top3burstvelGood)) + 
     geom_point() + geom_smooth(method="lm") +
     theme_bw()   
   
+  # look at trial length within a concentration, and look at participation and burst speed
+  mean.topvels2$triallength = as.numeric(mean.topvels2$triallength)
+  ggplot(mean.topvels2, aes(y=triallength, x=color, fill=color)) + 
+      geom_boxplot() + 
+      scale_fill_manual(values=c("grey70","green3","gold1","brown3","pink","steelblue3")) + 
+      theme_bw()
+        ggplot(mean.topvels2, aes(x=triallength, y=nburstGood, fill=color)) + 
+            geom_point(pch=21, size=4) + geom_smooth(aes(color=color), n=4) + 
+            scale_color_manual(values=c("black","green3","gold1","brown3","pink","steelblue3")) + 
+            scale_fill_manual(values=c("grey70","green3","gold1","brown3","pink","steelblue3")) + 
+            facet_wrap(~color) + theme_bw()
+        ggplot(mean.topvels2, aes(x=triallength, y=mnburstGood_bls, fill=color)) + 
+            geom_point(pch=21, size=4) + geom_smooth(aes(color=color), n=4) + 
+            scale_color_manual(values=c("black","green3","gold1","brown3","pink","steelblue3")) + 
+            scale_fill_manual(values=c("grey70","green3","gold1","brown3","pink","steelblue3")) + 
+            facet_wrap(~color) + theme_bw()
+```
+
+```{r tank effects}
+  # look at tank effects on growth, then on participation and burst speeds
+  mean.topvels2$rep <- gsub(" ","",mean.topvels2$rep)
+  mean.topvels2$tankID = factor(paste(mean.topvels2$color, mean.topvels2$tankrep, sep="_"),
+                                levels=c("White_R1.2", "White_R3.4", "Green_R1.2", "Green_R3.4", 
+                                         "Yellow_R1.2", "Yellow_R3.4", "Red_R1.2", "Red_R3.4",
+                                         "Pink_R1.2", "Pink_R3.4", "Blue_R1.2", "Blue_R3.4") )
+
+  ggplot(mean.topvels2, aes(x=color, y=tl_mm, fill=tankrep)) + 
+    geom_boxplot() +
+    scale_fill_manual(values=c("pink","steelblue3")) + 
+    theme_bw()
+  ggplot(mean.topvels2, aes(x=color,  y=mass_g, fill=tankrep)) + 
+    geom_boxplot() +
+    scale_fill_manual(values=c("pink","steelblue3")) + 
+    theme_bw()
+  ### something happened with these tanks, esp for red and pink ###
+           
+  ggplot(mean.topvels2, aes(x=color, y=nburstGood, fill=factor(tankrep))) + 
+      geom_boxplot() + 
+      scale_fill_manual(values=c("pink1","steelblue3")) + 
+     theme_bw()
+  ggplot(mean.topvels2, aes(x=color, y=mnburstGood_bls, fill=factor(tankrep))) + 
+      geom_boxplot() + 
+      scale_fill_manual(values=c("pink1","steelblue3")) + 
+     theme_bw()
+
+  summary(aov(lm(mass_g ~ color + tankrep, data= mean.topvels2))) 
+   # color: F=0.712, p=0.6158    rep: F=3.611, p=0.0415
+   summary(aov(lm(mass_g ~ tankID, data= mean.topvels2))) 
+   # tankID: F=2.865, p=0.00327
+   TukeyHSD(aov(lm(mass_g ~ tankrep, data= mean.topvels2))) 
+   TukeyHSD(aov(lm(mass_g ~ color, data= mean.topvels2))) 
+ 
+    # set custom contrasts to compare controls vs treatments   
+    #    https://rcompanion.org/rcompanion/h_01.html
+    library(car)
+    library(emmeans)
+    library(multcomp)
+    # levels of treatment:  "White-R1.2", "White-R3.4", "Green-R1.2", "Green-R3.4", 
+    #                       "Yellow-R1.2", "Yellow-R3.4", "Red-R1.2", "Red-R3.4",
+    #                       "Pink-R1.2", "Pink-R3.4", "Blue-R1.2", "Blue-R3.4")
+    Contrasts.all = list(White_R1.2vWhite_R3.4  =  c(1, -1, 0,  0, 0,  0, 0,  0, 0,  0, 0,  0),
+                     Green_R1.2vGreen_R3.4      =  c(0,  0, 1, -1, 0,  0, 0,  0, 0,  0, 0,  0), 
+                     Yellow_R1.2vYellow_R3.4    =  c(0,  0, 0,  0, 1, -1, 0,  0, 0,  0, 0,  0),
+                     Red_R1.2vRed_R3.4          =  c(0,  0, 0,  0, 0,  0, 1, -1, 0,  0, 0,  0),
+                     Pink_R1.2vPink_R3.4        =  c(0,  0, 0,  0, 0,  0, 0,  0, 1, -1, 0,  0),
+                     Blue_R1.2vBlue_R3.4        =  c(0,  0, 0,  0, 0,  0, 0,  0, 0,  0, 1, -1))
+    marginal_mass = emmeans(lm(mass_g ~ tankID, data= mean.topvels2), ~tankID)
+    contrast(marginal_mass, method = Contrasts.all, adjust="sidak")
+           # contrast                estimate    SE df t.ratio p.value
+           # White_R1.2vWhite_R3.4      0.281 0.466 79   0.604  0.9915
+           # Green_R1.2vGreen_R3.4     -0.509 0.433 79  -1.175  0.8125
+           # Yellow_R1.2vYellow_R3.4    0.300 0.418 79   0.717  0.9792
+           # Red_R1.2vRed_R3.4         -1.750 0.418 79  -4.183  0.0004 ****
+           # Pink_R1.2vPink_R3.4       -1.000 0.418 79  -2.390  0.1099
+           # Blue_R1.2vBlue_R3.4        0.648 0.489 79   1.326  0.7149
+     ggplot(data = mean.topvels2, aes(x=tankID, y=mass_g)) + 
+       geom_boxplot(aes(fill=color)) + geom_jitter(width=.25) + 
+       theme_bw()
+  # no explanation in lab notebook; perhaps in fishcre datasheets but they are at HL. This may be the tank with the mystery die off? I suspected the tank overflowed and many fish went down the drain; could have been Red R1-2 (was a rep 1-2). Or it could have been a tank that had feeder issues that were never reported. 
   
-  # look at relationship between estimated burst speeds and number of good bursts
-  ggplot(mean.topvels2, aes(x=nburstGood, y=mnburstGood)) + 
-    geom_point() + geom_smooth() +
-    theme_bw() 
+    marginal_vel = emmeans(lm(mnburstGood_bls ~ tankID, data= mean.topvels2), ~tankID)
+    contrast(marginal_vel, method = Contrasts.all, adjust="sidak")
+           # contrast                estimate    SE df t.ratio p.value
+           # White_R1.2vWhite_R3.4    -0.7804 0.868 79  -0.899  0.9384
+           # Green_R1.2vGreen_R3.4    -0.1305 0.808 79  -0.162  1.0000
+           # Yellow_R1.2vYellow_R3.4  -0.0326 0.780 79  -0.042  1.0000
+           # Red_R1.2vRed_R3.4         1.0298 0.780 79   1.320  0.7192
+           # Pink_R1.2vPink_R3.4       0.5839 0.780 79   0.748  0.9742
+           # Blue_R1.2vBlue_R3.4      -0.2563 0.911 79  -0.281  0.9999
+     ggplot(data = mean.topvels2, aes(x=tankID, y=mnburstGood_bls)) + 
+       geom_boxplot(aes(fill=color)) + geom_jitter(width=.25) + 
+       theme_bw()
+  # no explanation in lab notebook; perhaps in fishcre datasheets but they are at HL. This may be the tank with the mystery die off? I suspected the tank overflowed and many fish went down the drain; could have been Red R1-2 (was a rep 1-2). Or it could have been a tank that had feeder issues that were never reported. 
+     
+     
+     
+  summary(aov(lm(tl_mm ~ color + tankrep, data= mean.topvels2)))
+   # color: F=0.929, p=0.467    rep: F=4.488, p=0.037
+   TukeyHSD(aov(lm(tl_mm ~ color + tankrep, data= mean.topvels2))) 
+    # no signficance by exposure bath (tank rep = exposure bath)
+   
+  summary(aov(lm(nburstGood ~ color + tankrep, data= mean.topvels2)))
+   #color F=1.625, p=0.162    rep: F=0.322, p=0.572
+  summary(aov(lm(mnburstGood_bls ~ color + tankrep, data= mean.topvels2)))  
+   #color F=0.386, p=0.857    rep: F=0.126, p=0.723
+  summary(aov(lm(mnburstGood_bls ~ color + tankID, data= mean.topvels2)))  
+  
+     ggplot(data = mean.topvels2, aes(x=tankID, y=mnburstGood_bls)) + 
+       geom_violin(aes(fill=color)) + geom_jitter(width=.25) + 
+       theme_bw()   # growth was wonky, but burst speed wasn't consistently affected by tank
+  
+     ggplot(data = mean.topvels2, aes(x=tankID, y=nburstGood)) + 
+       geom_violin(aes(fill=color)) + geom_jitter(width=.25) + 
+       theme_bw()   # growth was wonky, but burst speed wasn't consistently affected by tank
+     
+  # Tank effects definitely existed; but doesn't seem to have affected participation or burst speeds
+
+```  
+
+
+```{r plot effects on Good burst number}
+ 
+  # look at relationship between number of bursts and sd in best 3 vel bursts est. within a fish
+  ggplot(mean.topvels2, aes(x=nburstGood, y=sd.top3burstvelGood)) + 
+    geom_point(aes(color=nburstGood), size=3) + geom_smooth()
+  
+  # look at effect of filtering on this relationship
+  ggplot(filter(mean.topvels2, nburstGood>2), aes(x=nburstGood, y=sd.top3burstvelGood)) + 
+    geom_point(aes(color=nburstGood), size=3) + geom_smooth()
+ 
+    # look at sample size for all fish with burst data:
+    table(mean.topvels2$color)   
+   # White  Green Yellow    Red   Pink   Blue 
+   #  13     15     16     16     16     15
+    
+    # reduce this to only fish that gave >2 good bursts
+    table(mean.topvels2[mean.topvels2$nburstGood>2,]$color)   
+   # White  Green Yellow    Red   Pink   Blue 
+   #    13    14     15     16     15     15   
+    
+    # reduce this to only fish that gave >3 good bursts
+    table(mean.topvels2[mean.topvels2$nburstGood>3,]$color)   
+   # White  Green Yellow    Red   Pink   Blue 
+   #    13     14     15     14     14     15 
   
     # reduce this to only fish that gave >4 good bursts
-    table(mean.topvels2[mean.topvels2$nburstGood>4,]$treatment)
+    table(mean.topvels2[mean.topvels2$nburstGood>4,]$color)
+    # White  Green Yellow    Red   Pink   Blue 
+    # 13      14     14     12     14     15 
+```
+
+
+```{r plots relating burst participation with speed}
+  # look at relationship between estimated burst speeds and number of good bursts
+      ggplot(mean.topvels2, 
+           aes(x=nburstGood, y=mnburstGood_bls ,color=color, group=color)) + 
+      geom_point(size=4) + geom_smooth(n=4) + 
+      scale_color_manual(values=c("black","green3","gold1","brown3","pink","steelblue3")) + 
+      facet_wrap(~color) + theme_bw()
+
+    # reduce this to only fish that gave >3 good bursts (see above)
+    ggplot(filter(mean.topvels2, nburstGood>3), 
+           aes(x=nburstGood, y=mnburstGood_bls ,color=color, group=color)) + 
+      geom_point(size=4) + geom_smooth(n=4) + 
+      scale_color_manual(values=c("black","green3","gold1","brown3","pink","steelblue3")) + 
+      facet_wrap(~color) + theme_bw()
+
+
+    # look at relationship between burst quality and treatment
+  ggplot(filter(mean.topvels2, nburstGood>3), aes(x=color, y=nburstGood, fill=color)) + 
+     #geom_boxplot() +
+     geom_violin() +
+     scale_fill_manual(values=c("grey95","green3","gold1","brown3","pink","steelblue3")) + 
+     ylab("n 'Good' bursts") + xlab("Fipronil Treatment") + ylim(c(0,14))+
+   theme_bw()
     
-    ggplot(mean.topvels2, 
-           aes(x=nburstGood, y=mnburstGood ,color=color, group=color)) + 
-      geom_point(size=4) + geom_smooth(n=4) + 
-      scale_color_manual(values=c("black","green3","gold1","brown3","pink","steelblue3")) + 
-      facet_wrap(~color) + theme_bw()
-  
-    ggplot(filter(mean.topvels2, nburstGood>4), 
-           aes(x=nburstGood, y=mnburstGood ,color=color, group=color)) + 
-      geom_point(size=4) + geom_smooth(n=4) + 
-      scale_color_manual(values=c("black","green3","gold1","brown3","pink","steelblue3")) + 
-      facet_wrap(~color) + theme_bw()
-      # perhaps only considering fish with >4 good bursts will be more reliable?
-  
-  
-  # look at relationship between number of bursts and sd in bursts within a fish
-  ggplot(mean.topvels2, aes(x=nburstGood, y=sdburstGood)) + 
-    geom_point(aes(color=nburstGood), size=3) + geom_smooth()
-  
-  ggplot(filter(mean.topvels2, nburstGood>4), aes(x=nburstGood, y=sdburstGood)) + 
-    geom_point(aes(color=nburstGood), size=3) + geom_smooth()
-  
+    
+    
+         # look at relationship between burst quality and treatment including 'fair' bursts
+      ggplot(mean.topvels2, aes(x=color, y=nburstGoodFair, fill=color)) + 
+         #geom_boxplot() +
+         geom_violin() +
+         scale_fill_manual(values=c("grey95","green3","gold1","brown3","pink","steelblue3")) + 
+         ylab("n 'Good' & 'Fair' bursts") + xlab("Fipronil Treatment") + ylim(c(0,14))+
+       theme_bw()
+    
+      ggplot(filter(mean.topvels2, nburstGoodFair>5), aes(x=color, y=nburstGoodFair, fill=color))+ 
+         #geom_boxplot() +
+         geom_violin() +
+         scale_fill_manual(values=c("grey95","green3","gold1","brown3","pink","steelblue3")) + 
+         ylab("n 'Good' & 'Fair' bursts") + xlab("Fipronil Treatment") + ylim(c(0,14))+
+       theme_bw()
+    
+       table(filter(mean.topvels2,nburstGoodFair>5)$color) 
+        # White  Green  Yellow    Red   Pink   Blue 
+        #     13     14     15     15     16     15       
+       
+```
+        
+        
+```{r plot effect of size on outcomes}        
+# look at relationship between burst participation and fish length one giant fish, no trend
+    ggplot(filter(mean.topvels2, nburstGood>3), aes(x=tl_mm, y=nburstGood)) + 
+      geom_point() + geom_smooth(method="lm")+
+      ylab("n 'Good' bursts") + xlab("fish length cm") + ylim(c(0,14))+
+    theme_bw()
+    
   
   # look at effect of fish size or mass on burst speeds
   ggplot(mean.topvels2, aes(x=tl_mm, y=mass_g)) + geom_point() + geom_smooth() + theme_bw()
-  ggplot(filter(mean.topvels2, tl_mm<110), aes(x=tl_mm, y=mnburstGood)) + 
-    geom_point() + geom_smooth() + theme_bw()
-  ggplot(filter(mean.topvels2, mass_g<6), aes(x=mass_g, y=mnburstGood)) + 
-    geom_point() + geom_smooth() + theme_bw()
+  
+  ggplot(mean.topvels2, aes(x=tl_mm, y=mn.top3burstvelGood)) + 
+    geom_point() + geom_smooth() + theme_bw() + ggtitle("all data")
+
+  ggplot(filter(mean.topvels2, tl_mm<110), aes(x=tl_mm, y=mn.top3burstvelGood)) + 
+    geom_point() + geom_smooth() + theme_bw() + ggtitle("remove tl_mm>110")
+  
+  ggplot(filter(mean.topvels2, mass_g<6), aes(x=mass_g, y=mn.top3burstvelGood)) + 
+    geom_point() + geom_smooth() + theme_bw() + ggtitle("remove mass_g>6")
+  
+  # these large fish don't alter trends much; will leave
   
      # look at length-adjusted burst speeds (ie: bl/s)
        library(ggpubr)
        gghistogram(mean.topvels2, x="mnburstGood_bls", y="..density..",
                    add="mean", add_density=TRUE, fill="grey50")
-       ggplot(mean.topvels2, aes(x=mnburstGood_bls, color=factor(color), fill=factor(color))) + 
+       
+dens.estburstvel =  ggplot(mean.topvels2, 
+                           aes(x=mnburstGood_bls, 
+                           color=factor(color), fill=factor(color))) + 
          geom_density(alpha=0.2, bw=.75) + 
-         scale_color_manual(values=c("black","green3","gold1","brown3","pink","steelblue3")) + 
-         scale_fill_manual(values=c("black","green3","gold1","brown3","pink","steelblue3")) + 
-         theme_bw()
+         scale_color_manual(values=c("black","green3","gold1",
+                                     "brown3","pink","steelblue3"),                      
+                           labels=c("0","1","10","100","500","1000"),
+                           name="Fipronil\nConcentration (ug/L)") + 
 
+         scale_fill_manual(values=c("black","green3","gold1",
+                                    "brown3","pink","steelblue3"),
+                           labels=c("0","1","10","100","500","1000"),
+                           name="Fipronil\nConcentration (ug/L)") + 
+         ylab("Density") + 
+         xlab("Estimated Burst Velocities (bl/s)\nof White Sturgeon") + 
+        theme_bw()
+
+       
+  if(write.file=="Yes") {
+      tiff(file = ".../figures/Burst_WS2021_Density.tiff",
+           width = 150, height = 80, units = "mm", pointsize = 12,
+           compression = c("lzw"), bg = "white", res=300)
+      dens.estburstvel
+      dev.off()
+      }
+   
 ```
 
-```{r plots of experimental treatments} 
 
-    # look at relationship between burst quality and treatment
-  ggplot(mean.topvels2, aes(x=color, y=nburstGood, fill=color)) + geom_boxplot() +
-     scale_fill_manual(values=c("grey90","green3","gold1","brown3","pink","steelblue3")) + 
-    theme_bw()
+```{r plots of effect of treatment of velocity & participation} 
 
-  # test this statistically
-  testmod_n = lm(nburstGood~log(CalcConc+1), data = filter(mean.topvels2, nburstGood>=4))
-    plot(testmod_n) # meets assumptions okay
-    summary(aov(testmod_n)) # no significance but close
-   
- 
-
-# look at relationship between treatment and burst speeds
+# Look at relationship between treatment and burst speeds, boxplot
 ggplot(mean.topvels2, aes(x=color, y=mnburstGood_bls, fill=color)) + 
      geom_boxplot() +
      scale_fill_manual(values=c("grey90","green3","gold1","brown3","pink","steelblue3")) + 
     theme_bw()
      
-# plot points for each fish, jittered around the log of the exposure concentration; presents same dataset but with more information
-# this is the plot used for Ken's bay delta poster
+# Look at relationship between treatment and burst speeds, points for each fish;
+#   with points jittered around the log of the exposure concentration
+#   this is the plot used for Ken's bay delta poster
 set.seed(38)
 mean.topvels2$random.offset = runif(n=nrow(mean.topvels2), min = -0.25, max=0.25)
-mainplot = ggplot(mean.topvels2, aes(y=mnburstGood, x=log(CalcConc+1)+random.offset)) + 
-         geom_errorbar(aes(ymin=mnburstGood-sdburstGood, ymax=mnburstGood+sdburstGood), width=0) + 
+mainplot.cms = ggplot(mean.topvels2, aes(y=mn.top3burstvelGood, 
+                                     x=log(CalcConc+1)+random.offset)) + 
+         geom_errorbar(aes(ymin=mn.top3burstvelGood-sd.top3burstvelGood,
+                           ymax=mn.top3burstvelGood+sd.top3burstvelGood), width=0) + 
          geom_point(aes(size=nburstGood, fill=factor(color)), pch=21, alpha=0.8) + 
          theme_bw() + 
          ylab("Mean Burst Swim Speed (cm/s)") +
          scale_x_continuous(breaks=log(c(1,11,101, 1001)), 
-                            labels=c(1,11,101, 1001)-1, name="Measured Fipronil Concentration")  +
-         scale_size_continuous(breaks=c(5,10,15), name = "Number of\nAnalyzed Bursts") + 
-         scale_fill_manual(values=c("grey90","green3","gold1","brown3","pink","steelblue3"), 
+                            labels=c(1,11,101, 1001)-1, 
+                            name="Measured Fipronil Concentration (ug/L)")  +
+         scale_size_continuous(breaks=seq(3,15,2), name = "Number of\n'Good' Bursts") + 
+         scale_fill_manual(guide="none",
+                           values=c("grey90","green3","gold1","brown3","pink","steelblue3"), 
                            labels=c("0 ug/l","1 ug/l","10 ug/l","100 ug/l","500 ug/l","1000 ug/l"),
                            name="Nominal Fipronil\nConcentration") +
          theme_bw()
 
-mainplot_patch = ggplot(mean.topvels2, aes(y=mnburstGood, x=log(CalcConc+1)+random.offset)) + 
-         geom_errorbar(aes(ymin=mnburstGood-sdburstGood, ymax=mnburstGood+sdburstGood), width=0) + 
+
+mainplot.bls = ggplot(mean.topvels2, aes(y=mnburstGood_bls, 
+                                     x=log(CalcConc+1)+random.offset)) + 
+         geom_errorbar(aes(ymin=mnburstGood_bls-(sd.top3burstvelGood/(tl_mm/10)),
+                           ymax=mnburstGood_bls+(sd.top3burstvelGood/(tl_mm/10)), 
+                           width=0) ) + 
          geom_point(aes(size=nburstGood, fill=factor(color)), pch=21, alpha=0.8) + 
          theme_bw() + 
-         ylab("Mean Burst Swim Speed (cm/s)") +
+         ylab("Mean Burst Swim Speed (bl/s)") +
          scale_x_continuous(breaks=log(c(1,11,101, 1001)), 
-                            labels=c(1,11,101, 1001)-1, name="Measured Fipronil Concentration")  +
-         scale_size_continuous(breaks=c(5,10,15), name = "Number of\nAnalyzed Bursts") + 
-         scale_fill_manual(guide=F, 
-                           values=c("grey90","green3","gold1","brown3","pink","steelblue3")) +
+                            labels=c(1,11,101, 1001)-1, 
+                            name="Measured Fipronil Concentration (ug/L)")  +
+         scale_size_continuous(breaks=seq(3,15,2), name = "Number of\n'Good' Bursts") + 
+         scale_fill_manual(guide="none",
+                           values=c("grey90","green3","gold1","brown3","pink","steelblue3"), 
+                           labels=c("0 ug/L","1 ug/L","10 ug/L","100 ug/L", 
+                                    "500 ug/L","1000 ug/l"),
+                           name="Nominal Fipronil\nConcentration") +
          theme_bw()
-     
 
-sizeplot = ggplot(mean.topvels2, aes(y=tl_mm/10, x=color, fill=color)) + 
-  geom_boxplot(alpha=.8) +   
-  scale_fill_manual(values=c("grey90","green3","gold1","brown3","pink","steelblue3")) + 
-  ylab("Green Sturgeon Length (cm)") + theme_bw()
-  #xlab("log(Bifenthrin Concentration)") 
 
-mainplot_patch + sizeplot + plot_layout(ncol=1)
+mainplot.cms
+mainplot.bls
+
+
+
+
+ # Look at relationship between burst quality and treatment, as boxplot
+  ggplot(mean.topvels2, aes(x=color, y=nburstGood, fill=color)) + 
+    geom_boxplot() +
+     scale_fill_manual(values=c("grey90","green3","gold1","brown3","pink","steelblue3")) + 
+    theme_bw()
+    
+  # Look at relationship between treatment and participation, points for each fish;
+  #   with points jittered around the log of the exposure concentration
+  #   this is the plot used for Ken's bay delta poster  
+  #set.seed(38)
+  #mean.topvels2$random.offset.partic = runif(n=nrow(mean.topvels2), min = -0.15, max=0.15)
+  participation.means= summarize(group_by(mean.topvels2, CalcConc),
+                                 mean.goodburst=mean(nburstGood),
+                                 sd.goodburst=sd(nburstGood),
+                                 se.goodburst=sd(nburstGood)/n())
+
+   mainplot.participate = ggplot() + 
+         geom_dotplot(data=mean.topvels2, aes(y=as.numeric(nburstGood), 
+                                       x=factor(log(CalcConc+1)),
+                                       fill=factor(color)),
+                      binaxis="y", stackdir="center", stackratio=0.7, alpha=0.8)+
+         ylab("Number of 'Good' Bursts") +
+         scale_x_discrete(labels=c(1,2, 11,101, 501, 1001)-1, 
+                            name="Measured Fipronil Concentration (ug/L)")  +
+         scale_fill_manual(guide="none",
+                           values=c("grey90","green3","gold1","brown3","pink","steelblue3"), 
+                           labels=c("0 ug/l","1 ug/l","10 ug/l","100 ug/l",
+                                    "500 ug/l","1000 ug/l"),
+                           name="Nominal Fipronil\nConcentration") +
+         theme_bw()
+  
+  mainplot.participate
+  
+  mainplot.participate + 
+    geom_point(data=participation.means,
+                      aes(x=factor(log(CalcConc+1)), y=mean.goodburst), 
+                      pch=17, size=2)+
+          geom_errorbar(data=participation.means, 
+                       aes(x=factor(log(CalcConc+1)), y=mean.goodburst, 
+                       ymin=mean.goodburst-se.goodburst, 
+                       ymax=mean.goodburst+se.goodburst), 
+                           width=.1, size=.5) 
+
+  
+
+  
 ```
 
-```{r try some models}
-testmod.continuous = lm(mnburstGood_bls~log(CalcConc+1), data = filter(mean.topvels2, nburstGood>4))
-  plot(testmod.continuous) # fits assumptions fine
-  summary(aov(testmod.continuous)) # not significant
-testmod.factor = lm(mnburstGood_bls~factor(CalcConc), data = filter(mean.topvels2, nburstGood>4))
-  plot(testmod) # fits assumptions fine
-  summary(aov(testmod)) # not significant
-# continuous model fits assumptions slightly better; neither model shows significance 
+
+```{r lm relating experimental design with treatment}
+
+filtered.moddat = filter(mean.topvels2, nburstGood>3 & !is.na(tunneltemp))
+
+# experimental design
+summary(aov(tl_mm ~ color, data = filtered.moddat))
+summary(aov(mass_g ~ color, data = filtered.moddat))
+summary(aov(dph ~ color, data = filtered.moddat))
+summary(aov(tunneltemp ~ color, data = filtered.moddat))
+
+ 
+```
 
 
-# look for patterns on where in the tunnel the fastest burst occurred (building new one?)
-ggplot(data = fastPos.comp2, aes(x=fastPos)) + 
-  geom_histogram(binwidth=5, fill="grey80", color="grey20") + theme_bw() +
-  facet_grid(.~burstQual)
+```{r lm relating burst vel with treatment}
 
-ggplot(data = filter(fastPos.comp2, fastVel>20) , aes(x=fastPos)) + 
-  geom_histogram(binwidth=5, fill="grey80", color="grey20") + theme_bw() + 
-  facet_wrap(~burstQual)
-    
+filtered.moddat = filter(mean.topvels2, nburstGood>3 & !is.na(tunneltemp))
+
+# basic hypothesis test (effect of bif on spd)
+testmod.continuous = lm(mnburstGood_bls~log(CalcConc+1), data = filtered.moddat)
+  plot(testmod.continuous) # fits assumptions very well
+  summary((testmod.continuous)) # not significant, effect size 0.0134 for log(calcconc+1), Rsq is terrible (-0.012)
+  
+testmod.factor = lm(mnburstGood_bls~factor(CalcConc), data = filtered.moddat)
+  plot(testmod.factor) # fits assumptions fine
+  summary(aov(testmod.factor)) # no significance p=0.91
+  
+
 
 # kitchen sink model for dredging (explore effects of study design/constraints)
-fullmod.continuous = lm(mnburstGood_bls ~ log(CalcConc+1) + nburstGood + dph + avgTemp, data = mean.topvels2) 
- plot(fullmod.continuous)
- summary((fullmod.continuous))
- summary(aov(fullmod.continuous))
- summarize(group_by(mean.topvels2, color), mean.vel = mean(mnburstGood_bls, na.rm=T), 
-           sd.vel = sd(mnburstGood_bls, na.rm=T))
-    # color  mean.vel   sd.vel
-    # White 	3.890941	0.9274118		
-    # Green	  3.763600	0.9798799		
-    # Yellow	3.609263	1.2042335		
-    # Red	    3.556690	1.2350357		
-    # Pink  	3.403234	0.7771183		
-    # Blue  	3.942739	1.0794220	
- # n good bursts is significant; remove to threshold of 4 good bursts to be considered 
-
- fullmod.continuous4 = lm(mnburstGood_bls ~ log(CalcConc+1) + nburstGood + dph + avgTemp, data = filter(mean.topvels2, nburstGood>=4)) #, na.action="na.fail" 
- plot(fullmod.continuous4)
- summary((fullmod.continuous4))
- summary(aov(fullmod.continuous4))
+  
+fullmod.speed2 = lm(mnburstGood_bls ~ log(CalcConc+1) + nburstGood + dph + tunneltemp + tl_mm + tankrep, data = filtered.moddat, na.action="na.fail" )
+ plot(fullmod.speed2) # looks okay with a few outliers
+ summary((fullmod.speed2)) # nburstGood significant, dph close (p=0.55); rsq = 0.238
+ dredge(fullmod.speed2)
+   # best model without tunnel temp or tank rep or conc; WITH all others
+   # 2nd best (dAIC = 0.88) drops tl
+   # 3rd best (dAIC = 1.18) drops dph
+   # 4th best (dAIC = 1.83) adds tank rep
+   # 5th best (dAIC = 1.84) adds tunnel temp
+  fullmod.speed2.best = lm(mnburstGood_bls ~ nburstGood + dph, data = filtered.moddat, na.action="na.fail" ) # rsq = 0.236
  
- summarize(group_by(filter(mean.topvels2, nburstGood>=4), color), 
+ 
+fullmod.speed2.fac = lm(mnburstGood_bls ~ factor(color) + nburstGood + dph + tunneltemp + tl_mm + tankrep, data = filtered.moddat, na.action="na.fail" )
+ plot(fullmod.speed2.fac) # looks okay with same odd outliers as continuous model
+ summary(aov(fullmod.speed2.fac)) # nburstGood, and dph both significant (similar to cont.)
+ dredge(fullmod.speed2.fac)
+   # best model without tunnel temp or tank rep or conc; sequence is same b/c no conc factor
+   fullmod.speed2.facbest = fullmod.speed2.best
+  
+
+summarize(group_by(filtered.moddat, color), 
            n.reps = n(),
            mean.vel = mean(mnburstGood_bls, na.rm=T), 
            sd.vel = sd(mnburstGood_bls, na.rm=T),
            mean.nburstGood = mean(nburstGood, na.rm=T),
            mean.dph = mean(dph, na.rm=T),
-           mean.temp = mean(avgTemp, na.rm=T))
-    # color  n.reps  mean.vel  sd.vel     mean.nburstGood mean.dph  mean.temp
-    # White	 13      3.890941	 0.9274118	8.307692      	64.84615	17.49231
-    # Green	 14      3.939121  0.7323683	8.428571      	65.35714	17.40357
-    # Yellow 15      3.654900	 1.2320947	7.866667	      65.33333	17.57000
-    # Red	   12      4.101468	 0.8683930	6.916667	      65.16667	17.39091
-    # Pink	 13      3.472645	 0.7851576	7.769231	      65.15385	17.45000
-    # Blue	 15      3.942739	 1.0794220	8.200000	      64.93333	17.46000
+           mean.temp = mean(tunneltemp, na.rm=T),
+           mean.tl_mm = mean(tl_mm, na.rm=T))
+     # color  n.reps mean.vel sd.vel mean.nburstGood mean.dph mean.temp mean.tl_mm
+     # White      13     6.06  0.987            8.46     64.8      17.5       90.8
+     # Green      14     6.50  1.05             8.57     65.4      17.4       87.2
+     # Yellow     15     6.42  1.77             7.93     65.3      17.6       87.8
+     # Red        13     5.97  1.90             6.69     64.9      17.4       85.1
+     # Pink       13     6.40  0.954            8.08     65.2      17.4       88.9
+     # Blue       15     6.43  1.84             8.33     64.9      17.5       86.3
+    ### *red is smallest and slowest and least participatory (reverse of another group where pink was smallest and fastest)*
+``` 
 
-fullmod.participant = lm(nburstGood ~ log(CalcConc+1) + dph + avgTemp + tl_mm, data = filter(mean.topvels2, nburstGood>=4 & tl_mm<100)) #, na.action="na.fail" 
- # removed one massive fish (121mm); next largest was 106.4mm; this fish had very high leverage in model and was not necessarily indicative of the treatment nor test question
- plot(fullmod.participant)
- summary((fullmod.participant))
- summary(aov(fullmod.participant))
 
- # no effect of fipronil on participation, but there was a small effect of dph. I suspect this is because as time went on the 'burster' was getting better at the tail prod and was able to elicit more good bursts. 
-  
+```{r final lm models of participation} 
+fullmod.participant2 = lm(nburstGood ~ log(CalcConc+1) + dph + tunneltemp + tl_mm + tankrep, data = filtered.moddat, na.action="na.fail")
+ plot(fullmod.participant2) 
+ summary((fullmod.participant2)) # dph very significant (we got better as time went on)
+ dredge(fullmod.participant2)  
+ # best model with only dph and tankrep
+ # 2nd best (dAIC = 0.40), drops tank rep   #most parsimonious
+ # 3rd best (dAIC = 0.82), drops tank rep adds tl_mm
+ # 4th best (dAIC = 1.14), adds tl_mm
+ # 5th best (dAIC = 1.41), adds calcconc
+  fullmod.partic.best = lm(nburstGood ~ dph, data = filtered.moddat, na.action="na.fail" ) 
+   # rsq = 0.075
+
  
+ 
+ fullmod.participant2.fac = lm(nburstGood ~ factor(color) + dph + tunneltemp + tl_mm + tankrep, data = filtered.moddat, na.action="na.fail")
+ plot(fullmod.participant2.fac) 
+ summary((fullmod.participant2.fac)) # dph very significant, as werll as Red
+ dredge(fullmod.participant2.fac)  
+ # model outcomes are same as continuous, until we get to 5th best model. CalcConc is different, so 5th best is >2dAIC and doesn't not include conc this time
+ 
+    
+
 ```
+### SO. For WS and fipronil exposure, fip did not affect the participation rate (only dph did) or the burst velocities (only dph and n-good-bursts did). And there was not an unintentional tank-effect on burst metrics, but there was a different in growth by tank.
+
+```{r final model plots}
+## plot predicted values on top of the previous data-only plots
+newdat.vel = expand.grid(CalcConc = unique(filtered.moddat$CalcConc), #seq(0,1600, 20),
+                         nburstGood = mean(filtered.moddat$nburstGood), #seq(3,11,1),
+                         dph = mean(filtered.moddat$dph), #seq(61,69,1),
+                         tl_mm = mean(filtered.moddat$tl_mm),
+                         random.offset = 0) #seq(60,110, 5))
+modeloutput = predict(fullmod.speed2.best, newdat.vel, se.fit=TRUE,
+                      interval="confidence")#, type="response")
+
+newdat.vel$predictVel = modeloutput[[1]][,"fit"]
+newdat.vel$predictVel.se = modeloutput[[2]]
+newdat.vel$predictVel.u96ci = modeloutput[[1]][,"upr"]
+newdat.vel$predictVel.l95ci = modeloutput[[1]][,"lwr"]
+
+
+mainplot.bls.predsLM = mainplot.bls + 
+         #geom_smooth(data=newdat.vel, aes(x=log(CalcConc+1), y=predictVel)) + 
+         geom_errorbar(data=newdat.vel, aes(x=log(CalcConc+1), y=predictVel, 
+                       ymin=predictVel.l95ci, ymax=predictVel.u96ci), 
+                           width=.25, size=1)   +
+         geom_point(data=newdat.vel, aes(x=log(CalcConc+1), y=predictVel), 
+                    size=3, pch=17)#, pch=24, fill="grey70", color="black") 
+mainplot.bls.predsLM
+
+
+
+
+
+
+## plot predicted values on top of the previous data-only plots
+
+modeloutput.fac = predict(fullmod.speed2.facbest, newdat.vel, se.fit=TRUE,
+                      interval="confidence")#, type="response")
+
+newdat.vel.fac = newdat.vel
+
+newdat.vel.fac$predictVel = modeloutput.fac[[1]][,"fit"]
+newdat.vel.fac$predictVel.se = modeloutput.fac[[2]]
+newdat.vel.fac$predictVel.u96ci = modeloutput.fac[[1]][,"upr"]
+newdat.vel.fac$predictVel.l95ci = modeloutput.fac[[1]][,"lwr"]
+
+
+mainplot.bls.preds_FAC = mainplot.bls + 
+         #geom_smooth(data=newdat.vel, aes(x=log(CalcConc+1), y=predictVel)) + 
+         geom_errorbar(data=newdat.vel.fac, aes(x=log(CalcConc+1), y=predictVel, 
+                       ymin=predictVel.l95ci, ymax=predictVel.u96ci), 
+                           width=.25, size=1)   +
+         geom_point(data=newdat.vel.fac, aes(x=log(CalcConc+1), y=predictVel), 
+                    size=3, pch=17)#, pch=24, fill="grey70", color="black") 
+
+mainplot.bls.preds_FAC
+
+mainplot.bls.predsLM
+
+
+
+```
+
+
+```{r write final output figures}
+
+if(write.file=="Yes") {
+    # Velocities with lm predictions, holding dph, tl_mm, and nburstGood at mean: 
+    tiff(filename = "../figures/Burst_WS2021_velWith_LM_predict.tiff",
+     width = 150, height = 80, units = "mm", pointsize = 12,
+     compression = c("lzw"), bg = "white", res=300)
+
+      mainplot.bls.predsLM
+    
+     dev.off()
+      
+     
+    # Velocities with lm predictions using CalcConc as factor, 
+    #   while holding dph, tl_mm, and nburstGood at mean:     
+     tiff(filename = "../figures/Burst_WS2021_velocityWith_FAC_predict.tiff",
+     width = 150, height = 80, units = "mm", pointsize = 12,
+     compression = c("lzw"), bg = "white", res=300)
+
+      mainplot.bls.preds_FAC
+    
+     dev.off()
+     
+     
+     
+     
+   # Participation with lm predictions, holding dph, tl_mm, and nburstGood at mean: 
+     tiff(filename = "../figures/Burst_WS2021_participatWith_LM_predict.tiff",
+     width = 135, height = 80, units = "mm", pointsize = 12,
+     compression = c("lzw"), bg = "white", res=300)
+
+      mainplot.participate
+    
+     dev.off()
+     
+}
+  
+
+```
+
+
