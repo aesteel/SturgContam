@@ -1,0 +1,2772 @@
+---
+title: "2021 pesticides metabolism"
+author: "Vanessa Lo"
+date: "June 9, 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(reshape2)
+library(gtools)
+library(lubridate)
+library(magrittr)
+library(stringr)
+library(scales)
+library(tidyr)
+library(mclust)
+library(quantreg)
+library(Hmisc)
+library(Matrix)
+#library(xlsx)
+library(modelr)
+library(tidyverse)
+#library(remotes)
+#library(ggpmisc)
+library(plotly)
+
+```
+
+```{r set up and read in func}
+
+#setwd("C:/Users/Vanessa/Documents/R/2021_pesticides/")
+# working directory is where the SturgContam project is saved when I run from this Rmd script
+
+fish.data <- read.csv("../rawdata/Metabolism_GSWSfip/fishdata_metabolism_wsbif15_2022.csv", fileEncoding="UTF-8-BOM")
+fish.data$date<- as.Date(fish.data$date, format = "%m/%d/%Y")
+fish.data$treatment <- ordered(fish.data$treatment, levels = c("white","green","yellow","red"))
+fish.data$round <- as.factor(fish.data$round)
+
+# Function to read in raw autoresp text files, skips the first 37 lines and renames columns and sets datetime column to POSIXct 
+
+readclean <- function(x) { y = read.delim(x, skip=38, stringsAsFactors=F)
+z = y[,c(1,2,3,4,6,7,10,13,16,19,22,25,28)]
+names(z) <- c("DateTime","Phase","BaroP","Salinity","Temp","CH1O2.sat","CH2O2.sat","CH3O2.sat","CH4O2.sat","CH5O2.sat","CH6O2.sat","CH7O2.sat","CH8o2.sat")
+z$DateTime <- as.POSIXct(z$DateTime, format = "%m/%d/%Y/%I:%M:%S %p")
+z}
+
+O2.saturation<-function(salinity, temp, measured.atmP, perc.sat) {
+  
+  a=4.9e1
+  b=-1.335
+  c=2.759e-2
+  d=-3.235e-4
+  e=1.598e-6
+  p=5.516e-1
+  q=-1.759e-2
+  r=2.253e-4
+  s=-2.654e-7
+  t=5.362e-8
+  A=5.257e1
+  B=6.69e3
+  C=4.681
+  TK=temp+273
+  Chloride=(salinity-0.03)/1.805
+  atmPsealevel=1013
+  MolVol=22.414
+  MWO2=32
+  
+  alpha=a+(b*temp)+(c*temp^2)+(d*temp^3)+(e*temp^4)-(Chloride*(p+(q*temp)+(r*temp^2)+(s*temp^3)+(t*temp^4)))
+  bunsen=alpha/1000
+  vapP=exp(A-(B/TK)-(C*log(TK)))
+  
+  umoleO2.per.L<-(((measured.atmP-vapP)/atmPsealevel)*(perc.sat/100)*0.2095*bunsen*1e6*(1/MolVol))
+  mgO2.per.L<-umoleO2.per.L*(MWO2/1000)
+  pO2.torr<-((measured.atmP-vapP)*((perc.sat/100)*0.2095))*0.75
+  pO2.mbar<-pO2.torr/0.75
+  pO2.kPa<-pO2.mbar/10
+  
+  output<-data.frame(salinity, temp, measured.atmP, perc.sat, umoleO2.per.L, mgO2.per.L, pO2.torr, pO2.mbar, pO2.kPa)
+  print(output) # I changed this so it only gives me umoleO2.per.L, take out the [5] if you want all the variables
+}
+```
+
+
+
+## WS Bif 2022
+### July 21 rd 1 t1
+```{r}
+#setwd("C:/Users/Vanessa/Documents/R/2021_pesticides")
+
+RMR_raw <- readclean("../rawData/Metabolism_GSWSfip/WSbif_rawdata/22_07_21_WS_contam_rd1_raw.txt")
+
+# Calculate average trial temp
+avgTemp <- mean(RMR_raw$Temp)
+avgTemp
+
+# Creates a new column, Time in minutes from the start of the file
+RMR_raw$Time.m <- sapply(seq_along(RMR_raw$DateTime), function(i) as.numeric(difftime(RMR_raw$DateTime[i], RMR_raw$DateTime[1], units='mins')))
+head(RMR_raw)
+ggplot(RMR_raw, aes(DateTime,Temp))+
+    geom_point()
+
+# grep finds all of the data in RMR$Phase that contains the letter M. i.e. this corresponds to measurement periods
+RMR <- RMR_raw[grep("M", RMR_raw$Phase), ]
+head(RMR)
+
+# Phases have extra spaces, so this code removes those i.e. "M1  " -> "M1"
+RMR$Phase <- gsub(" ", "", RMR$Phase, fixed = TRUE)
+# test it..
+unique(RMR$Phase)
+
+# Pulls out first value of each phase for graphing later, if you choose to graph by phase
+Phase.start <- ddply(RMR, "Phase", head, 1)
+Phase.start <- Phase.start[,1:2]
+
+#Changing the column names of the channels to the appropriate fishID/bg bacteria chamber
+Name.vec <- c("ws_001","ws_002","ws_003","ws_004","ws_005","ws_006","ws_007","ws_008")
+names(RMR)[6:13] <- Name.vec
+
+#Reshape the data so all O2sat values are in a single column
+RMR.2 <- melt(RMR, measure = Name.vec)
+head(RMR.2)
+str(RMR.2)
+
+# Rename the columns. 
+names(RMR.2) <-c("DateTime","Phase","BaroP","Salinity","Temp","Time.m","fishID","O2.sat")
+head(RMR.2)
+
+RMR.2$sat100.mgO2perL <- O2.saturation(4,RMR.2$Temp,RMR.2$BaroP, 100)[[6]]
+RMR.2$sat100.mgO2permL <- RMR.2$sat100.mgO2perL/1000
+
+# Merge raw data and fish data
+RMR.trial <-merge(RMR.2, fish.data, by=c("fishID"), all.x=TRUE)
+
+# Calculate total mgO2 by multiplying mgO2/mL and mL of chamber - fish
+RMR.trial$sat100.mgO2 <- ((RMR.trial$volume.ml - RMR.trial$weight.g)*RMR.trial$sat100.mgO2permL)
+
+# Calculate mgO2 at any point in time by multiplying %O2 saturation/100 and mgO2 at 100% sat
+RMR.trial$mgO2 <- RMR.trial$O2.sat/100*RMR.trial$sat100.mgO2
+
+ggplot(RMR.trial, aes(x = Time.m, y = mgO2, color = fishID))+
+  geom_point()
+
+# Separating out individual fish for graphing/analysis
+ch.1.meas <- subset(RMR.trial, fishID == "ws_001")
+ch.2.meas <- subset(RMR.trial, fishID == "ws_002")
+ch.3.meas <- subset(RMR.trial, fishID == "ws_003")
+ch.4.meas <- subset(RMR.trial, fishID == "ws_004")
+ch.5.meas <- subset(RMR.trial, fishID == "ws_005")
+ch.6.meas <- subset(RMR.trial, fishID == "ws_006")
+ch.7.meas <- subset(RMR.trial, fishID == "ws_007")
+ch.8.meas <- subset(RMR.trial, fishID == "ws_008")
+
+# visualize one fish
+p=ggplot(data=ch.7.meas, aes(x=Time.m, y=as.numeric(mgO2)))
+p+geom_line(aes(color=Phase))+theme_bw()+facet_wrap(~Phase, ncol=8)+
+  scale_y_continuous(name="% air saturation")+
+  scale_x_continuous(name="Time (min)")
+
+#Calculate slopes of lines for each fish, converting slope from minutes to hours
+O2slopel1 <- dlply(ch.1.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope1 <- ldply(O2slopel1, function(d) coef(d))
+names(O2slope1) <- c("Phase", "Intercept","Slope")
+O2slope1<- mutate(O2slope1, fishID = "ws_001")
+O2slope1<-ddply(O2slope1, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel2 <- dlply(ch.2.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope2 <- ldply(O2slopel2, function(d) coef(d))
+names(O2slope2) <- c("Phase", "Intercept","Slope")
+O2slope2 <- mutate(O2slope2, fishID = "ws_002")
+O2slope2<-ddply(O2slope2, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel3 <- dlply(ch.3.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope3 <- ldply(O2slopel3, function(d) coef(d))
+names(O2slope3) <- c("Phase", "Intercept","Slope")
+O2slope3 <- mutate(O2slope3, fishID = "ws_003")
+O2slope3<-ddply(O2slope3, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel4 <- dlply(ch.4.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope4 <- ldply(O2slopel4, function(d) coef(d))
+names(O2slope4) <- c("Phase", "Intercept","Slope")
+O2slope4 <- mutate(O2slope4, fishID = "ws_004")
+O2slope4<-ddply(O2slope4, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel5 <- dlply(ch.5.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope5 <- ldply(O2slopel5, function(d) coef(d))
+names(O2slope5) <- c("Phase", "Intercept","Slope")
+O2slope5 <- mutate(O2slope5, fishID = "ws_005")
+O2slope5<-ddply(O2slope5, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel6 <- dlply(ch.6.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope6 <- ldply(O2slopel6, function(d) coef(d))
+names(O2slope6) <- c("Phase", "Intercept","Slope")
+O2slope6 <- mutate(O2slope6, fishID = "ws_006")
+O2slope6<-ddply(O2slope6, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel7 <- dlply(ch.7.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope7 <- ldply(O2slopel7, function(d) coef(d))
+names(O2slope7) <- c("Phase", "Intercept","Slope")
+O2slope7 <- mutate(O2slope7, fishID = "ws_007")
+O2slope7<-ddply(O2slope7, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel8 <- dlply(ch.8.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope8 <- ldply(O2slopel8, function(d) coef(d))
+names(O2slope8) <- c("Phase", "Intercept","Slope")
+O2slope8 <- mutate(O2slope8, fishID = "ws_008")
+O2slope8<-ddply(O2slope8, .(Phase), mutate, Slope.hour=Slope*60)
+
+# Calculating slope fits
+O2.r2.1 <- dlply(ch.1.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit1<-ldply(O2.r2.1, function(d) d$r.squared)
+slopefit1
+names(slopefit1) <-c("Phase","r2")
+
+O2.r2.2 <- dlply(ch.2.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit2<-ldply(O2.r2.2, function(d) d$r.squared)
+slopefit2
+names(slopefit2) <-c("Phase","r2")
+
+O2.r2.3 <- dlply(ch.3.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit3<-ldply(O2.r2.3, function(d) d$r.squared)
+slopefit3
+names(slopefit3) <-c("Phase","r2")
+
+O2.r2.4 <- dlply(ch.4.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit4<-ldply(O2.r2.4, function(d) d$r.squared)
+slopefit4
+names(slopefit4) <-c("Phase","r2")
+
+O2.r2.5 <- dlply(ch.5.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit5<-ldply(O2.r2.5, function(d) d$r.squared)
+slopefit5
+names(slopefit5) <-c("Phase","r2")
+
+O2.r2.6 <- dlply(ch.6.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit6<-ldply(O2.r2.6, function(d) d$r.squared)
+slopefit6
+names(slopefit6) <-c("Phase","r2")
+
+O2.r2.7 <- dlply(ch.7.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit7<-ldply(O2.r2.7, function(d) d$r.squared)
+slopefit7
+names(slopefit7) <-c("Phase","r2")
+
+O2.r2.8 <- dlply(ch.8.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit8<-ldply(O2.r2.8, function(d) d$r.squared)
+slopefit8
+names(slopefit8) <-c("Phase","r2")
+
+# merge together slope and r2
+O2slope.r2.1<-merge(O2slope1, slopefit1, by=c("Phase"))
+O2slope.r2.1<- O2slope.r2.1[mixedorder(O2slope.r2.1$Phase),]
+O2slope.r2.1
+
+O2slope.r2.2<-merge(O2slope2, slopefit2, by=c("Phase"))
+O2slope.r2.2<- O2slope.r2.2[mixedorder(O2slope.r2.2$Phase),]
+O2slope.r2.2
+
+O2slope.r2.3<-merge(O2slope3, slopefit3, by=c("Phase"))
+O2slope.r2.3<- O2slope.r2.3[mixedorder(O2slope.r2.3$Phase),]
+O2slope.r2.3
+
+O2slope.r2.4<-merge(O2slope4, slopefit4, by=c("Phase"))
+O2slope.r2.4<- O2slope.r2.4[mixedorder(O2slope.r2.4$Phase),]
+O2slope.r2.4
+
+O2slope.r2.5<-merge(O2slope5, slopefit5, by=c("Phase"))
+O2slope.r2.5<- O2slope.r2.5[mixedorder(O2slope.r2.5$Phase),]
+O2slope.r2.5
+
+O2slope.r2.6<-merge(O2slope6, slopefit6, by=c("Phase"))
+O2slope.r2.6<- O2slope.r2.6[mixedorder(O2slope.r2.6$Phase),]
+O2slope.r2.6
+
+O2slope.r2.7<-merge(O2slope7, slopefit7, by=c("Phase"))
+O2slope.r2.7<- O2slope.r2.7[mixedorder(O2slope.r2.7$Phase),]
+O2slope.r2.7
+
+O2slope.r2.8<-merge(O2slope8, slopefit8, by=c("Phase"))
+O2slope.r2.8<- O2slope.r2.8[mixedorder(O2slope.r2.8$Phase),]
+O2slope.r2.8
+
+# bind all slope and r2 dataframes. Sorts phases properly
+slopes.r2.all <- rbind(O2slope.r2.1,O2slope.r2.2,O2slope.r2.3,O2slope.r2.4,O2slope.r2.5,O2slope.r2.6,O2slope.r2.7,O2slope.r2.8)
+slopes.r2.all$fishID <- as.factor(slopes.r2.all$fishID)
+slopes.r2.all <- merge(slopes.r2.all, Phase.start, by=c("Phase"))
+phase.sort <- unique(mixedsort(slopes.r2.all$Phase))
+slopes.r2.all$Phase <- factor(slopes.r2.all$Phase, levels = phase.sort)
+
+str(slopes.r2.all)
+
+# add back in all the fish related data
+O2.all.trial1 <- merge(slopes.r2.all, RMR.trial)
+str(O2.all.trial1)
+
+ggplot(O2.all.trial1, aes(x=DateTime, y=Slope))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# Slope.hour is mgO2/h as calculated from the decline of mgO2 in the chamber over time in min, then converted to h. Value is negative because it's consumption of O2.
+# multiply by -1 to have a positive O2 rate, units mgO2/h
+O2.all.trial1<- mutate(O2.all.trial1, mgO2hpos = Slope.hour*-1)
+
+# calculate mass specific rates
+O2.all.trial1<- mutate(O2.all.trial1, mass.specific.mgO2ghr = mgO2hpos/weight.g)
+str(O2.all.trial1)
+
+# plot whole body MO2
+ggplot(O2.all.trial1, aes(x=Phase, y=mgO2hpos))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+# plot mass specific MO2
+ggplot(O2.all.trial1, aes(x=Phase, y=mass.specific.mgO2ghr))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# remove bg bact values
+O2.all.trial1 <- filter(O2.all.trial1, mass.specific.mgO2ghr > 0.1)
+
+O2.all <- O2.all.trial1
+# # Order data to find lowest 3 MO2 values
+# sort.O2<- O2.all.trial1[order(O2.all.trial1$fishID,O2.all.trial1$mass.specific.mgO2ghr),]
+# lowest3 <- by(sort.O2, sort.O2["fishID"], head, n=3)
+# 
+# # Then reduce the list into a data frame with the lowest 3 MO2 values for each fish
+# low3MO2_trial1 <- Reduce(rbind, lowest3)
+# low3MO2.ws <- low3MO2_trial1
+```
+
+### July 21 rd 2 t2
+```{r}
+#setwd("C:/Users/Vanessa/Documents/R/2021_pesticides")
+
+RMR_raw <- readclean("../rawData/Metabolism_GSWSfip/WSbif_rawdata/22_07_21_WS_contam_rd2_raw.txt")
+
+# Calculate average trial temp
+avgTemp <- mean(RMR_raw$Temp)
+avgTemp
+
+# Creates a new column, Time in minutes from the start of the file
+RMR_raw$Time.m <- sapply(seq_along(RMR_raw$DateTime), function(i) as.numeric(difftime(RMR_raw$DateTime[i], RMR_raw$DateTime[1], units='mins')))
+head(RMR_raw)
+ggplot(RMR_raw, aes(DateTime,Temp))+
+    geom_point()
+
+# grep finds all of the data in RMR$Phase that contains the letter M. i.e. this corresponds to measurement periods
+RMR <- RMR_raw[grep("M", RMR_raw$Phase), ]
+head(RMR)
+
+# Phases have extra spaces, so this code removes those i.e. "M1  " -> "M1"
+RMR$Phase <- gsub(" ", "", RMR$Phase, fixed = TRUE)
+# test it..
+unique(RMR$Phase)
+
+# Pulls out first value of each phase for graphing later, if you choose to graph by phase
+Phase.start <- ddply(RMR, "Phase", head, 1)
+Phase.start <- Phase.start[,1:2]
+
+
+#Changing the column names of the channels to the appropriate fishID/bg bacteria chamber
+Name.vec <- c("ws_009","ws_010","ws_011","ws_012","ws_013","ws_014","ws_015","ws_016")
+names(RMR)[6:13] <- Name.vec
+
+#Reshape the data so all O2sat values are in a single column
+RMR.2 <- melt(RMR, measure = Name.vec)
+head(RMR.2)
+str(RMR.2)
+
+# Rename the columns. 
+names(RMR.2) <-c("DateTime","Phase","BaroP","Salinity","Temp","Time.m","fishID","O2.sat")
+head(RMR.2)
+
+RMR.2$sat100.mgO2perL <- O2.saturation(4,RMR.2$Temp,RMR.2$BaroP, 100)[[6]]
+RMR.2$sat100.mgO2permL <- RMR.2$sat100.mgO2perL/1000
+
+# Merge raw data and fish data
+RMR.trial <-merge(RMR.2, fish.data, by=c("fishID"), all.x=TRUE)
+
+# Calculate total mgO2 by multiplying mgO2/mL and mL of chamber - fish
+RMR.trial$sat100.mgO2 <- ((RMR.trial$volume.ml - RMR.trial$weight.g)*RMR.trial$sat100.mgO2permL)
+
+# Calculate mgO2 at any point in time by multiplying %O2 saturation/100 and mgO2 at 100% sat
+RMR.trial$mgO2 <- RMR.trial$O2.sat/100*RMR.trial$sat100.mgO2
+
+ggplot(RMR.trial, aes(x = Time.m, y = mgO2, color = fishID))+
+  geom_point()
+
+# Separating out individual fish for graphing/analysis
+ch.1.meas <- subset(RMR.trial, fishID == "ws_009")
+ch.2.meas <- subset(RMR.trial, fishID == "ws_010")
+ch.3.meas <- subset(RMR.trial, fishID == "ws_011")
+ch.4.meas <- subset(RMR.trial, fishID == "ws_012")
+ch.5.meas <- subset(RMR.trial, fishID == "ws_013")
+ch.6.meas <- subset(RMR.trial, fishID == "ws_014")
+ch.7.meas <- subset(RMR.trial, fishID == "ws_015")
+ch.8.meas <- subset(RMR.trial, fishID == "ws_016")
+
+p=ggplot(data=ch.7.meas, aes(x=Time.m, y=as.numeric(O2.sat)))
+p+geom_line(aes(color=Phase))+theme_bw()+facet_wrap(~Phase, ncol=8)+
+  scale_y_continuous(name="% air saturation")+
+  scale_x_continuous(name="Time (min)")
+
+#Calculate slopes of lines for each fish, converting slope from minutes to hours
+O2slopel1 <- dlply(ch.1.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope1 <- ldply(O2slopel1, function(d) coef(d))
+names(O2slope1) <- c("Phase", "Intercept","Slope")
+O2slope1<- mutate(O2slope1, fishID = "ws_009")
+O2slope1<-ddply(O2slope1, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel2 <- dlply(ch.2.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope2 <- ldply(O2slopel2, function(d) coef(d))
+names(O2slope2) <- c("Phase", "Intercept","Slope")
+O2slope2 <- mutate(O2slope2, fishID = "ws_010")
+O2slope2<-ddply(O2slope2, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel3 <- dlply(ch.3.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope3 <- ldply(O2slopel3, function(d) coef(d))
+names(O2slope3) <- c("Phase", "Intercept","Slope")
+O2slope3 <- mutate(O2slope3, fishID = "ws_011")
+O2slope3<-ddply(O2slope3, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel4 <- dlply(ch.4.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope4 <- ldply(O2slopel4, function(d) coef(d))
+names(O2slope4) <- c("Phase", "Intercept","Slope")
+O2slope4 <- mutate(O2slope4, fishID = "ws_012")
+O2slope4<-ddply(O2slope4, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel5 <- dlply(ch.5.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope5 <- ldply(O2slopel5, function(d) coef(d))
+names(O2slope5) <- c("Phase", "Intercept","Slope")
+O2slope5 <- mutate(O2slope5, fishID = "ws_013")
+O2slope5<-ddply(O2slope5, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel6 <- dlply(ch.6.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope6 <- ldply(O2slopel6, function(d) coef(d))
+names(O2slope6) <- c("Phase", "Intercept","Slope")
+O2slope6 <- mutate(O2slope6, fishID = "ws_014")
+O2slope6<-ddply(O2slope6, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel7 <- dlply(ch.7.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope7 <- ldply(O2slopel7, function(d) coef(d))
+names(O2slope7) <- c("Phase", "Intercept","Slope")
+O2slope7 <- mutate(O2slope7, fishID = "ws_015")
+O2slope7<-ddply(O2slope7, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel8 <- dlply(ch.8.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope8 <- ldply(O2slopel8, function(d) coef(d))
+names(O2slope8) <- c("Phase", "Intercept","Slope")
+O2slope8 <- mutate(O2slope8, fishID = "ws_016")
+O2slope8<-ddply(O2slope8, .(Phase), mutate, Slope.hour=Slope*60)
+
+# Calculating slope fits
+O2.r2.1 <- dlply(ch.1.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit1<-ldply(O2.r2.1, function(d) d$r.squared)
+slopefit1
+names(slopefit1) <-c("Phase","r2")
+
+O2.r2.2 <- dlply(ch.2.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit2<-ldply(O2.r2.2, function(d) d$r.squared)
+slopefit2
+names(slopefit2) <-c("Phase","r2")
+
+O2.r2.3 <- dlply(ch.3.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit3<-ldply(O2.r2.3, function(d) d$r.squared)
+slopefit3
+names(slopefit3) <-c("Phase","r2")
+
+O2.r2.4 <- dlply(ch.4.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit4<-ldply(O2.r2.4, function(d) d$r.squared)
+slopefit4
+names(slopefit4) <-c("Phase","r2")
+
+O2.r2.5 <- dlply(ch.5.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit5<-ldply(O2.r2.5, function(d) d$r.squared)
+slopefit5
+names(slopefit5) <-c("Phase","r2")
+
+O2.r2.6 <- dlply(ch.6.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit6<-ldply(O2.r2.6, function(d) d$r.squared)
+slopefit6
+names(slopefit6) <-c("Phase","r2")
+
+O2.r2.7 <- dlply(ch.7.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit7<-ldply(O2.r2.7, function(d) d$r.squared)
+slopefit7
+names(slopefit7) <-c("Phase","r2")
+
+O2.r2.8 <- dlply(ch.8.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit8<-ldply(O2.r2.8, function(d) d$r.squared)
+slopefit8
+names(slopefit8) <-c("Phase","r2")
+
+# merge together slope and r2
+O2slope.r2.1<-merge(O2slope1, slopefit1, by=c("Phase"))
+O2slope.r2.1<- O2slope.r2.1[mixedorder(O2slope.r2.1$Phase),]
+O2slope.r2.1
+
+O2slope.r2.2<-merge(O2slope2, slopefit2, by=c("Phase"))
+O2slope.r2.2<- O2slope.r2.2[mixedorder(O2slope.r2.2$Phase),]
+O2slope.r2.2
+
+O2slope.r2.3<-merge(O2slope3, slopefit3, by=c("Phase"))
+O2slope.r2.3<- O2slope.r2.3[mixedorder(O2slope.r2.3$Phase),]
+O2slope.r2.3
+
+O2slope.r2.4<-merge(O2slope4, slopefit4, by=c("Phase"))
+O2slope.r2.4<- O2slope.r2.4[mixedorder(O2slope.r2.4$Phase),]
+O2slope.r2.4
+
+O2slope.r2.5<-merge(O2slope5, slopefit5, by=c("Phase"))
+O2slope.r2.5<- O2slope.r2.5[mixedorder(O2slope.r2.5$Phase),]
+O2slope.r2.5
+
+O2slope.r2.6<-merge(O2slope6, slopefit6, by=c("Phase"))
+O2slope.r2.6<- O2slope.r2.6[mixedorder(O2slope.r2.6$Phase),]
+O2slope.r2.6
+
+O2slope.r2.7<-merge(O2slope7, slopefit7, by=c("Phase"))
+O2slope.r2.7<- O2slope.r2.7[mixedorder(O2slope.r2.7$Phase),]
+O2slope.r2.7
+
+O2slope.r2.8<-merge(O2slope8, slopefit8, by=c("Phase"))
+O2slope.r2.8<- O2slope.r2.8[mixedorder(O2slope.r2.8$Phase),]
+O2slope.r2.8
+
+# bind all slope and r2 dataframes. Sorts phases properly
+slopes.r2.all <- rbind(O2slope.r2.1,O2slope.r2.2,O2slope.r2.3,O2slope.r2.4,O2slope.r2.5,O2slope.r2.6,O2slope.r2.7,O2slope.r2.8)
+slopes.r2.all$fishID <- as.factor(slopes.r2.all$fishID)
+slopes.r2.all <- merge(slopes.r2.all, Phase.start, by=c("Phase"))
+phase.sort <- unique(mixedsort(slopes.r2.all$Phase))
+slopes.r2.all$Phase <- factor(slopes.r2.all$Phase, levels = phase.sort)
+
+str(slopes.r2.all)
+
+# add back in all the fish related data
+O2.all.trial2 <- merge(slopes.r2.all, RMR.trial)
+str(O2.all.trial2)
+
+ggplot(O2.all.trial2, aes(x=DateTime, y=Slope))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# Slope.hour is mgO2/h as calculated from the decline of mgO2 in the chamber over time in min, then converted to h. Value is negative because it's consumption of O2.
+# multiply by -1 to have a positive O2 rate, units mgO2/h
+O2.all.trial2<- mutate(O2.all.trial2, mgO2hpos = Slope.hour*-1)
+
+# calculate mass specific rates
+O2.all.trial2<- mutate(O2.all.trial2, mass.specific.mgO2ghr = mgO2hpos/weight.g)
+str(O2.all.trial2)
+
+# plot whole body MO2
+ggplot(O2.all.trial2, aes(x=Phase, y=mgO2hpos))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+# plot mass specific MO2
+ggplot(O2.all.trial2, aes(x=Phase, y=mass.specific.mgO2ghr))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# remove bg bact values
+O2.all.trial2 <- filter(O2.all.trial2, mass.specific.mgO2ghr > 0.1)
+
+O2.all <- rbind(O2.all.trial1,O2.all.trial2)
+
+
+###################
+
+# # Order data to find lowest 3 MO2 values
+# sort.O2<- O2.all.trial2[order(O2.all.trial2$fishID,O2.all.trial2$mass.specific.mgO2ghr),]
+# lowest3 <- by(sort.O2, sort.O2["fishID"], head, n=3)
+# 
+# # Then reduce the list into a data frame with the lowest 3 MO2 values for each fish
+# low3MO2_trial2 <- Reduce(rbind, lowest3)
+# low3MO2.ws <- rbind(low3MO2_trial1,low3MO2_trial2)
+# 
+# ggplot(O2.all, aes(x=Phase, y=mass.specific.mgO2ghr))+
+#   geom_point(aes(color=fishID))+
+#   theme_bw()
+
+```
+
+### July 21 rd 3 t3
+```{r}
+#setwd("C:/Users/Vanessa/Documents/R/2021_pesticides")
+
+RMR_raw <- readclean("../rawData/Metabolism_GSWSfip/WSbif_rawdata/22_07_21_WS_contam_rd3_raw.txt")
+
+# Calculate average trial temp
+avgTemp <- mean(RMR_raw$Temp)
+avgTemp
+
+# Creates a new column, Time in minutes from the start of the file
+RMR_raw$Time.m <- sapply(seq_along(RMR_raw$DateTime), function(i) as.numeric(difftime(RMR_raw$DateTime[i], RMR_raw$DateTime[1], units='mins')))
+head(RMR_raw)
+ggplot(RMR_raw, aes(DateTime,Temp))+
+    geom_point()
+
+# grep finds all of the data in RMR$Phase that contains the letter M. i.e. this corresponds to measurement periods
+RMR <- RMR_raw[grep("M", RMR_raw$Phase), ]
+head(RMR)
+
+# Phases have extra spaces, so this code removes those i.e. "M1  " -> "M1"
+RMR$Phase <- gsub(" ", "", RMR$Phase, fixed = TRUE)
+# test it..
+unique(RMR$Phase)
+
+# Pulls out first value of each phase for graphing later, if you choose to graph by phase
+Phase.start <- ddply(RMR, "Phase", head, 1)
+Phase.start <- Phase.start[,1:2]
+
+#Changing the column names of the channels to the appropriate fishID/bg bacteria chamber
+Name.vec <- c("ws_017","ws_018","ws_019","ws_020","ws_021","ws_022","ws_023","ws_024")
+names(RMR)[6:13] <- Name.vec
+#Reshape the data so all O2sat values are in a single column
+RMR.2 <- melt(RMR, measure = Name.vec)
+head(RMR.2)
+str(RMR.2)
+
+# Rename the columns. 
+names(RMR.2) <-c("DateTime","Phase","BaroP","Salinity","Temp","Time.m","fishID","O2.sat")
+head(RMR.2)
+
+RMR.2$sat100.mgO2perL <- O2.saturation(4,RMR.2$Temp,RMR.2$BaroP, 100)[[6]]
+RMR.2$sat100.mgO2permL <- RMR.2$sat100.mgO2perL/1000
+
+# Merge raw data and fish data
+RMR.trial <-merge(RMR.2, fish.data, by=c("fishID"), all.x=TRUE)
+
+# Calculate total mgO2 by multiplying mgO2/mL and mL of chamber - fish
+RMR.trial$sat100.mgO2 <- ((RMR.trial$volume.ml - RMR.trial$weight.g)*RMR.trial$sat100.mgO2permL)
+
+# Calculate mgO2 at any point in time by multiplying %O2 saturation/100 and mgO2 at 100% sat
+RMR.trial$mgO2 <- RMR.trial$O2.sat/100*RMR.trial$sat100.mgO2
+
+ggplot(RMR.trial, aes(x = Time.m, y = mgO2, color = fishID))+
+  geom_point()
+
+# Separating out individual fish for graphing/analysis
+ch.1.meas <- subset(RMR.trial, fishID == "ws_017")
+ch.2.meas <- subset(RMR.trial, fishID == "ws_018")
+ch.3.meas <- subset(RMR.trial, fishID == "ws_019")
+ch.4.meas <- subset(RMR.trial, fishID == "ws_020")
+ch.5.meas <- subset(RMR.trial, fishID == "ws_021")
+ch.6.meas <- subset(RMR.trial, fishID == "ws_022")
+ch.7.meas <- subset(RMR.trial, fishID == "ws_023")
+ch.8.meas <- subset(RMR.trial, fishID == "ws_024")
+
+p=ggplot(data=ch.7.meas, aes(x=Time.m, y=as.numeric(O2.sat)))
+p+geom_line(aes(color=Phase))+theme_bw()+facet_wrap(~Phase, ncol=8)+
+  scale_y_continuous(name="% air saturation")+
+  scale_x_continuous(name="Time (min)")
+
+#Calculate slopes of lines for each fish, converting slope from minutes to hours
+O2slopel1 <- dlply(ch.1.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope1 <- ldply(O2slopel1, function(d) coef(d))
+names(O2slope1) <- c("Phase", "Intercept","Slope")
+O2slope1<- mutate(O2slope1, fishID = "ws_017")
+O2slope1<-ddply(O2slope1, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel2 <- dlply(ch.2.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope2 <- ldply(O2slopel2, function(d) coef(d))
+names(O2slope2) <- c("Phase", "Intercept","Slope")
+O2slope2 <- mutate(O2slope2, fishID = "ws_018")
+O2slope2<-ddply(O2slope2, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel3 <- dlply(ch.3.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope3 <- ldply(O2slopel3, function(d) coef(d))
+names(O2slope3) <- c("Phase", "Intercept","Slope")
+O2slope3 <- mutate(O2slope3, fishID = "ws_019")
+O2slope3<-ddply(O2slope3, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel4 <- dlply(ch.4.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope4 <- ldply(O2slopel4, function(d) coef(d))
+names(O2slope4) <- c("Phase", "Intercept","Slope")
+O2slope4 <- mutate(O2slope4, fishID = "ws_020")
+O2slope4<-ddply(O2slope4, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel5 <- dlply(ch.5.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope5 <- ldply(O2slopel5, function(d) coef(d))
+names(O2slope5) <- c("Phase", "Intercept","Slope")
+O2slope5 <- mutate(O2slope5, fishID = "ws_021")
+O2slope5<-ddply(O2slope5, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel6 <- dlply(ch.6.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope6 <- ldply(O2slopel6, function(d) coef(d))
+names(O2slope6) <- c("Phase", "Intercept","Slope")
+O2slope6 <- mutate(O2slope6, fishID = "ws_022")
+O2slope6<-ddply(O2slope6, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel7 <- dlply(ch.7.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope7 <- ldply(O2slopel7, function(d) coef(d))
+names(O2slope7) <- c("Phase", "Intercept","Slope")
+O2slope7 <- mutate(O2slope7, fishID = "ws_023")
+O2slope7<-ddply(O2slope7, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel8 <- dlply(ch.8.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope8 <- ldply(O2slopel8, function(d) coef(d))
+names(O2slope8) <- c("Phase", "Intercept","Slope")
+O2slope8 <- mutate(O2slope8, fishID = "ws_024")
+O2slope8<-ddply(O2slope8, .(Phase), mutate, Slope.hour=Slope*60)
+
+# Calculating slope fits
+O2.r2.1 <- dlply(ch.1.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit1<-ldply(O2.r2.1, function(d) d$r.squared)
+slopefit1
+names(slopefit1) <-c("Phase","r2")
+
+O2.r2.2 <- dlply(ch.2.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit2<-ldply(O2.r2.2, function(d) d$r.squared)
+slopefit2
+names(slopefit2) <-c("Phase","r2")
+
+O2.r2.3 <- dlply(ch.3.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit3<-ldply(O2.r2.3, function(d) d$r.squared)
+slopefit3
+names(slopefit3) <-c("Phase","r2")
+
+O2.r2.4 <- dlply(ch.4.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit4<-ldply(O2.r2.4, function(d) d$r.squared)
+slopefit4
+names(slopefit4) <-c("Phase","r2")
+
+O2.r2.5 <- dlply(ch.5.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit5<-ldply(O2.r2.5, function(d) d$r.squared)
+slopefit5
+names(slopefit5) <-c("Phase","r2")
+
+O2.r2.6 <- dlply(ch.6.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit6<-ldply(O2.r2.6, function(d) d$r.squared)
+slopefit6
+names(slopefit6) <-c("Phase","r2")
+
+O2.r2.7 <- dlply(ch.7.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit7<-ldply(O2.r2.7, function(d) d$r.squared)
+slopefit7
+names(slopefit7) <-c("Phase","r2")
+
+O2.r2.8 <- dlply(ch.8.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit8<-ldply(O2.r2.8, function(d) d$r.squared)
+slopefit8
+names(slopefit8) <-c("Phase","r2")
+
+# merge together slope and r2
+O2slope.r2.1<-merge(O2slope1, slopefit1, by=c("Phase"))
+O2slope.r2.1<- O2slope.r2.1[mixedorder(O2slope.r2.1$Phase),]
+O2slope.r2.1
+
+O2slope.r2.2<-merge(O2slope2, slopefit2, by=c("Phase"))
+O2slope.r2.2<- O2slope.r2.2[mixedorder(O2slope.r2.2$Phase),]
+O2slope.r2.2
+
+O2slope.r2.3<-merge(O2slope3, slopefit3, by=c("Phase"))
+O2slope.r2.3<- O2slope.r2.3[mixedorder(O2slope.r2.3$Phase),]
+O2slope.r2.3
+
+O2slope.r2.4<-merge(O2slope4, slopefit4, by=c("Phase"))
+O2slope.r2.4<- O2slope.r2.4[mixedorder(O2slope.r2.4$Phase),]
+O2slope.r2.4
+
+O2slope.r2.5<-merge(O2slope5, slopefit5, by=c("Phase"))
+O2slope.r2.5<- O2slope.r2.5[mixedorder(O2slope.r2.5$Phase),]
+O2slope.r2.5
+
+O2slope.r2.6<-merge(O2slope6, slopefit6, by=c("Phase"))
+O2slope.r2.6<- O2slope.r2.6[mixedorder(O2slope.r2.6$Phase),]
+O2slope.r2.6
+
+O2slope.r2.7<-merge(O2slope7, slopefit7, by=c("Phase"))
+O2slope.r2.7<- O2slope.r2.7[mixedorder(O2slope.r2.7$Phase),]
+O2slope.r2.7
+
+O2slope.r2.8<-merge(O2slope8, slopefit8, by=c("Phase"))
+O2slope.r2.8<- O2slope.r2.8[mixedorder(O2slope.r2.8$Phase),]
+O2slope.r2.8
+
+# bind all slope and r2 dataframes. Sorts phases properly
+slopes.r2.all <- rbind(O2slope.r2.1,O2slope.r2.2,O2slope.r2.3,O2slope.r2.4,O2slope.r2.5,O2slope.r2.6,O2slope.r2.7,O2slope.r2.8)
+slopes.r2.all$fishID <- as.factor(slopes.r2.all$fishID)
+slopes.r2.all <- merge(slopes.r2.all, Phase.start, by=c("Phase"))
+phase.sort <- unique(mixedsort(slopes.r2.all$Phase))
+slopes.r2.all$Phase <- factor(slopes.r2.all$Phase, levels = phase.sort)
+
+
+str(slopes.r2.all)
+
+# add back in all the fish related data
+O2.all.trial3 <- merge(slopes.r2.all, RMR.trial)
+str(O2.all.trial3)
+
+ggplot(O2.all.trial3, aes(x=DateTime, y=Slope))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# Slope.hour is mgO2/h as calculated from the decline of mgO2 in the chamber over time in min, then converted to h. Value is negative because it's consumption of O2.
+# multiply by -1 to have a positive O2 rate, units mgO2/h
+O2.all.trial3<- mutate(O2.all.trial3, mgO2hpos = Slope.hour*-1)
+
+# calculate mass specific rates
+O2.all.trial3<- mutate(O2.all.trial3, mass.specific.mgO2ghr = mgO2hpos/weight.g)
+str(O2.all.trial3)
+
+# plot whole body MO2
+ggplot(O2.all.trial3, aes(x=Phase, y=mgO2hpos))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+# plot mass specific MO2
+ggplot(O2.all.trial3, aes(x=Phase, y=mass.specific.mgO2ghr))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# remove bg bact values
+O2.all.trial3 <- filter(O2.all.trial3, mass.specific.mgO2ghr > 0.1)
+
+O2.all <- rbind(O2.all,O2.all.trial3)
+
+###################
+# 
+# # Order data to find lowest 3 MO2 values
+# sort.O2<- O2.all.trial3[order(O2.all.trial3$fishID,O2.all.trial3$mass.specific.mgO2ghr),]
+# lowest3 <- by(sort.O2, sort.O2["fishID"], head, n=3)
+# 
+# # Then reduce the list into a data frame with the lowest 3 MO2 values for each fish
+# low3MO2_trial3 <- Reduce(rbind, lowest3)
+# low3MO2.ws <- rbind(low3MO2.ws,low3MO2_trial3)
+```
+
+### July 22 rd 1 t4
+```{r}
+#setwd("C:/Users/Vanessa/Documents/R/2021_pesticides")
+
+RMR_raw <- readclean("../rawData/Metabolism_GSWSfip/WSbif_rawdata/22_07_22_WS_contam_rd1_raw.txt")
+
+# Calculate average trial temp
+avgTemp <- mean(RMR_raw$Temp)
+avgTemp
+
+# Creates a new column, Time in minutes from the start of the file
+RMR_raw$Time.m <- sapply(seq_along(RMR_raw$DateTime), function(i) as.numeric(difftime(RMR_raw$DateTime[i], RMR_raw$DateTime[1], units='mins')))
+head(RMR_raw)
+ggplot(RMR_raw, aes(DateTime,Temp))+
+    geom_point()
+
+# grep finds all of the data in RMR$Phase that contains the letter M. i.e. this corresponds to measurement periods
+RMR <- RMR_raw[grep("M", RMR_raw$Phase), ]
+head(RMR)
+
+# Phases have extra spaces, so this code removes those i.e. "M1  " -> "M1"
+RMR$Phase <- gsub(" ", "", RMR$Phase, fixed = TRUE)
+# test it..
+unique(RMR$Phase)
+
+# Pulls out first value of each phase for graphing later, if you choose to graph by phase
+Phase.start <- ddply(RMR, "Phase", head, 1)
+Phase.start <- Phase.start[,1:2]
+
+#Changing the column names of the channels to the appropriate fishID/bg bacteria chamber
+Name.vec <- c("ws_025","ws_026","ws_027","ws_028","ws_029","ws_030","ws_031","ws_032")
+names(RMR)[6:13] <- Name.vec
+
+#Reshape the data so all O2sat values are in a single column
+RMR.2 <- melt(RMR, measure = Name.vec)
+head(RMR.2)
+str(RMR.2)
+
+# Rename the columns. 
+names(RMR.2) <-c("DateTime","Phase","BaroP","Salinity","Temp","Time.m","fishID","O2.sat")
+head(RMR.2)
+
+RMR.2$sat100.mgO2perL <- O2.saturation(4,RMR.2$Temp,RMR.2$BaroP, 100)[[6]]
+RMR.2$sat100.mgO2permL <- RMR.2$sat100.mgO2perL/1000
+
+# Merge raw data and fish data
+RMR.trial <-merge(RMR.2, fish.data, by=c("fishID"), all.x=TRUE)
+
+# Calculate total mgO2 by multiplying mgO2/mL and mL of chamber - fish
+RMR.trial$sat100.mgO2 <- ((RMR.trial$volume.ml - RMR.trial$weight.g)*RMR.trial$sat100.mgO2permL)
+
+# Calculate mgO2 at any point in time by multiplying %O2 saturation/100 and mgO2 at 100% sat
+RMR.trial$mgO2 <- RMR.trial$O2.sat/100*RMR.trial$sat100.mgO2
+
+ggplot(RMR.trial, aes(x = Time.m, y = mgO2, color = fishID))+
+  geom_point()
+
+# Separating out individual fish for graphing/analysis
+ch.1.meas <- subset(RMR.trial, fishID == "ws_025")
+ch.2.meas <- subset(RMR.trial, fishID == "ws_026")
+ch.3.meas <- subset(RMR.trial, fishID == "ws_027")
+ch.4.meas <- subset(RMR.trial, fishID == "ws_028")
+ch.5.meas <- subset(RMR.trial, fishID == "ws_029")
+ch.6.meas <- subset(RMR.trial, fishID == "ws_030")
+ch.7.meas <- subset(RMR.trial, fishID == "ws_031")
+ch.8.meas <- subset(RMR.trial, fishID == "ws_032")
+
+p=ggplot(data=ch.7.meas, aes(x=Time.m, y=as.numeric(O2.sat)))
+p+geom_line(aes(color=Phase))+theme_bw()+facet_wrap(~Phase, ncol=8)+
+  scale_y_continuous(name="% air saturation")+
+  scale_x_continuous(name="Time (min)")
+
+#Calculate slopes of lines for each fish, converting slope from minutes to hours
+O2slopel1 <- dlply(ch.1.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope1 <- ldply(O2slopel1, function(d) coef(d))
+names(O2slope1) <- c("Phase", "Intercept","Slope")
+O2slope1<- mutate(O2slope1, fishID = "ws_025")
+O2slope1<-ddply(O2slope1, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel2 <- dlply(ch.2.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope2 <- ldply(O2slopel2, function(d) coef(d))
+names(O2slope2) <- c("Phase", "Intercept","Slope")
+O2slope2 <- mutate(O2slope2, fishID = "ws_026")
+O2slope2<-ddply(O2slope2, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel3 <- dlply(ch.3.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope3 <- ldply(O2slopel3, function(d) coef(d))
+names(O2slope3) <- c("Phase", "Intercept","Slope")
+O2slope3 <- mutate(O2slope3, fishID = "ws_027")
+O2slope3<-ddply(O2slope3, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel4 <- dlply(ch.4.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope4 <- ldply(O2slopel4, function(d) coef(d))
+names(O2slope4) <- c("Phase", "Intercept","Slope")
+O2slope4 <- mutate(O2slope4, fishID = "ws_028")
+O2slope4<-ddply(O2slope4, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel5 <- dlply(ch.5.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope5 <- ldply(O2slopel5, function(d) coef(d))
+names(O2slope5) <- c("Phase", "Intercept","Slope")
+O2slope5 <- mutate(O2slope5, fishID = "ws_029")
+O2slope5<-ddply(O2slope5, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel6 <- dlply(ch.6.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope6 <- ldply(O2slopel6, function(d) coef(d))
+names(O2slope6) <- c("Phase", "Intercept","Slope")
+O2slope6 <- mutate(O2slope6, fishID = "ws_030")
+O2slope6<-ddply(O2slope6, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel7 <- dlply(ch.7.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope7 <- ldply(O2slopel7, function(d) coef(d))
+names(O2slope7) <- c("Phase", "Intercept","Slope")
+O2slope7 <- mutate(O2slope7, fishID = "ws_031")
+O2slope7<-ddply(O2slope7, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel8 <- dlply(ch.8.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope8 <- ldply(O2slopel8, function(d) coef(d))
+names(O2slope8) <- c("Phase", "Intercept","Slope")
+O2slope8 <- mutate(O2slope8, fishID = "ws_032")
+O2slope8<-ddply(O2slope8, .(Phase), mutate, Slope.hour=Slope*60)
+
+# Calculating slope fits
+O2.r2.1 <- dlply(ch.1.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit1<-ldply(O2.r2.1, function(d) d$r.squared)
+slopefit1
+names(slopefit1) <-c("Phase","r2")
+
+O2.r2.2 <- dlply(ch.2.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit2<-ldply(O2.r2.2, function(d) d$r.squared)
+slopefit2
+names(slopefit2) <-c("Phase","r2")
+
+O2.r2.3 <- dlply(ch.3.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit3<-ldply(O2.r2.3, function(d) d$r.squared)
+slopefit3
+names(slopefit3) <-c("Phase","r2")
+
+O2.r2.4 <- dlply(ch.4.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit4<-ldply(O2.r2.4, function(d) d$r.squared)
+slopefit4
+names(slopefit4) <-c("Phase","r2")
+
+O2.r2.5 <- dlply(ch.5.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit5<-ldply(O2.r2.5, function(d) d$r.squared)
+slopefit5
+names(slopefit5) <-c("Phase","r2")
+
+O2.r2.6 <- dlply(ch.6.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit6<-ldply(O2.r2.6, function(d) d$r.squared)
+slopefit6
+names(slopefit6) <-c("Phase","r2")
+
+O2.r2.7 <- dlply(ch.7.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit7<-ldply(O2.r2.7, function(d) d$r.squared)
+slopefit7
+names(slopefit7) <-c("Phase","r2")
+
+O2.r2.8 <- dlply(ch.8.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit8<-ldply(O2.r2.8, function(d) d$r.squared)
+slopefit8
+names(slopefit8) <-c("Phase","r2")
+
+# merge together slope and r2
+O2slope.r2.1<-merge(O2slope1, slopefit1, by=c("Phase"))
+O2slope.r2.1<- O2slope.r2.1[mixedorder(O2slope.r2.1$Phase),]
+O2slope.r2.1
+
+O2slope.r2.2<-merge(O2slope2, slopefit2, by=c("Phase"))
+O2slope.r2.2<- O2slope.r2.2[mixedorder(O2slope.r2.2$Phase),]
+O2slope.r2.2
+
+O2slope.r2.3<-merge(O2slope3, slopefit3, by=c("Phase"))
+O2slope.r2.3<- O2slope.r2.3[mixedorder(O2slope.r2.3$Phase),]
+O2slope.r2.3
+
+O2slope.r2.4<-merge(O2slope4, slopefit4, by=c("Phase"))
+O2slope.r2.4<- O2slope.r2.4[mixedorder(O2slope.r2.4$Phase),]
+O2slope.r2.4
+
+O2slope.r2.5<-merge(O2slope5, slopefit5, by=c("Phase"))
+O2slope.r2.5<- O2slope.r2.5[mixedorder(O2slope.r2.5$Phase),]
+O2slope.r2.5
+
+O2slope.r2.6<-merge(O2slope6, slopefit6, by=c("Phase"))
+O2slope.r2.6<- O2slope.r2.6[mixedorder(O2slope.r2.6$Phase),]
+O2slope.r2.6
+
+O2slope.r2.7<-merge(O2slope7, slopefit7, by=c("Phase"))
+O2slope.r2.7<- O2slope.r2.7[mixedorder(O2slope.r2.7$Phase),]
+O2slope.r2.7
+
+O2slope.r2.8<-merge(O2slope8, slopefit8, by=c("Phase"))
+O2slope.r2.8<- O2slope.r2.8[mixedorder(O2slope.r2.8$Phase),]
+O2slope.r2.8
+
+# bind all slope and r2 dataframes. Sorts phases properly
+slopes.r2.all <- rbind(O2slope.r2.1,O2slope.r2.2,O2slope.r2.3,O2slope.r2.4,O2slope.r2.5,O2slope.r2.6,O2slope.r2.7,O2slope.r2.8)
+slopes.r2.all$fishID <- as.factor(slopes.r2.all$fishID)
+slopes.r2.all <- merge(slopes.r2.all, Phase.start, by=c("Phase"))
+phase.sort <- unique(mixedsort(slopes.r2.all$Phase))
+slopes.r2.all$Phase <- factor(slopes.r2.all$Phase, levels = phase.sort)
+
+
+str(slopes.r2.all)
+
+# add back in all the fish related data
+O2.all.trial4 <- merge(slopes.r2.all, RMR.trial)
+str(O2.all.trial4)
+
+ggplot(O2.all.trial4, aes(x=DateTime, y=Slope))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# Slope.hour is mgO2/h as calculated from the decline of mgO2 in the chamber over time in min, then converted to h. Value is negative because it's consumption of O2.
+# multiply by -1 to have a positive O2 rate, units mgO2/h
+O2.all.trial4<- mutate(O2.all.trial4, mgO2hpos = Slope.hour*-1)
+
+# calculate mass specific rates
+O2.all.trial4<- mutate(O2.all.trial4, mass.specific.mgO2ghr = mgO2hpos/weight.g)
+str(O2.all.trial4)
+
+# plot whole body MO2
+ggplot(O2.all.trial4, aes(x=Phase, y=mgO2hpos))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+# plot mass specific MO2
+ggplot(O2.all.trial4, aes(x=Phase, y=mass.specific.mgO2ghr))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# remove bg bact values
+O2.all.trial4 <- filter(O2.all.trial4, mass.specific.mgO2ghr > 0.1)
+
+O2.all <- rbind(O2.all,O2.all.trial4)
+
+# ###################
+# 
+# # Order data to find lowest 3 MO2 values
+# sort.O2<- O2.all.trial4[order(O2.all.trial4$fishID,O2.all.trial4$mass.specific.mgO2ghr),]
+# lowest3 <- by(sort.O2, sort.O2["fishID"], head, n=3)
+# 
+# # Then reduce the list into a data frame with the lowest 3 MO2 values for each fish
+# low3MO2_trial4 <- Reduce(rbind, lowest3)
+# low3MO2.ws <- rbind(low3MO2.ws,low3MO2_trial4)
+```
+
+### July 22 rd 2 t5
+```{r}
+#setwd("C:/Users/Vanessa/Documents/R/2021_pesticides")
+
+RMR_raw <- readclean("../rawData/Metabolism_GSWSfip/WSbif_rawdata/22_07_22_WS_contam_rd2_raw.txt")
+
+# Calculate average trial temp
+avgTemp <- mean(RMR_raw$Temp)
+avgTemp
+
+# Creates a new column, Time in minutes from the start of the file
+RMR_raw$Time.m <- sapply(seq_along(RMR_raw$DateTime), function(i) as.numeric(difftime(RMR_raw$DateTime[i], RMR_raw$DateTime[1], units='mins')))
+head(RMR_raw)
+ggplot(RMR_raw, aes(DateTime,Temp))+
+    geom_point()
+
+# grep finds all of the data in RMR$Phase that contains the letter M. i.e. this corresponds to measurement periods
+RMR <- RMR_raw[grep("M", RMR_raw$Phase), ]
+head(RMR)
+
+# Phases have extra spaces, so this code removes those i.e. "M1  " -> "M1"
+RMR$Phase <- gsub(" ", "", RMR$Phase, fixed = TRUE)
+# test it..
+unique(RMR$Phase)
+
+# Pulls out first value of each phase for graphing later, if you choose to graph by phase
+Phase.start <- ddply(RMR, "Phase", head, 1)
+Phase.start <- Phase.start[,1:2]
+
+#Changing the column names of the channels to the appropriate fishID/bg bacteria chamber
+Name.vec <- c("ws_033","ws_034","ws_035","ws_036","ws_037","ws_038","ws_039","ws_040")
+names(RMR)[6:13] <- Name.vec
+
+#Reshape the data so all O2sat values are in a single column
+RMR.2 <- melt(RMR, measure = Name.vec)
+head(RMR.2)
+str(RMR.2)
+
+# Rename the columns. 
+names(RMR.2) <-c("DateTime","Phase","BaroP","Salinity","Temp","Time.m","fishID","O2.sat")
+head(RMR.2)
+
+RMR.2$sat100.mgO2perL <- O2.saturation(4,RMR.2$Temp,RMR.2$BaroP, 100)[[6]]
+RMR.2$sat100.mgO2permL <- RMR.2$sat100.mgO2perL/1000
+
+# Merge raw data and fish data
+RMR.trial <-merge(RMR.2, fish.data, by=c("fishID"), all.x=TRUE)
+
+# Calculate total mgO2 by multiplying mgO2/mL and mL of chamber - fish
+RMR.trial$sat100.mgO2 <- ((RMR.trial$volume.ml - RMR.trial$weight.g)*RMR.trial$sat100.mgO2permL)
+
+# Calculate mgO2 at any point in time by multiplying %O2 saturation/100 and mgO2 at 100% sat
+RMR.trial$mgO2 <- RMR.trial$O2.sat/100*RMR.trial$sat100.mgO2
+
+ggplot(RMR.trial, aes(x = Time.m, y = mgO2, color = fishID))+
+  geom_point()
+# Separating out individual fish for graphing/analysis
+ch.1.meas <- subset(RMR.trial, fishID == "ws_033")
+ch.2.meas <- subset(RMR.trial, fishID == "ws_034")
+ch.3.meas <- subset(RMR.trial, fishID == "ws_035")
+ch.4.meas <- subset(RMR.trial, fishID == "ws_036")
+ch.5.meas <- subset(RMR.trial, fishID == "ws_037")
+ch.6.meas <- subset(RMR.trial, fishID == "ws_038")
+ch.7.meas <- subset(RMR.trial, fishID == "ws_039")
+ch.8.meas <- subset(RMR.trial, fishID == "ws_040")
+
+p=ggplot(data=ch.7.meas, aes(x=Time.m, y=as.numeric(O2.sat)))
+p+geom_line(aes(color=Phase))+theme_bw()+facet_wrap(~Phase, ncol=8)+
+  scale_y_continuous(name="% air saturation")+
+  scale_x_continuous(name="Time (min)")
+
+#Calculate slopes of lines for each fish, converting slope from minutes to hours
+O2slopel1 <- dlply(ch.1.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope1 <- ldply(O2slopel1, function(d) coef(d))
+names(O2slope1) <- c("Phase", "Intercept","Slope")
+O2slope1<- mutate(O2slope1, fishID = "ws_033")
+O2slope1<-ddply(O2slope1, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel2 <- dlply(ch.2.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope2 <- ldply(O2slopel2, function(d) coef(d))
+names(O2slope2) <- c("Phase", "Intercept","Slope")
+O2slope2 <- mutate(O2slope2, fishID = "ws_034")
+O2slope2<-ddply(O2slope2, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel3 <- dlply(ch.3.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope3 <- ldply(O2slopel3, function(d) coef(d))
+names(O2slope3) <- c("Phase", "Intercept","Slope")
+O2slope3 <- mutate(O2slope3, fishID = "ws_035")
+O2slope3<-ddply(O2slope3, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel4 <- dlply(ch.4.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope4 <- ldply(O2slopel4, function(d) coef(d))
+names(O2slope4) <- c("Phase", "Intercept","Slope")
+O2slope4 <- mutate(O2slope4, fishID = "ws_036")
+O2slope4<-ddply(O2slope4, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel5 <- dlply(ch.5.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope5 <- ldply(O2slopel5, function(d) coef(d))
+names(O2slope5) <- c("Phase", "Intercept","Slope")
+O2slope5 <- mutate(O2slope5, fishID = "ws_037")
+O2slope5<-ddply(O2slope5, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel6 <- dlply(ch.6.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope6 <- ldply(O2slopel6, function(d) coef(d))
+names(O2slope6) <- c("Phase", "Intercept","Slope")
+O2slope6 <- mutate(O2slope6, fishID = "ws_038")
+O2slope6<-ddply(O2slope6, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel7 <- dlply(ch.7.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope7 <- ldply(O2slopel7, function(d) coef(d))
+names(O2slope7) <- c("Phase", "Intercept","Slope")
+O2slope7 <- mutate(O2slope7, fishID = "ws_039")
+O2slope7<-ddply(O2slope7, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel8 <- dlply(ch.8.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope8 <- ldply(O2slopel8, function(d) coef(d))
+names(O2slope8) <- c("Phase", "Intercept","Slope")
+O2slope8 <- mutate(O2slope8, fishID = "ws_040")
+O2slope8<-ddply(O2slope8, .(Phase), mutate, Slope.hour=Slope*60)
+
+# Calculating slope fits
+O2.r2.1 <- dlply(ch.1.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit1<-ldply(O2.r2.1, function(d) d$r.squared)
+slopefit1
+names(slopefit1) <-c("Phase","r2")
+
+O2.r2.2 <- dlply(ch.2.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit2<-ldply(O2.r2.2, function(d) d$r.squared)
+slopefit2
+names(slopefit2) <-c("Phase","r2")
+
+O2.r2.3 <- dlply(ch.3.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit3<-ldply(O2.r2.3, function(d) d$r.squared)
+slopefit3
+names(slopefit3) <-c("Phase","r2")
+
+O2.r2.4 <- dlply(ch.4.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit4<-ldply(O2.r2.4, function(d) d$r.squared)
+slopefit4
+names(slopefit4) <-c("Phase","r2")
+
+O2.r2.5 <- dlply(ch.5.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit5<-ldply(O2.r2.5, function(d) d$r.squared)
+slopefit5
+names(slopefit5) <-c("Phase","r2")
+
+O2.r2.6 <- dlply(ch.6.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit6<-ldply(O2.r2.6, function(d) d$r.squared)
+slopefit6
+names(slopefit6) <-c("Phase","r2")
+
+O2.r2.7 <- dlply(ch.7.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit7<-ldply(O2.r2.7, function(d) d$r.squared)
+slopefit7
+names(slopefit7) <-c("Phase","r2")
+
+O2.r2.8 <- dlply(ch.8.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit8<-ldply(O2.r2.8, function(d) d$r.squared)
+slopefit8
+names(slopefit8) <-c("Phase","r2")
+
+# merge together slope and r2
+O2slope.r2.1<-merge(O2slope1, slopefit1, by=c("Phase"))
+O2slope.r2.1<- O2slope.r2.1[mixedorder(O2slope.r2.1$Phase),]
+O2slope.r2.1
+
+O2slope.r2.2<-merge(O2slope2, slopefit2, by=c("Phase"))
+O2slope.r2.2<- O2slope.r2.2[mixedorder(O2slope.r2.2$Phase),]
+O2slope.r2.2
+
+O2slope.r2.3<-merge(O2slope3, slopefit3, by=c("Phase"))
+O2slope.r2.3<- O2slope.r2.3[mixedorder(O2slope.r2.3$Phase),]
+O2slope.r2.3
+
+O2slope.r2.4<-merge(O2slope4, slopefit4, by=c("Phase"))
+O2slope.r2.4<- O2slope.r2.4[mixedorder(O2slope.r2.4$Phase),]
+O2slope.r2.4
+
+O2slope.r2.5<-merge(O2slope5, slopefit5, by=c("Phase"))
+O2slope.r2.5<- O2slope.r2.5[mixedorder(O2slope.r2.5$Phase),]
+O2slope.r2.5
+
+O2slope.r2.6<-merge(O2slope6, slopefit6, by=c("Phase"))
+O2slope.r2.6<- O2slope.r2.6[mixedorder(O2slope.r2.6$Phase),]
+O2slope.r2.6
+
+O2slope.r2.7<-merge(O2slope7, slopefit7, by=c("Phase"))
+O2slope.r2.7<- O2slope.r2.7[mixedorder(O2slope.r2.7$Phase),]
+O2slope.r2.7
+
+O2slope.r2.8<-merge(O2slope8, slopefit8, by=c("Phase"))
+O2slope.r2.8<- O2slope.r2.8[mixedorder(O2slope.r2.8$Phase),]
+O2slope.r2.8
+
+# bind all slope and r2 dataframes. Sorts phases properly
+slopes.r2.all <- rbind(O2slope.r2.1,O2slope.r2.2,O2slope.r2.3,O2slope.r2.4,O2slope.r2.5,O2slope.r2.6,O2slope.r2.7,O2slope.r2.8)
+slopes.r2.all$fishID <- as.factor(slopes.r2.all$fishID)
+slopes.r2.all <- merge(slopes.r2.all, Phase.start, by=c("Phase"))
+phase.sort <- unique(mixedsort(slopes.r2.all$Phase))
+slopes.r2.all$Phase <- factor(slopes.r2.all$Phase, levels = phase.sort)
+
+
+str(slopes.r2.all)
+
+# add back in all the fish related data
+O2.all.trial5 <- merge(slopes.r2.all, RMR.trial)
+str(O2.all.trial5)
+
+ggplot(O2.all.trial5, aes(x=DateTime, y=Slope))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# Slope.hour is mgO2/h as calculated from the decline of mgO2 in the chamber over time in min, then converted to h. Value is negative because it's consumption of O2.
+# multiply by -1 to have a positive O2 rate, units mgO2/h
+O2.all.trial5<- mutate(O2.all.trial5, mgO2hpos = Slope.hour*-1)
+
+# calculate mass specific rates
+O2.all.trial5<- mutate(O2.all.trial5, mass.specific.mgO2ghr = mgO2hpos/weight.g)
+str(O2.all.trial5)
+
+# plot whole body MO2
+ggplot(O2.all.trial5, aes(x=Phase, y=mgO2hpos))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+# plot mass specific MO2
+ggplot(O2.all.trial5, aes(x=Phase, y=mass.specific.mgO2ghr))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# remove bg bact values
+O2.all.trial5 <- filter(O2.all.trial5, mass.specific.mgO2ghr > 0.1)
+
+O2.all <- rbind(O2.all,O2.all.trial5)
+
+###################
+# 
+# # Order data to find lowest 3 MO2 values
+# sort.O2<- O2.all.trial5[order(O2.all.trial5$fishID,O2.all.trial5$mass.specific.mgO2ghr),]
+# lowest3 <- by(sort.O2, sort.O2["fishID"], head, n=3)
+# 
+# # Then reduce the list into a data frame with the lowest 3 MO2 values for each fish
+# low3MO2_trial5 <- Reduce(rbind, lowest3)
+# low3MO2.ws <- rbind(low3MO2.ws,low3MO2_trial5)
+```
+
+### July 22 rd 3 t6
+```{r}
+#setwd("C:/Users/Vanessa/Documents/R/2021_pesticides")
+
+RMR_raw <- readclean("../rawData/Metabolism_GSWSfip/WSbif_rawdata/22_07_22_WS_contam_rd3_raw.txt")
+
+# Calculate average trial temp
+avgTemp <- mean(RMR_raw$Temp)
+avgTemp
+
+# Creates a new column, Time in minutes from the start of the file
+RMR_raw$Time.m <- sapply(seq_along(RMR_raw$DateTime), function(i) as.numeric(difftime(RMR_raw$DateTime[i], RMR_raw$DateTime[1], units='mins')))
+head(RMR_raw)
+ggplot(RMR_raw, aes(DateTime,Temp))+
+    geom_point()
+
+# grep finds all of the data in RMR$Phase that contains the letter M. i.e. this corresponds to measurement periods
+RMR <- RMR_raw[grep("M", RMR_raw$Phase), ]
+head(RMR)
+
+# Phases have extra spaces, so this code removes those i.e. "M1  " -> "M1"
+RMR$Phase <- gsub(" ", "", RMR$Phase, fixed = TRUE)
+# test it..
+unique(RMR$Phase)
+
+# Pulls out first value of each phase for graphing later, if you choose to graph by phase
+Phase.start <- ddply(RMR, "Phase", head, 1)
+Phase.start <- Phase.start[,1:2]
+
+#Changing the column names of the channels to the appropriate fishID/bg bacteria chamber
+Name.vec <- c("ws_041","ws_042","ws_043","ws_044","ws_045","ws_046","ws_047","ws_048")
+names(RMR)[6:13] <- Name.vec
+
+#Reshape the data so all O2sat values are in a single column
+RMR.2 <- melt(RMR, measure = Name.vec)
+head(RMR.2)
+str(RMR.2)
+
+# Rename the columns. 
+names(RMR.2) <-c("DateTime","Phase","BaroP","Salinity","Temp","Time.m","fishID","O2.sat")
+head(RMR.2)
+
+RMR.2$sat100.mgO2perL <- O2.saturation(4,RMR.2$Temp,RMR.2$BaroP, 100)[[6]]
+RMR.2$sat100.mgO2permL <- RMR.2$sat100.mgO2perL/1000
+
+# Merge raw data and fish data
+RMR.trial <-merge(RMR.2, fish.data, by=c("fishID"), all.x=TRUE)
+
+# Calculate total mgO2 by multiplying mgO2/mL and mL of chamber - fish
+RMR.trial$sat100.mgO2 <- ((RMR.trial$volume.ml - RMR.trial$weight.g)*RMR.trial$sat100.mgO2permL)
+
+# Calculate mgO2 at any point in time by multiplying %O2 saturation/100 and mgO2 at 100% sat
+RMR.trial$mgO2 <- RMR.trial$O2.sat/100*RMR.trial$sat100.mgO2
+
+ggplot(RMR.trial, aes(x = Time.m, y = mgO2, color = fishID))+
+  geom_point()
+
+# Separating out individual fish for graphing/analysis
+ch.1.meas <- subset(RMR.trial, fishID == "ws_041")
+ch.2.meas <- subset(RMR.trial, fishID == "ws_042")
+ch.3.meas <- subset(RMR.trial, fishID == "ws_043")
+ch.4.meas <- subset(RMR.trial, fishID == "ws_044")
+ch.5.meas <- subset(RMR.trial, fishID == "ws_045")
+ch.6.meas <- subset(RMR.trial, fishID == "ws_046")
+ch.7.meas <- subset(RMR.trial, fishID == "ws_047")
+ch.8.meas <- subset(RMR.trial, fishID == "ws_048")
+
+p=ggplot(data=ch.7.meas, aes(x=Time.m, y=as.numeric(O2.sat)))
+p+geom_line(aes(color=Phase))+theme_bw()+facet_wrap(~Phase, ncol=8)+
+  scale_y_continuous(name="% air saturation")+
+  scale_x_continuous(name="Time (min)")
+
+#Calculate slopes of lines for each fish, converting slope from minutes to hours
+O2slopel1 <- dlply(ch.1.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope1 <- ldply(O2slopel1, function(d) coef(d))
+names(O2slope1) <- c("Phase", "Intercept","Slope")
+O2slope1<- mutate(O2slope1, fishID = "ws_041")
+O2slope1<-ddply(O2slope1, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel2 <- dlply(ch.2.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope2 <- ldply(O2slopel2, function(d) coef(d))
+names(O2slope2) <- c("Phase", "Intercept","Slope")
+O2slope2 <- mutate(O2slope2, fishID = "ws_042")
+O2slope2<-ddply(O2slope2, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel3 <- dlply(ch.3.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope3 <- ldply(O2slopel3, function(d) coef(d))
+names(O2slope3) <- c("Phase", "Intercept","Slope")
+O2slope3 <- mutate(O2slope3, fishID = "ws_043")
+O2slope3<-ddply(O2slope3, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel4 <- dlply(ch.4.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope4 <- ldply(O2slopel4, function(d) coef(d))
+names(O2slope4) <- c("Phase", "Intercept","Slope")
+O2slope4 <- mutate(O2slope4, fishID = "ws_044")
+O2slope4<-ddply(O2slope4, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel5 <- dlply(ch.5.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope5 <- ldply(O2slopel5, function(d) coef(d))
+names(O2slope5) <- c("Phase", "Intercept","Slope")
+O2slope5 <- mutate(O2slope5, fishID = "ws_045")
+O2slope5<-ddply(O2slope5, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel6 <- dlply(ch.6.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope6 <- ldply(O2slopel6, function(d) coef(d))
+names(O2slope6) <- c("Phase", "Intercept","Slope")
+O2slope6 <- mutate(O2slope6, fishID = "ws_046")
+O2slope6<-ddply(O2slope6, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel7 <- dlply(ch.7.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope7 <- ldply(O2slopel7, function(d) coef(d))
+names(O2slope7) <- c("Phase", "Intercept","Slope")
+O2slope7 <- mutate(O2slope7, fishID = "ws_047")
+O2slope7<-ddply(O2slope7, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel8 <- dlply(ch.8.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope8 <- ldply(O2slopel8, function(d) coef(d))
+names(O2slope8) <- c("Phase", "Intercept","Slope")
+O2slope8 <- mutate(O2slope8, fishID = "ws_048")
+O2slope8<-ddply(O2slope8, .(Phase), mutate, Slope.hour=Slope*60)
+
+# Calculating slope fits
+O2.r2.1 <- dlply(ch.1.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit1<-ldply(O2.r2.1, function(d) d$r.squared)
+slopefit1
+names(slopefit1) <-c("Phase","r2")
+
+O2.r2.2 <- dlply(ch.2.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit2<-ldply(O2.r2.2, function(d) d$r.squared)
+slopefit2
+names(slopefit2) <-c("Phase","r2")
+
+O2.r2.3 <- dlply(ch.3.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit3<-ldply(O2.r2.3, function(d) d$r.squared)
+slopefit3
+names(slopefit3) <-c("Phase","r2")
+
+O2.r2.4 <- dlply(ch.4.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit4<-ldply(O2.r2.4, function(d) d$r.squared)
+slopefit4
+names(slopefit4) <-c("Phase","r2")
+
+O2.r2.5 <- dlply(ch.5.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit5<-ldply(O2.r2.5, function(d) d$r.squared)
+slopefit5
+names(slopefit5) <-c("Phase","r2")
+
+O2.r2.6 <- dlply(ch.6.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit6<-ldply(O2.r2.6, function(d) d$r.squared)
+slopefit6
+names(slopefit6) <-c("Phase","r2")
+
+O2.r2.7 <- dlply(ch.7.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit7<-ldply(O2.r2.7, function(d) d$r.squared)
+slopefit7
+names(slopefit7) <-c("Phase","r2")
+
+O2.r2.8 <- dlply(ch.8.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit8<-ldply(O2.r2.8, function(d) d$r.squared)
+slopefit8
+names(slopefit8) <-c("Phase","r2")
+
+# merge together slope and r2
+O2slope.r2.1<-merge(O2slope1, slopefit1, by=c("Phase"))
+O2slope.r2.1<- O2slope.r2.1[mixedorder(O2slope.r2.1$Phase),]
+O2slope.r2.1
+
+O2slope.r2.2<-merge(O2slope2, slopefit2, by=c("Phase"))
+O2slope.r2.2<- O2slope.r2.2[mixedorder(O2slope.r2.2$Phase),]
+O2slope.r2.2
+
+O2slope.r2.3<-merge(O2slope3, slopefit3, by=c("Phase"))
+O2slope.r2.3<- O2slope.r2.3[mixedorder(O2slope.r2.3$Phase),]
+O2slope.r2.3
+
+O2slope.r2.4<-merge(O2slope4, slopefit4, by=c("Phase"))
+O2slope.r2.4<- O2slope.r2.4[mixedorder(O2slope.r2.4$Phase),]
+O2slope.r2.4
+
+O2slope.r2.5<-merge(O2slope5, slopefit5, by=c("Phase"))
+O2slope.r2.5<- O2slope.r2.5[mixedorder(O2slope.r2.5$Phase),]
+O2slope.r2.5
+
+O2slope.r2.6<-merge(O2slope6, slopefit6, by=c("Phase"))
+O2slope.r2.6<- O2slope.r2.6[mixedorder(O2slope.r2.6$Phase),]
+O2slope.r2.6
+
+O2slope.r2.7<-merge(O2slope7, slopefit7, by=c("Phase"))
+O2slope.r2.7<- O2slope.r2.7[mixedorder(O2slope.r2.7$Phase),]
+O2slope.r2.7
+
+O2slope.r2.8<-merge(O2slope8, slopefit8, by=c("Phase"))
+O2slope.r2.8<- O2slope.r2.8[mixedorder(O2slope.r2.8$Phase),]
+O2slope.r2.8
+
+# bind all slope and r2 dataframes. Sorts phases properly
+slopes.r2.all <- rbind(O2slope.r2.1,O2slope.r2.2,O2slope.r2.3,O2slope.r2.4,O2slope.r2.5,O2slope.r2.6,O2slope.r2.7,O2slope.r2.8)
+slopes.r2.all$fishID <- as.factor(slopes.r2.all$fishID)
+slopes.r2.all <- merge(slopes.r2.all, Phase.start, by=c("Phase"))
+phase.sort <- unique(mixedsort(slopes.r2.all$Phase))
+slopes.r2.all$Phase <- factor(slopes.r2.all$Phase, levels = phase.sort)
+
+
+str(slopes.r2.all)
+
+# add back in all the fish related data
+O2.all.trial6 <- merge(slopes.r2.all, RMR.trial)
+str(O2.all.trial6)
+
+ggplot(O2.all.trial6, aes(x=DateTime, y=Slope))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# Slope.hour is mgO2/h as calculated from the decline of mgO2 in the chamber over time in min, then converted to h. Value is negative because it's consumption of O2.
+# multiply by -1 to have a positive O2 rate, units mgO2/h
+O2.all.trial6<- mutate(O2.all.trial6, mgO2hpos = Slope.hour*-1)
+
+# calculate mass specific rates
+O2.all.trial6<- mutate(O2.all.trial6, mass.specific.mgO2ghr = mgO2hpos/weight.g)
+str(O2.all.trial6)
+
+# plot whole body MO2
+ggplot(O2.all.trial6, aes(x=Phase, y=mgO2hpos))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+# plot mass specific MO2
+ggplot(O2.all.trial6, aes(x=Phase, y=mass.specific.mgO2ghr))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# remove bg bact values
+O2.all.trial6 <- filter(O2.all.trial6, mass.specific.mgO2ghr > 0.1)
+
+O2.all <- rbind(O2.all,O2.all.trial6)
+
+# ###################
+# 
+# # Order data to find lowest 3 MO2 values
+# sort.O2<- O2.all.trial6[order(O2.all.trial6$fishID,O2.all.trial6$mass.specific.mgO2ghr),]
+# lowest3 <- by(sort.O2, sort.O2["fishID"], head, n=3)
+# 
+# # Then reduce the list into a data frame with the lowest 3 MO2 values for each fish
+# low3MO2_trial6 <- Reduce(rbind, lowest3)
+# low3MO2.ws <- rbind(low3MO2.ws,low3MO2_trial6)
+```
+
+### July 23 rd 1 t7
+```{r}
+#setwd("C:/Users/Vanessa/Documents/R/2021_pesticides")
+
+RMR_raw <- readclean("../rawData/Metabolism_GSWSfip/WSbif_rawdata/22_07_21_WS_contam_rd1_raw.txt")
+
+# Calculate average trial temp
+avgTemp <- mean(RMR_raw$Temp)
+avgTemp
+
+# Creates a new column, Time in minutes from the start of the file
+RMR_raw$Time.m <- sapply(seq_along(RMR_raw$DateTime), function(i) as.numeric(difftime(RMR_raw$DateTime[i], RMR_raw$DateTime[1], units='mins')))
+head(RMR_raw)
+ggplot(RMR_raw, aes(DateTime,Temp))+
+    geom_point()
+
+# grep finds all of the data in RMR$Phase that contains the letter M. i.e. this corresponds to measurement periods
+RMR <- RMR_raw[grep("M", RMR_raw$Phase), ]
+head(RMR)
+
+# Phases have extra spaces, so this code removes those i.e. "M1  " -> "M1"
+RMR$Phase <- gsub(" ", "", RMR$Phase, fixed = TRUE)
+# test it..
+unique(RMR$Phase)
+
+# Pulls out first value of each phase for graphing later, if you choose to graph by phase
+Phase.start <- ddply(RMR, "Phase", head, 1)
+Phase.start <- Phase.start[,1:2]
+
+#Changing the column names of the channels to the appropriate fishID/bg bacteria chamber
+Name.vec <- c("ws_049","ws_050","ws_051","ws_052","ws_053","ws_054","ws_055","ws_056")
+names(RMR)[6:13] <- Name.vec
+
+#Reshape the data so all O2sat values are in a single column
+RMR.2 <- melt(RMR, measure = Name.vec)
+head(RMR.2)
+str(RMR.2)
+
+# Rename the columns. 
+names(RMR.2) <-c("DateTime","Phase","BaroP","Salinity","Temp","Time.m","fishID","O2.sat")
+head(RMR.2)
+
+RMR.2$sat100.mgO2perL <- O2.saturation(4,RMR.2$Temp,RMR.2$BaroP, 100)[[6]]
+RMR.2$sat100.mgO2permL <- RMR.2$sat100.mgO2perL/1000
+
+# Merge raw data and fish data
+RMR.trial <-merge(RMR.2, fish.data, by=c("fishID"), all.x=TRUE)
+
+# Calculate total mgO2 by multiplying mgO2/mL and mL of chamber - fish
+RMR.trial$sat100.mgO2 <- ((RMR.trial$volume.ml - RMR.trial$weight.g)*RMR.trial$sat100.mgO2permL)
+
+# Calculate mgO2 at any point in time by multiplying %O2 saturation/100 and mgO2 at 100% sat
+RMR.trial$mgO2 <- RMR.trial$O2.sat/100*RMR.trial$sat100.mgO2
+
+ggplot(RMR.trial, aes(x = Time.m, y = mgO2, color = fishID))+
+  geom_point()
+
+# Separating out individual fish for graphing/analysis
+ch.1.meas <- subset(RMR.trial, fishID == "ws_049")
+ch.2.meas <- subset(RMR.trial, fishID == "ws_050")
+ch.3.meas <- subset(RMR.trial, fishID == "ws_051")
+ch.4.meas <- subset(RMR.trial, fishID == "ws_052")
+ch.5.meas <- subset(RMR.trial, fishID == "ws_053")
+ch.6.meas <- subset(RMR.trial, fishID == "ws_054")
+ch.7.meas <- subset(RMR.trial, fishID == "ws_055")
+ch.8.meas <- subset(RMR.trial, fishID == "ws_056")
+
+p=ggplot(data=ch.7.meas, aes(x=Time.m, y=as.numeric(O2.sat)))
+p+geom_line(aes(color=Phase))+theme_bw()+facet_wrap(~Phase, ncol=8)+
+  scale_y_continuous(name="% air saturation")+
+  scale_x_continuous(name="Time (min)")
+
+#Calculate slopes of lines for each fish, converting slope from minutes to hours
+O2slopel1 <- dlply(ch.1.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope1 <- ldply(O2slopel1, function(d) coef(d))
+names(O2slope1) <- c("Phase", "Intercept","Slope")
+O2slope1<- mutate(O2slope1, fishID = "ws_049")
+O2slope1<-ddply(O2slope1, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel2 <- dlply(ch.2.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope2 <- ldply(O2slopel2, function(d) coef(d))
+names(O2slope2) <- c("Phase", "Intercept","Slope")
+O2slope2 <- mutate(O2slope2, fishID = "ws_050")
+O2slope2<-ddply(O2slope2, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel3 <- dlply(ch.3.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope3 <- ldply(O2slopel3, function(d) coef(d))
+names(O2slope3) <- c("Phase", "Intercept","Slope")
+O2slope3 <- mutate(O2slope3, fishID = "ws_051")
+O2slope3<-ddply(O2slope3, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel4 <- dlply(ch.4.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope4 <- ldply(O2slopel4, function(d) coef(d))
+names(O2slope4) <- c("Phase", "Intercept","Slope")
+O2slope4 <- mutate(O2slope4, fishID = "ws_052")
+O2slope4<-ddply(O2slope4, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel5 <- dlply(ch.5.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope5 <- ldply(O2slopel5, function(d) coef(d))
+names(O2slope5) <- c("Phase", "Intercept","Slope")
+O2slope5 <- mutate(O2slope5, fishID = "ws_053")
+O2slope5<-ddply(O2slope5, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel6 <- dlply(ch.6.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope6 <- ldply(O2slopel6, function(d) coef(d))
+names(O2slope6) <- c("Phase", "Intercept","Slope")
+O2slope6 <- mutate(O2slope6, fishID = "ws_054")
+O2slope6<-ddply(O2slope6, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel7 <- dlply(ch.7.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope7 <- ldply(O2slopel7, function(d) coef(d))
+names(O2slope7) <- c("Phase", "Intercept","Slope")
+O2slope7 <- mutate(O2slope7, fishID = "ws_055")
+O2slope7<-ddply(O2slope7, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel8 <- dlply(ch.8.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope8 <- ldply(O2slopel8, function(d) coef(d))
+names(O2slope8) <- c("Phase", "Intercept","Slope")
+O2slope8 <- mutate(O2slope8, fishID = "ws_056")
+O2slope8<-ddply(O2slope8, .(Phase), mutate, Slope.hour=Slope*60)
+
+# Calculating slope fits
+O2.r2.1 <- dlply(ch.1.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit1<-ldply(O2.r2.1, function(d) d$r.squared)
+slopefit1
+names(slopefit1) <-c("Phase","r2")
+
+O2.r2.2 <- dlply(ch.2.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit2<-ldply(O2.r2.2, function(d) d$r.squared)
+slopefit2
+names(slopefit2) <-c("Phase","r2")
+
+O2.r2.3 <- dlply(ch.3.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit3<-ldply(O2.r2.3, function(d) d$r.squared)
+slopefit3
+names(slopefit3) <-c("Phase","r2")
+
+O2.r2.4 <- dlply(ch.4.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit4<-ldply(O2.r2.4, function(d) d$r.squared)
+slopefit4
+names(slopefit4) <-c("Phase","r2")
+
+O2.r2.5 <- dlply(ch.5.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit5<-ldply(O2.r2.5, function(d) d$r.squared)
+slopefit5
+names(slopefit5) <-c("Phase","r2")
+
+O2.r2.6 <- dlply(ch.6.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit6<-ldply(O2.r2.6, function(d) d$r.squared)
+slopefit6
+names(slopefit6) <-c("Phase","r2")
+
+O2.r2.7 <- dlply(ch.7.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit7<-ldply(O2.r2.7, function(d) d$r.squared)
+slopefit7
+names(slopefit7) <-c("Phase","r2")
+
+O2.r2.8 <- dlply(ch.8.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit8<-ldply(O2.r2.8, function(d) d$r.squared)
+slopefit8
+names(slopefit8) <-c("Phase","r2")
+
+# merge together slope and r2
+O2slope.r2.1<-merge(O2slope1, slopefit1, by=c("Phase"))
+O2slope.r2.1<- O2slope.r2.1[mixedorder(O2slope.r2.1$Phase),]
+O2slope.r2.1
+
+O2slope.r2.2<-merge(O2slope2, slopefit2, by=c("Phase"))
+O2slope.r2.2<- O2slope.r2.2[mixedorder(O2slope.r2.2$Phase),]
+O2slope.r2.2
+
+O2slope.r2.3<-merge(O2slope3, slopefit3, by=c("Phase"))
+O2slope.r2.3<- O2slope.r2.3[mixedorder(O2slope.r2.3$Phase),]
+O2slope.r2.3
+
+O2slope.r2.4<-merge(O2slope4, slopefit4, by=c("Phase"))
+O2slope.r2.4<- O2slope.r2.4[mixedorder(O2slope.r2.4$Phase),]
+O2slope.r2.4
+
+O2slope.r2.5<-merge(O2slope5, slopefit5, by=c("Phase"))
+O2slope.r2.5<- O2slope.r2.5[mixedorder(O2slope.r2.5$Phase),]
+O2slope.r2.5
+
+O2slope.r2.6<-merge(O2slope6, slopefit6, by=c("Phase"))
+O2slope.r2.6<- O2slope.r2.6[mixedorder(O2slope.r2.6$Phase),]
+O2slope.r2.6
+
+O2slope.r2.7<-merge(O2slope7, slopefit7, by=c("Phase"))
+O2slope.r2.7<- O2slope.r2.7[mixedorder(O2slope.r2.7$Phase),]
+O2slope.r2.7
+
+O2slope.r2.8<-merge(O2slope8, slopefit8, by=c("Phase"))
+O2slope.r2.8<- O2slope.r2.8[mixedorder(O2slope.r2.8$Phase),]
+O2slope.r2.8
+
+# bind all slope and r2 dataframes. Sorts phases properly
+slopes.r2.all <- rbind(O2slope.r2.1,O2slope.r2.2,O2slope.r2.3,O2slope.r2.4,O2slope.r2.5,O2slope.r2.6,O2slope.r2.7,O2slope.r2.8)
+slopes.r2.all$fishID <- as.factor(slopes.r2.all$fishID)
+slopes.r2.all <- merge(slopes.r2.all, Phase.start, by=c("Phase"))
+phase.sort <- unique(mixedsort(slopes.r2.all$Phase))
+slopes.r2.all$Phase <- factor(slopes.r2.all$Phase, levels = phase.sort)
+
+
+str(slopes.r2.all)
+
+# add back in all the fish related data
+O2.all.trial7 <- merge(slopes.r2.all, RMR.trial)
+str(O2.all.trial7)
+
+ggplot(O2.all.trial7, aes(x=DateTime, y=Slope))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# Slope.hour is mgO2/h as calculated from the decline of mgO2 in the chamber over time in min, then converted to h. Value is negative because it's consumption of O2.
+# multiply by -1 to have a positive O2 rate, units mgO2/h
+O2.all.trial7<- mutate(O2.all.trial7, mgO2hpos = Slope.hour*-1)
+
+# calculate mass specific rates
+O2.all.trial7<- mutate(O2.all.trial7, mass.specific.mgO2ghr = mgO2hpos/weight.g)
+str(O2.all.trial7)
+
+# plot whole body MO2
+ggplot(O2.all.trial7, aes(x=Phase, y=mgO2hpos))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+# plot mass specific MO2
+ggplot(O2.all.trial7, aes(x=Phase, y=mass.specific.mgO2ghr))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# remove bg bact values
+O2.all.trial7 <- filter(O2.all.trial7, mass.specific.mgO2ghr > 0.1)
+
+O2.all <- rbind(O2.all,O2.all.trial7)
+
+###################
+
+# # Order data to find lowest 3 MO2 values
+# sort.O2<- O2.all.trial7[order(O2.all.trial7$fishID,O2.all.trial7$mass.specific.mgO2ghr),]
+# lowest3 <- by(sort.O2, sort.O2["fishID"], head, n=3)
+# 
+# # Then reduce the list into a data frame with the lowest 3 MO2 values for each fish
+# low3MO2_trial7 <- Reduce(rbind, lowest3)
+# low3MO2.ws <- rbind(low3MO2.ws,low3MO2_trial7)
+```
+
+### July 23 rd 2 t8
+```{r}
+#setwd("C:/Users/Vanessa/Documents/R/2021_pesticides")
+
+RMR_raw <- readclean("../rawData/Metabolism_GSWSfip/WSbif_rawdata/22_07_23_WS_contam_rd2_raw.txt")
+
+# Calculate average trial temp
+avgTemp <- mean(RMR_raw$Temp)
+avgTemp
+
+# Creates a new column, Time in minutes from the start of the file
+RMR_raw$Time.m <- sapply(seq_along(RMR_raw$DateTime), function(i) as.numeric(difftime(RMR_raw$DateTime[i], RMR_raw$DateTime[1], units='mins')))
+head(RMR_raw)
+ggplot(RMR_raw, aes(DateTime,Temp))+
+    geom_point()
+
+# grep finds all of the data in RMR$Phase that contains the letter M. i.e. this corresponds to measurement periods
+RMR <- RMR_raw[grep("M", RMR_raw$Phase), ]
+head(RMR)
+
+# Phases have extra spaces, so this code removes those i.e. "M1  " -> "M1"
+RMR$Phase <- gsub(" ", "", RMR$Phase, fixed = TRUE)
+# test it..
+unique(RMR$Phase)
+
+# Pulls out first value of each phase for graphing later, if you choose to graph by phase
+Phase.start <- ddply(RMR, "Phase", head, 1)
+Phase.start <- Phase.start[,1:2]
+
+#Changing the column names of the channels to the appropriate fishID/bg bacteria chamber
+Name.vec <- c("ws_057","ws_058","ws_059","ws_060","ws_061","ws_062","ws_063","ws_064")
+names(RMR)[6:13] <- Name.vec
+
+#Reshape the data so all O2sat values are in a single column
+RMR.2 <- melt(RMR, measure = Name.vec)
+head(RMR.2)
+str(RMR.2)
+
+# Rename the columns. 
+names(RMR.2) <-c("DateTime","Phase","BaroP","Salinity","Temp","Time.m","fishID","O2.sat")
+head(RMR.2)
+
+RMR.2$sat100.mgO2perL <- O2.saturation(4,RMR.2$Temp,RMR.2$BaroP, 100)[[6]]
+RMR.2$sat100.mgO2permL <- RMR.2$sat100.mgO2perL/1000
+
+# Merge raw data and fish data
+RMR.trial <-merge(RMR.2, fish.data, by=c("fishID"), all.x=TRUE)
+
+# Calculate total mgO2 by multiplying mgO2/mL and mL of chamber - fish
+RMR.trial$sat100.mgO2 <- ((RMR.trial$volume.ml - RMR.trial$weight.g)*RMR.trial$sat100.mgO2permL)
+
+# Calculate mgO2 at any point in time by multiplying %O2 saturation/100 and mgO2 at 100% sat
+RMR.trial$mgO2 <- RMR.trial$O2.sat/100*RMR.trial$sat100.mgO2
+
+ggplot(RMR.trial, aes(x = Time.m, y = mgO2, color = fishID))+
+  geom_point()
+
+# Separating out individual fish for graphing/analysis
+ch.1.meas <- subset(RMR.trial, fishID == "ws_057")
+ch.2.meas <- subset(RMR.trial, fishID == "ws_058")
+ch.3.meas <- subset(RMR.trial, fishID == "ws_059")
+ch.4.meas <- subset(RMR.trial, fishID == "ws_060")
+ch.5.meas <- subset(RMR.trial, fishID == "ws_061")
+ch.6.meas <- subset(RMR.trial, fishID == "ws_062")
+ch.7.meas <- subset(RMR.trial, fishID == "ws_063")
+ch.8.meas <- subset(RMR.trial, fishID == "ws_064")
+
+p=ggplot(data=ch.7.meas, aes(x=Time.m, y=as.numeric(O2.sat)))
+p+geom_line(aes(color=Phase))+theme_bw()+facet_wrap(~Phase, ncol=8)+
+  scale_y_continuous(name="% air saturation")+
+  scale_x_continuous(name="Time (min)")
+
+#Calculate slopes of lines for each fish, converting slope from minutes to hours
+O2slopel1 <- dlply(ch.1.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope1 <- ldply(O2slopel1, function(d) coef(d))
+names(O2slope1) <- c("Phase", "Intercept","Slope")
+O2slope1<- mutate(O2slope1, fishID = "ws_057")
+O2slope1<-ddply(O2slope1, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel2 <- dlply(ch.2.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope2 <- ldply(O2slopel2, function(d) coef(d))
+names(O2slope2) <- c("Phase", "Intercept","Slope")
+O2slope2 <- mutate(O2slope2, fishID = "ws_058")
+O2slope2<-ddply(O2slope2, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel3 <- dlply(ch.3.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope3 <- ldply(O2slopel3, function(d) coef(d))
+names(O2slope3) <- c("Phase", "Intercept","Slope")
+O2slope3 <- mutate(O2slope3, fishID = "ws_059")
+O2slope3<-ddply(O2slope3, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel4 <- dlply(ch.4.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope4 <- ldply(O2slopel4, function(d) coef(d))
+names(O2slope4) <- c("Phase", "Intercept","Slope")
+O2slope4 <- mutate(O2slope4, fishID = "ws_060")
+O2slope4<-ddply(O2slope4, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel5 <- dlply(ch.5.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope5 <- ldply(O2slopel5, function(d) coef(d))
+names(O2slope5) <- c("Phase", "Intercept","Slope")
+O2slope5 <- mutate(O2slope5, fishID = "ws_061")
+O2slope5<-ddply(O2slope5, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel6 <- dlply(ch.6.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope6 <- ldply(O2slopel6, function(d) coef(d))
+names(O2slope6) <- c("Phase", "Intercept","Slope")
+O2slope6 <- mutate(O2slope6, fishID = "ws_062")
+O2slope6<-ddply(O2slope6, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel7 <- dlply(ch.7.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope7 <- ldply(O2slopel7, function(d) coef(d))
+names(O2slope7) <- c("Phase", "Intercept","Slope")
+O2slope7 <- mutate(O2slope7, fishID = "ws_063")
+O2slope7<-ddply(O2slope7, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel8 <- dlply(ch.8.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope8 <- ldply(O2slopel8, function(d) coef(d))
+names(O2slope8) <- c("Phase", "Intercept","Slope")
+O2slope8 <- mutate(O2slope8, fishID = "ws_064")
+O2slope8<-ddply(O2slope8, .(Phase), mutate, Slope.hour=Slope*60)
+
+# Calculating slope fits
+O2.r2.1 <- dlply(ch.1.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit1<-ldply(O2.r2.1, function(d) d$r.squared)
+slopefit1
+names(slopefit1) <-c("Phase","r2")
+
+O2.r2.2 <- dlply(ch.2.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit2<-ldply(O2.r2.2, function(d) d$r.squared)
+slopefit2
+names(slopefit2) <-c("Phase","r2")
+
+O2.r2.3 <- dlply(ch.3.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit3<-ldply(O2.r2.3, function(d) d$r.squared)
+slopefit3
+names(slopefit3) <-c("Phase","r2")
+
+O2.r2.4 <- dlply(ch.4.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit4<-ldply(O2.r2.4, function(d) d$r.squared)
+slopefit4
+names(slopefit4) <-c("Phase","r2")
+
+O2.r2.5 <- dlply(ch.5.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit5<-ldply(O2.r2.5, function(d) d$r.squared)
+slopefit5
+names(slopefit5) <-c("Phase","r2")
+
+O2.r2.6 <- dlply(ch.6.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit6<-ldply(O2.r2.6, function(d) d$r.squared)
+slopefit6
+names(slopefit6) <-c("Phase","r2")
+
+O2.r2.7 <- dlply(ch.7.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit7<-ldply(O2.r2.7, function(d) d$r.squared)
+slopefit7
+names(slopefit7) <-c("Phase","r2")
+
+O2.r2.8 <- dlply(ch.8.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit8<-ldply(O2.r2.8, function(d) d$r.squared)
+slopefit8
+names(slopefit8) <-c("Phase","r2")
+
+# merge together slope and r2
+O2slope.r2.1<-merge(O2slope1, slopefit1, by=c("Phase"))
+O2slope.r2.1<- O2slope.r2.1[mixedorder(O2slope.r2.1$Phase),]
+O2slope.r2.1
+
+O2slope.r2.2<-merge(O2slope2, slopefit2, by=c("Phase"))
+O2slope.r2.2<- O2slope.r2.2[mixedorder(O2slope.r2.2$Phase),]
+O2slope.r2.2
+
+O2slope.r2.3<-merge(O2slope3, slopefit3, by=c("Phase"))
+O2slope.r2.3<- O2slope.r2.3[mixedorder(O2slope.r2.3$Phase),]
+O2slope.r2.3
+
+O2slope.r2.4<-merge(O2slope4, slopefit4, by=c("Phase"))
+O2slope.r2.4<- O2slope.r2.4[mixedorder(O2slope.r2.4$Phase),]
+O2slope.r2.4
+
+O2slope.r2.5<-merge(O2slope5, slopefit5, by=c("Phase"))
+O2slope.r2.5<- O2slope.r2.5[mixedorder(O2slope.r2.5$Phase),]
+O2slope.r2.5
+
+O2slope.r2.6<-merge(O2slope6, slopefit6, by=c("Phase"))
+O2slope.r2.6<- O2slope.r2.6[mixedorder(O2slope.r2.6$Phase),]
+O2slope.r2.6
+
+O2slope.r2.7<-merge(O2slope7, slopefit7, by=c("Phase"))
+O2slope.r2.7<- O2slope.r2.7[mixedorder(O2slope.r2.7$Phase),]
+O2slope.r2.7
+
+O2slope.r2.8<-merge(O2slope8, slopefit8, by=c("Phase"))
+O2slope.r2.8<- O2slope.r2.8[mixedorder(O2slope.r2.8$Phase),]
+O2slope.r2.8
+
+# bind all slope and r2 dataframes. Sorts phases properly
+slopes.r2.all <- rbind(O2slope.r2.1,O2slope.r2.2,O2slope.r2.3,O2slope.r2.4,O2slope.r2.5,O2slope.r2.6,O2slope.r2.7,O2slope.r2.8)
+slopes.r2.all$fishID <- as.factor(slopes.r2.all$fishID)
+slopes.r2.all <- merge(slopes.r2.all, Phase.start, by=c("Phase"))
+phase.sort <- unique(mixedsort(slopes.r2.all$Phase))
+slopes.r2.all$Phase <- factor(slopes.r2.all$Phase, levels = phase.sort)
+
+
+str(slopes.r2.all)
+
+# add back in all the fish related data
+O2.all.trial8 <- merge(slopes.r2.all, RMR.trial)
+str(O2.all.trial8)
+
+ggplot(O2.all.trial8, aes(x=DateTime, y=Slope))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# Slope.hour is mgO2/h as calculated from the decline of mgO2 in the chamber over time in min, then converted to h. Value is negative because it's consumption of O2.
+# multiply by -1 to have a positive O2 rate, units mgO2/h
+O2.all.trial8<- mutate(O2.all.trial8, mgO2hpos = Slope.hour*-1)
+
+# calculate mass specific rates
+O2.all.trial8<- mutate(O2.all.trial8, mass.specific.mgO2ghr = mgO2hpos/weight.g)
+str(O2.all.trial8)
+
+# plot whole body MO2
+ggplot(O2.all.trial8, aes(x=Phase, y=mgO2hpos))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+# plot mass specific MO2
+ggplot(O2.all.trial8, aes(x=Phase, y=mass.specific.mgO2ghr))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# remove bg bact values
+O2.all.trial8 <- filter(O2.all.trial8, mass.specific.mgO2ghr > 0.1)
+
+O2.all <- rbind(O2.all,O2.all.trial8)
+
+###################
+
+# # Order data to find lowest 3 MO2 values
+# sort.O2<- O2.all.trial8[order(O2.all.trial8$fishID,O2.all.trial8$mass.specific.mgO2ghr),]
+# lowest3 <- by(sort.O2, sort.O2["fishID"], head, n=3)
+# 
+# # Then reduce the list into a data frame with the lowest 3 MO2 values for each fish
+# low3MO2_trial8 <- Reduce(rbind, lowest3)
+# low3MO2.ws <- rbind(low3MO2.ws,low3MO2_trial8)
+```
+
+### July 23 rd 3 t9
+```{r}
+#setwd("C:/Users/Vanessa/Documents/R/2021_pesticides")
+
+RMR_raw <- readclean("../rawData/Metabolism_GSWSfip/WSbif_rawdata/22_07_23_WS_contam_rd3_raw.txt")
+
+# Calculate average trial temp
+avgTemp <- mean(RMR_raw$Temp)
+avgTemp
+
+# Creates a new column, Time in minutes from the start of the file
+RMR_raw$Time.m <- sapply(seq_along(RMR_raw$DateTime), function(i) as.numeric(difftime(RMR_raw$DateTime[i], RMR_raw$DateTime[1], units='mins')))
+head(RMR_raw)
+ggplot(RMR_raw, aes(DateTime,Temp))+
+    geom_point()
+
+# grep finds all of the data in RMR$Phase that contains the letter M. i.e. this corresponds to measurement periods
+RMR <- RMR_raw[grep("M", RMR_raw$Phase), ]
+head(RMR)
+
+# Phases have extra spaces, so this code removes those i.e. "M1  " -> "M1"
+RMR$Phase <- gsub(" ", "", RMR$Phase, fixed = TRUE)
+# test it..
+unique(RMR$Phase)
+
+# Pulls out first value of each phase for graphing later, if you choose to graph by phase
+Phase.start <- ddply(RMR, "Phase", head, 1)
+Phase.start <- Phase.start[,1:2]
+
+#Changing the column names of the channels to the appropriate fishID/bg bacteria chamber
+Name.vec <- c("ws_065","ws_066","ws_067","ws_068","ws_069","ws_070","ws_071","ws_072")
+names(RMR)[6:13] <- Name.vec
+
+#Reshape the data so all O2sat values are in a single column
+RMR.2 <- melt(RMR, measure = Name.vec)
+head(RMR.2)
+str(RMR.2)
+
+# Rename the columns. 
+names(RMR.2) <-c("DateTime","Phase","BaroP","Salinity","Temp","Time.m","fishID","O2.sat")
+head(RMR.2)
+
+RMR.2$sat100.mgO2perL <- O2.saturation(4,RMR.2$Temp,RMR.2$BaroP, 100)[[6]]
+RMR.2$sat100.mgO2permL <- RMR.2$sat100.mgO2perL/1000
+
+# Merge raw data and fish data
+RMR.trial <-merge(RMR.2, fish.data, by=c("fishID"), all.x=TRUE)
+
+# Calculate total mgO2 by multiplying mgO2/mL and mL of chamber - fish
+RMR.trial$sat100.mgO2 <- ((RMR.trial$volume.ml - RMR.trial$weight.g)*RMR.trial$sat100.mgO2permL)
+
+# Calculate mgO2 at any point in time by multiplying %O2 saturation/100 and mgO2 at 100% sat
+RMR.trial$mgO2 <- RMR.trial$O2.sat/100*RMR.trial$sat100.mgO2
+
+ggplot(RMR.trial, aes(x = Time.m, y = mgO2, color = fishID))+
+  geom_point()
+
+# Separating out individual fish for graphing/analysis
+ch.1.meas <- subset(RMR.trial, fishID == "ws_065")
+ch.2.meas <- subset(RMR.trial, fishID == "ws_066")
+ch.3.meas <- subset(RMR.trial, fishID == "ws_067")
+ch.4.meas <- subset(RMR.trial, fishID == "ws_068")
+ch.5.meas <- subset(RMR.trial, fishID == "ws_069")
+ch.6.meas <- subset(RMR.trial, fishID == "ws_070")
+ch.7.meas <- subset(RMR.trial, fishID == "ws_071")
+ch.8.meas <- subset(RMR.trial, fishID == "ws_072")
+
+p=ggplot(data=ch.7.meas, aes(x=Time.m, y=as.numeric(O2.sat)))
+p+geom_line(aes(color=Phase))+theme_bw()+facet_wrap(~Phase, ncol=8)+
+  scale_y_continuous(name="% air saturation")+
+  scale_x_continuous(name="Time (min)")
+
+#Calculate slopes of lines for each fish, converting slope from minutes to hours
+O2slopel1 <- dlply(ch.1.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope1 <- ldply(O2slopel1, function(d) coef(d))
+names(O2slope1) <- c("Phase", "Intercept","Slope")
+O2slope1<- mutate(O2slope1, fishID = "ws_065")
+O2slope1<-ddply(O2slope1, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel2 <- dlply(ch.2.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope2 <- ldply(O2slopel2, function(d) coef(d))
+names(O2slope2) <- c("Phase", "Intercept","Slope")
+O2slope2 <- mutate(O2slope2, fishID = "ws_066")
+O2slope2<-ddply(O2slope2, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel3 <- dlply(ch.3.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope3 <- ldply(O2slopel3, function(d) coef(d))
+names(O2slope3) <- c("Phase", "Intercept","Slope")
+O2slope3 <- mutate(O2slope3, fishID = "ws_067")
+O2slope3<-ddply(O2slope3, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel4 <- dlply(ch.4.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope4 <- ldply(O2slopel4, function(d) coef(d))
+names(O2slope4) <- c("Phase", "Intercept","Slope")
+O2slope4 <- mutate(O2slope4, fishID = "ws_068")
+O2slope4<-ddply(O2slope4, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel5 <- dlply(ch.5.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope5 <- ldply(O2slopel5, function(d) coef(d))
+names(O2slope5) <- c("Phase", "Intercept","Slope")
+O2slope5 <- mutate(O2slope5, fishID = "ws_069")
+O2slope5<-ddply(O2slope5, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel6 <- dlply(ch.6.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope6 <- ldply(O2slopel6, function(d) coef(d))
+names(O2slope6) <- c("Phase", "Intercept","Slope")
+O2slope6 <- mutate(O2slope6, fishID = "ws_070")
+O2slope6<-ddply(O2slope6, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel7 <- dlply(ch.7.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope7 <- ldply(O2slopel7, function(d) coef(d))
+names(O2slope7) <- c("Phase", "Intercept","Slope")
+O2slope7 <- mutate(O2slope7, fishID = "ws_071")
+O2slope7<-ddply(O2slope7, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel8 <- dlply(ch.8.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope8 <- ldply(O2slopel8, function(d) coef(d))
+names(O2slope8) <- c("Phase", "Intercept","Slope")
+O2slope8 <- mutate(O2slope8, fishID = "ws_072")
+O2slope8<-ddply(O2slope8, .(Phase), mutate, Slope.hour=Slope*60)
+
+# Calculating slope fits
+O2.r2.1 <- dlply(ch.1.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit1<-ldply(O2.r2.1, function(d) d$r.squared)
+slopefit1
+names(slopefit1) <-c("Phase","r2")
+
+O2.r2.2 <- dlply(ch.2.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit2<-ldply(O2.r2.2, function(d) d$r.squared)
+slopefit2
+names(slopefit2) <-c("Phase","r2")
+
+O2.r2.3 <- dlply(ch.3.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit3<-ldply(O2.r2.3, function(d) d$r.squared)
+slopefit3
+names(slopefit3) <-c("Phase","r2")
+
+O2.r2.4 <- dlply(ch.4.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit4<-ldply(O2.r2.4, function(d) d$r.squared)
+slopefit4
+names(slopefit4) <-c("Phase","r2")
+
+O2.r2.5 <- dlply(ch.5.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit5<-ldply(O2.r2.5, function(d) d$r.squared)
+slopefit5
+names(slopefit5) <-c("Phase","r2")
+
+O2.r2.6 <- dlply(ch.6.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit6<-ldply(O2.r2.6, function(d) d$r.squared)
+slopefit6
+names(slopefit6) <-c("Phase","r2")
+
+O2.r2.7 <- dlply(ch.7.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit7<-ldply(O2.r2.7, function(d) d$r.squared)
+slopefit7
+names(slopefit7) <-c("Phase","r2")
+
+O2.r2.8 <- dlply(ch.8.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit8<-ldply(O2.r2.8, function(d) d$r.squared)
+slopefit8
+names(slopefit8) <-c("Phase","r2")
+
+# merge together slope and r2
+O2slope.r2.1<-merge(O2slope1, slopefit1, by=c("Phase"))
+O2slope.r2.1<- O2slope.r2.1[mixedorder(O2slope.r2.1$Phase),]
+O2slope.r2.1
+
+O2slope.r2.2<-merge(O2slope2, slopefit2, by=c("Phase"))
+O2slope.r2.2<- O2slope.r2.2[mixedorder(O2slope.r2.2$Phase),]
+O2slope.r2.2
+
+O2slope.r2.3<-merge(O2slope3, slopefit3, by=c("Phase"))
+O2slope.r2.3<- O2slope.r2.3[mixedorder(O2slope.r2.3$Phase),]
+O2slope.r2.3
+
+O2slope.r2.4<-merge(O2slope4, slopefit4, by=c("Phase"))
+O2slope.r2.4<- O2slope.r2.4[mixedorder(O2slope.r2.4$Phase),]
+O2slope.r2.4
+
+O2slope.r2.5<-merge(O2slope5, slopefit5, by=c("Phase"))
+O2slope.r2.5<- O2slope.r2.5[mixedorder(O2slope.r2.5$Phase),]
+O2slope.r2.5
+
+O2slope.r2.6<-merge(O2slope6, slopefit6, by=c("Phase"))
+O2slope.r2.6<- O2slope.r2.6[mixedorder(O2slope.r2.6$Phase),]
+O2slope.r2.6
+
+O2slope.r2.7<-merge(O2slope7, slopefit7, by=c("Phase"))
+O2slope.r2.7<- O2slope.r2.7[mixedorder(O2slope.r2.7$Phase),]
+O2slope.r2.7
+
+O2slope.r2.8<-merge(O2slope8, slopefit8, by=c("Phase"))
+O2slope.r2.8<- O2slope.r2.8[mixedorder(O2slope.r2.8$Phase),]
+O2slope.r2.8
+
+# bind all slope and r2 dataframes. Sorts phases properly
+slopes.r2.all <- rbind(O2slope.r2.1,O2slope.r2.2,O2slope.r2.3,O2slope.r2.4,O2slope.r2.5,O2slope.r2.6,O2slope.r2.7,O2slope.r2.8)
+slopes.r2.all$fishID <- as.factor(slopes.r2.all$fishID)
+slopes.r2.all <- merge(slopes.r2.all, Phase.start, by=c("Phase"))
+phase.sort <- unique(mixedsort(slopes.r2.all$Phase))
+slopes.r2.all$Phase <- factor(slopes.r2.all$Phase, levels = phase.sort)
+
+
+str(slopes.r2.all)
+
+# add back in all the fish related data
+O2.all.trial9 <- merge(slopes.r2.all, RMR.trial)
+str(O2.all.trial9)
+
+ggplot(O2.all.trial9, aes(x=DateTime, y=Slope))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# Slope.hour is mgO2/h as calculated from the decline of mgO2 in the chamber over time in min, then converted to h. Value is negative because it's consumption of O2.
+# multiply by -1 to have a positive O2 rate, units mgO2/h
+O2.all.trial9<- mutate(O2.all.trial9, mgO2hpos = Slope.hour*-1)
+
+# calculate mass specific rates
+O2.all.trial9<- mutate(O2.all.trial9, mass.specific.mgO2ghr = mgO2hpos/weight.g)
+str(O2.all.trial9)
+
+# plot whole body MO2
+ggplot(O2.all.trial9, aes(x=Phase, y=mgO2hpos))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+# plot mass specific MO2
+ggplot(O2.all.trial9, aes(x=Phase, y=mass.specific.mgO2ghr))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# remove bg bact values
+O2.all.trial9 <- filter(O2.all.trial9, mass.specific.mgO2ghr > 0.1)
+
+O2.all <- rbind(O2.all,O2.all.trial9)
+
+###################
+
+# # Order data to find lowest 3 MO2 values
+# sort.O2<- O2.all.trial9[order(O2.all.trial9$fishID,O2.all.trial9$mass.specific.mgO2ghr),]
+# lowest3 <- by(sort.O2, sort.O2["fishID"], head, n=3)
+# 
+# # Then reduce the list into a data frame with the lowest 3 MO2 values for each fish
+# low3MO2_trial9 <- Reduce(rbind, lowest3)
+# low3MO2.ws <- rbind(low3MO2.ws,low3MO2_trial9)
+```
+
+### July 24 rd 1 t10
+```{r}
+#setwd("C:/Users/Vanessa/Documents/R/2021_pesticides")
+
+RMR_raw <- readclean("../rawData/Metabolism_GSWSfip/WSbif_rawdata/22_07_24_WS_contam_rd1_raw.txt")
+
+# Calculate average trial temp
+avgTemp <- mean(RMR_raw$Temp)
+avgTemp
+
+# Creates a new column, Time in minutes from the start of the file
+RMR_raw$Time.m <- sapply(seq_along(RMR_raw$DateTime), function(i) as.numeric(difftime(RMR_raw$DateTime[i], RMR_raw$DateTime[1], units='mins')))
+head(RMR_raw)
+ggplot(RMR_raw, aes(DateTime,Temp))+
+    geom_point()
+
+# grep finds all of the data in RMR$Phase that contains the letter M. i.e. this corresponds to measurement periods
+RMR <- RMR_raw[grep("M", RMR_raw$Phase), ]
+head(RMR)
+
+# Phases have extra spaces, so this code removes those i.e. "M1  " -> "M1"
+RMR$Phase <- gsub(" ", "", RMR$Phase, fixed = TRUE)
+# test it..
+unique(RMR$Phase)
+
+# Pulls out first value of each phase for graphing later, if you choose to graph by phase
+Phase.start <- ddply(RMR, "Phase", head, 1)
+Phase.start <- Phase.start[,1:2]
+
+#Changing the column names of the channels to the appropriate fishID/bg bacteria chamber
+Name.vec <- c("ws_113","ws_114","ws_115","ws_116","ws_117","ws_118","ws_119","ws_120")
+names(RMR)[6:13] <- Name.vec
+
+#Reshape the data so all O2sat values are in a single column
+RMR.2 <- melt(RMR, measure = Name.vec)
+head(RMR.2)
+str(RMR.2)
+
+# Rename the columns. 
+names(RMR.2) <-c("DateTime","Phase","BaroP","Salinity","Temp","Time.m","fishID","O2.sat")
+head(RMR.2)
+
+RMR.2$sat100.mgO2perL <- O2.saturation(4,RMR.2$Temp,RMR.2$BaroP, 100)[[6]]
+RMR.2$sat100.mgO2permL <- RMR.2$sat100.mgO2perL/1000
+
+# Merge raw data and fish data
+RMR.trial <-merge(RMR.2, fish.data, by=c("fishID"), all.x=TRUE)
+
+# Calculate total mgO2 by multiplying mgO2/mL and mL of chamber - fish
+RMR.trial$sat100.mgO2 <- ((RMR.trial$volume.ml - RMR.trial$weight.g)*RMR.trial$sat100.mgO2permL)
+
+# Calculate mgO2 at any point in time by multiplying %O2 saturation/100 and mgO2 at 100% sat
+RMR.trial$mgO2 <- RMR.trial$O2.sat/100*RMR.trial$sat100.mgO2
+
+ggplot(RMR.trial, aes(x = Time.m, y = mgO2, color = fishID))+
+  geom_point()
+
+# Separating out individual fish for graphing/analysis
+ch.1.meas <- subset(RMR.trial, fishID == "ws_113")
+ch.2.meas <- subset(RMR.trial, fishID == "ws_114")
+ch.3.meas <- subset(RMR.trial, fishID == "ws_115")
+ch.4.meas <- subset(RMR.trial, fishID == "ws_116")
+ch.5.meas <- subset(RMR.trial, fishID == "ws_117")
+ch.6.meas <- subset(RMR.trial, fishID == "ws_118")
+ch.7.meas <- subset(RMR.trial, fishID == "ws_119")
+ch.8.meas <- subset(RMR.trial, fishID == "ws_120")
+
+p=ggplot(data=ch.7.meas, aes(x=Time.m, y=as.numeric(O2.sat)))
+p+geom_line(aes(color=Phase))+theme_bw()+facet_wrap(~Phase, ncol=8)+
+  scale_y_continuous(name="% air saturation")+
+  scale_x_continuous(name="Time (min)")
+
+#Calculate slopes of lines for each fish, converting slope from minutes to hours
+O2slopel1 <- dlply(ch.1.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope1 <- ldply(O2slopel1, function(d) coef(d))
+names(O2slope1) <- c("Phase", "Intercept","Slope")
+O2slope1<- mutate(O2slope1, fishID = "ws_113")
+O2slope1<-ddply(O2slope1, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel2 <- dlply(ch.2.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope2 <- ldply(O2slopel2, function(d) coef(d))
+names(O2slope2) <- c("Phase", "Intercept","Slope")
+O2slope2 <- mutate(O2slope2, fishID = "ws_114")
+O2slope2<-ddply(O2slope2, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel3 <- dlply(ch.3.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope3 <- ldply(O2slopel3, function(d) coef(d))
+names(O2slope3) <- c("Phase", "Intercept","Slope")
+O2slope3 <- mutate(O2slope3, fishID = "ws_115")
+O2slope3<-ddply(O2slope3, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel4 <- dlply(ch.4.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope4 <- ldply(O2slopel4, function(d) coef(d))
+names(O2slope4) <- c("Phase", "Intercept","Slope")
+O2slope4 <- mutate(O2slope4, fishID = "ws_116")
+O2slope4<-ddply(O2slope4, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel5 <- dlply(ch.5.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope5 <- ldply(O2slopel5, function(d) coef(d))
+names(O2slope5) <- c("Phase", "Intercept","Slope")
+O2slope5 <- mutate(O2slope5, fishID = "ws_117")
+O2slope5<-ddply(O2slope5, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel6 <- dlply(ch.6.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope6 <- ldply(O2slopel6, function(d) coef(d))
+names(O2slope6) <- c("Phase", "Intercept","Slope")
+O2slope6 <- mutate(O2slope6, fishID = "ws_118")
+O2slope6<-ddply(O2slope6, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel7 <- dlply(ch.7.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope7 <- ldply(O2slopel7, function(d) coef(d))
+names(O2slope7) <- c("Phase", "Intercept","Slope")
+O2slope7 <- mutate(O2slope7, fishID = "ws_119")
+O2slope7<-ddply(O2slope7, .(Phase), mutate, Slope.hour=Slope*60)
+
+O2slopel8 <- dlply(ch.8.meas, .(Phase), function(d) lm(mgO2 ~ Time.m, data = d))
+O2slope8 <- ldply(O2slopel8, function(d) coef(d))
+names(O2slope8) <- c("Phase", "Intercept","Slope")
+O2slope8 <- mutate(O2slope8, fishID = "ws_120")
+O2slope8<-ddply(O2slope8, .(Phase), mutate, Slope.hour=Slope*60)
+
+# Calculating slope fits
+O2.r2.1 <- dlply(ch.1.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit1<-ldply(O2.r2.1, function(d) d$r.squared)
+slopefit1
+names(slopefit1) <-c("Phase","r2")
+
+O2.r2.2 <- dlply(ch.2.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit2<-ldply(O2.r2.2, function(d) d$r.squared)
+slopefit2
+names(slopefit2) <-c("Phase","r2")
+
+O2.r2.3 <- dlply(ch.3.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit3<-ldply(O2.r2.3, function(d) d$r.squared)
+slopefit3
+names(slopefit3) <-c("Phase","r2")
+
+O2.r2.4 <- dlply(ch.4.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit4<-ldply(O2.r2.4, function(d) d$r.squared)
+slopefit4
+names(slopefit4) <-c("Phase","r2")
+
+O2.r2.5 <- dlply(ch.5.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit5<-ldply(O2.r2.5, function(d) d$r.squared)
+slopefit5
+names(slopefit5) <-c("Phase","r2")
+
+O2.r2.6 <- dlply(ch.6.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit6<-ldply(O2.r2.6, function(d) d$r.squared)
+slopefit6
+names(slopefit6) <-c("Phase","r2")
+
+O2.r2.7 <- dlply(ch.7.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit7<-ldply(O2.r2.7, function(d) d$r.squared)
+slopefit7
+names(slopefit7) <-c("Phase","r2")
+
+O2.r2.8 <- dlply(ch.8.meas, .(Phase), function(d) summary(lm(mgO2 ~ Time.m, data = d))) 
+slopefit8<-ldply(O2.r2.8, function(d) d$r.squared)
+slopefit8
+names(slopefit8) <-c("Phase","r2")
+
+# merge together slope and r2
+O2slope.r2.1<-merge(O2slope1, slopefit1, by=c("Phase"))
+O2slope.r2.1<- O2slope.r2.1[mixedorder(O2slope.r2.1$Phase),]
+O2slope.r2.1
+
+O2slope.r2.2<-merge(O2slope2, slopefit2, by=c("Phase"))
+O2slope.r2.2<- O2slope.r2.2[mixedorder(O2slope.r2.2$Phase),]
+O2slope.r2.2
+
+O2slope.r2.3<-merge(O2slope3, slopefit3, by=c("Phase"))
+O2slope.r2.3<- O2slope.r2.3[mixedorder(O2slope.r2.3$Phase),]
+O2slope.r2.3
+
+O2slope.r2.4<-merge(O2slope4, slopefit4, by=c("Phase"))
+O2slope.r2.4<- O2slope.r2.4[mixedorder(O2slope.r2.4$Phase),]
+O2slope.r2.4
+
+O2slope.r2.5<-merge(O2slope5, slopefit5, by=c("Phase"))
+O2slope.r2.5<- O2slope.r2.5[mixedorder(O2slope.r2.5$Phase),]
+O2slope.r2.5
+
+O2slope.r2.6<-merge(O2slope6, slopefit6, by=c("Phase"))
+O2slope.r2.6<- O2slope.r2.6[mixedorder(O2slope.r2.6$Phase),]
+O2slope.r2.6
+
+O2slope.r2.7<-merge(O2slope7, slopefit7, by=c("Phase"))
+O2slope.r2.7<- O2slope.r2.7[mixedorder(O2slope.r2.7$Phase),]
+O2slope.r2.7
+
+O2slope.r2.8<-merge(O2slope8, slopefit8, by=c("Phase"))
+O2slope.r2.8<- O2slope.r2.8[mixedorder(O2slope.r2.8$Phase),]
+O2slope.r2.8
+
+# bind all slope and r2 dataframes. Sorts phases properly
+slopes.r2.all <- rbind(O2slope.r2.1,O2slope.r2.2,O2slope.r2.3,O2slope.r2.4,O2slope.r2.5,O2slope.r2.6,O2slope.r2.7,O2slope.r2.8)
+slopes.r2.all$fishID <- as.factor(slopes.r2.all$fishID)
+slopes.r2.all <- merge(slopes.r2.all, Phase.start, by=c("Phase"))
+phase.sort <- unique(mixedsort(slopes.r2.all$Phase))
+slopes.r2.all$Phase <- factor(slopes.r2.all$Phase, levels = phase.sort)
+
+
+str(slopes.r2.all)
+
+# add back in all the fish related data
+O2.all.trial10 <- merge(slopes.r2.all, RMR.trial)
+str(O2.all.trial10)
+
+ggplot(O2.all.trial10, aes(x=DateTime, y=Slope))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# Slope.hour is mgO2/h as calculated from the decline of mgO2 in the chamber over time in min, then converted to h. Value is negative because it's consumption of O2.
+# multiply by -1 to have a positive O2 rate, units mgO2/h
+O2.all.trial10<- mutate(O2.all.trial10, mgO2hpos = Slope.hour*-1)
+
+# calculate mass specific rates
+O2.all.trial10<- mutate(O2.all.trial10, mass.specific.mgO2ghr = mgO2hpos/weight.g)
+str(O2.all.trial10)
+
+# plot whole body MO2
+ggplot(O2.all.trial10, aes(x=Phase, y=mgO2hpos))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+# plot mass specific MO2
+ggplot(O2.all.trial10, aes(x=Phase, y=mass.specific.mgO2ghr))+
+  geom_point(aes(color=fishID))+
+  theme_bw()
+
+# remove bg bact values
+O2.all.trial10 <- filter(O2.all.trial10, mass.specific.mgO2ghr > 0.1)
+
+O2.all <- rbind(O2.all,O2.all.trial10)
+```
+
+
+
+### WS data tidying, visualization, and analysis
+```{r WS add chem analysis to dataframe}
+# add measured concentrations to the dataframe
+bifWS_chemanalysis = read.csv("../rawData/Metabolism_GSWSfip/ChemAnalysis_WSBifenthrin_2022_Reduced.csv")
+ bifWS_chemanalysis[bifWS_chemanalysis=="ND"] <- 0
+
+# add nom conc to dataframe 
+O2.all$NomConc = NA
+for(i in 1:nrow(O2.all)) {
+ifelse(O2.all$treatment[i]=="white", O2.all$NomConc[i]<-0, 
+   ifelse(O2.all$treatment[i]=="green", O2.all$NomConc[i]<-10,
+       ifelse(O2.all$treatment[i]=="yellow", O2.all$NomConc[i]<-100, O2.all$NomConc[i]<-500)) ) 
+}
+
+WS22.O2.all.temp <- merge(O2.all, bifWS_chemanalysis, all.x=T)
+WS22.O2.all.temp$CalcConc = as.numeric(WS22.O2.all.temp$CalcConc) 
+WS22.O2.all.temp$date = as.Date(substring(WS22.O2.all.temp$date,3,10), format="%y-%m-%d")
+```
+
+```{r WScalc lowMO2}
+
+
+#write.csv(W22.O2.all.temp, "../outputData/Metabolism_GSWSfip/WS2022Bif_All.O2slope.Measures.csv")
+
+W22.O2.all.temp = read.csv("../outputData/Metabolism_GSWSfip/WS2022Bif_All.O2slope.Measures.csv")
+
+
+WS22.O2.all = WS22.O2.all.temp
+
+hist(WS22.O2.all$r2)
+hist(filter(WS22.O2.all, r2<0.90)$r2)
+
+# fix Date
+WS22.O2.all$date = as.Date(WS22.O2.all$DateTime)
+# fix fishID
+WS22.O2.all$fishID = as.character(WS22.O2.all$fishID)
+
+
+# filter out poor r2
+WS22.O2.all.r2filt <- filter(WS22.O2.all, r2 > 0.98)
+ # removes 159 of 495 segments, and 8 unique fish  (ID in 'poorR2_ID' next)
+ poorR2_ID = unique(WS22.O2.all$fishID)[is.na(match(unique(WS22.O2.all$fishID), 
+                                                    unique(WS22.O2.all.r2filt$fishID)) )]
+
+# identify fish with <3 measurements after removing poor r2 (fish not removed yet)
+ SampNumb = data.frame(table(WS22.O2.all.r2filt$fishID))
+ lowSamp = SampNumb[SampNumb$Freq<3,] # 17 more to remove here; this is a lot of fish lost to poor data quality!
+ 
+# Calculate lowMO2 - keep lowest 3
+# the rationale (as guessed by Anna) is that the least slope in the line (ie: the lowers O2 use per hr) corresponds with the most relaxed state of the fish which is the goal since this is an RMR not a MMR
+sort.WS22.O2 <- WS22.O2.all.r2filt[order(WS22.O2.all.r2filt$fishID,
+                                    WS22.O2.all.r2filt$mass.specific.mgO2ghr),]
+
+lowest3.WS22 <- by(sort.WS22.O2, sort.WS22.O2["fishID"], head, n=3) # creates a list of lowest three
+low3O2.WS22 <- Reduce(rbind, lowest3.WS22) # merges the list back into a dataframe
+
+# check that IDs with <3 good traces are the same as 'lowSamp'
+data.frame(table(low3O2.WS22$fishID))[as.data.frame(table(low3O2.WS22$fishID))$Freq<3,]
+
+# reduce dataset to only those with 3 metabolism traces with r2 over 0.98
+low3MO2.WS22 = low3O2.WS22[!(low3O2.WS22$fishID %in% lowSamp$Var1),]
+
+# set treatment and measurement levels to factor
+  low3MO2.WS22$treatment = factor(low3MO2.WS22$treatment,
+                                  levels=c("white","green","yellow","red"))
+  low3MO2.WS22$Phase = factor(low3MO2.WS22$Phase,
+                                  levels=paste0("M",1:10))
+  
+    
+# 73 unique fish remain
+# remaining sample sizes per treatment if remove all those with < 3 traces that have r2>0.98 and are not in pink or blue
+  table(unique(low3MO2.WS22[,c("fishID","treatment")])$treatment)
+   # white  green yellow  red
+   #  18     20    19     16
+  
+  
+
+
+# Mean of the lowest 3 values (including all fish with data)
+O2.WS22.final <- low3MO2.WS22 %>%
+  group_by(fishID, Contam, CalcConc, date, round, chamber, weight.g, length.mm) %>%
+  summarise(mn3.mass.spec.MO2 = mean(mass.specific.mgO2ghr), 
+            sd3.mass.spec.MO2 = sd(mass.specific.mgO2ghr),
+            mn.temp = mean(Temp, na.rm=T) ) %>%
+  data.frame()
+
+str(O2.WS22.final)
+  # n=73 
+
+```
+
+
+
+### WS data plots
+```{r WS QC plots}
+
+#trends in lowest three measures by relevant experimental conditions
+ggplot(low3MO2.WS22, aes(x= Phase, y = mass.specific.mgO2ghr, fill = treatment))+
+  geom_jitter(width=.1, pch=21, size=3) + 
+  scale_fill_manual(values=c("grey90","green3","goldenrod1","red")) + 
+  theme_bw()
+
+ggplot(low3MO2.WS22, aes(x= chamber, y = mass.specific.mgO2ghr, fill = treatment))+
+  geom_jitter(width=.1, pch=21, size=3) + 
+  scale_fill_manual(values=c("grey90","green3","goldenrod1","red")) +
+  facet_wrap(.~date) + 
+    theme_bw()
+
+ggplot(low3MO2.WS22, aes(x= round, y = mass.specific.mgO2ghr, color = log(CalcConc+1)))+
+  geom_jitter(width=.3) +  facet_wrap(.~date) + 
+    theme_bw()
+
+# trends in mean by relevant experimental conditions
+ggplot(O2.WS22.final, aes(x= chamber, y = mn3.mass.spec.MO2, color = log(CalcConc+1)))+
+  geom_jitter(width=.1) + facet_wrap(.~date) + 
+    theme_bw()
+
+ggplot(O2.WS22.final, aes(x= round, y = mn3.mass.spec.MO2, fill = factor(CalcConc)))+
+  geom_jitter(width=.3, pch=21, size=3) + 
+  scale_fill_manual(values=c("grey90","green3","goldenrod1","red")) +
+  facet_wrap(.~date) + 
+    theme_bw()
+
+
+```
+
+```{r WS output plots and models}
+
+ggplot(low3MO2.WS22, aes(x= Phase, y = mass.specific.mgO2ghr, color = fishID))+
+  geom_point()+
+  facet_wrap(~treatment)
+
+
+finalplot.MO2.WS = ggplot(O2.WS22.final, aes(x = as.factor(CalcConc), y = mn3.mass.spec.MO2))+
+  geom_boxplot(aes(fill=factor(CalcConc))) +
+  scale_x_discrete(labels = c("0","1","10","100")) + 
+  scale_fill_manual(guide=FALSE, values=c("grey90","green3","goldenrod1","red")) + 
+  ylab("White Sturgeon\nMass Specific Metabolic Rate") + 
+  theme_bw() + coord_cartesian(ylim=c(0,.6))
+finalplot.MO2.WS + xlab("Fipronil\nNominal Exposure Concentration (ug/L)")
+
+
+mlm.ws.0a = lmer(mn3.mass.spec.MO2 ~ 1 + (1|chamber), data = O2.WS22.final)
+ summary(mlm.ws.0a) # chamber explains about 1/6 of the variance
+ ranef(mlm.ws.0a)  # chambers 2-6 are low, 1,7,8 are high (same pattern as with GS, except for chamber #3; scale of difference is smaller than with gs
+ 
+  mlm.ws.0b = lmer(mn3.mass.spec.MO2 ~ 1 + (1|round), data = O2.WS22.final) # singluar fit
+   summary(mlm.ws.0b) # round has singular fit, no variance explained
+  # means of the MO2 for the three groups are very simliar: rd1=.330, rd2=.320, rd3=.313
+  
+  mlm.ws.0c = lmer(mn3.mass.spec.MO2 ~ 1 + (1|date), data = O2.WS22.final) 
+   summary(mlm.ws.0c) # date does NOT have singular fit, 1/30 of variance explained
+  # means of the MO2 for the six groups are simliar but with slight decrease over time
+
+   
+mlm.ws.1 = lmer(mn3.mass.spec.MO2 ~ log(CalcConc+1) + (1|chamber), data = O2.WS22.final)
+ summary(mlm.ws.1) # tiny effect of concentration, when compared to intercept
+ ranef(mlm.ws.1)   # magnitude greater effect of chamber than concentration
+ #anova(mlm.gs.1)
+ # specialized mixed model anova test:
+ afex::mixed(mn3.mass.spec.MO2 ~ log(CalcConc+1) + (1|chamber), data = O2.WS22.final)
+  # p = 0.715, estDF = 68.53
+   
+ 
+# mlm.gs.2 = lmer(mn3.mass.spec.MO2 ~ log(CalcConc+1)  + (1|date), data = O2.GS21.final)
+#  summary(mlm.gs.2)
+#  ranef(mlm.gs.2)
+ 
+ AIC(mlm.ws.1) - AIC(mlm.ws.0a)
+  # delta AIC = 11.09; null model with lower AIC than full model
+ 
+m.ws.1 = lm(mn3.mass.spec.MO2 ~ log(CalcConc+1) , data = O2.WS22.final, na.action="na.fail")
+ summary(m.ws.1)
+ summary(aov(m.ws.1))
+  # in agreement with mixed model; tiny effect of calcConc, not statistically significant
+  dredge(m.gs.1) # best model is without calcConc; deltaAIC = 1.75 
+ 
+```
+
+
+### final plots
+```{r final plots both}
+
+# tiff(filename="../figures/Metabolism_GSWSFip_forreport.jpeg", width=400, height=600, units="px", compression="lzw", res=100)
+# 
+# (finalplot.MO2.GS + xlab("") ) + (finalplot.MO2.WS +   xlab("Fipronil\nNominal Exposure Concentration (ug/L)")) + plot_layout(ncol=1)
+# 
+# dev.off()
+
+```
+
+
+### final stats
+```{r final stats both}
+
+mlm.0 = lmer(mn3.mass.spec.MO2 ~ 1 + (1|chamber), data = O2.WS22.final)
+summary(mlm.0); ranef(mlm.0) # explains about half the variation; higher rates in outer chambers
+
+mlm.1 = lmer(mn3.mass.spec.MO2 ~ log(CalcConc+1) + (1|chamber), data = O2.WS22.final)
+ summary(mlm.1) # tiny effect of concentration, when compared to intercept
+ ranef(mlm.1)   
+ # specialized mixed model anova test:
+ afex::mixed(mn3.mass.spec.MO2 ~ log(CalcConc+1) + (1|chamber), data = O2.WS22.final)
+
+mlm.2 = lmer(mn3.mass.spec.MO2 ~ log(CalcConc+1) + spp + (1|chamber), data = O2.WS22.final)
+ summary(mlm.2) # tiny effect of concentration, when compared to intercept, moderate effect of spp (likely significant based on tvalue)
+ ranef(mlm.2)   
+ # specialized mixed model anova test:
+ afex::mixed(mn3.mass.spec.MO2 ~ log(CalcConc+1) + spp + (1|chamber), data = O2.WS22.final)
+   # species signfiicant (p=0.002, estdf = 126.42), with GS having higher metabolic rate than WS
+ 
+mlm.3 = lmer(mn3.mass.spec.MO2 ~ spp + (1|chamber), data = O2.WS22.final)
+ summary(mlm.3) # moderate effect of spp (likely significant based on tvalue)
+ ranef(mlm.3)   
+ # specialized mixed model anova test:
+ afex::mixed(mn3.mass.spec.MO2 ~ spp + (1|chamber), data = O2.WS22.final)
+   # species signfiicant (p=0.002, estdf = 127.45), with GS having higher metabolic rate than WS
+ 
+ AIC(mlm.0) - AIC(mlm.1)
+  # -10.5; null better than conc only
+ AIC(mlm.0) - AIC(mlm.2)
+ # -10/5; null still better than both vars
+ AIC(mlm.1) - AIC(mlm.2)
+ # 0.2; spp only better than both spp and concentration, but barely
+ AIC(mlm.0) - AIC(mlm.3)
+ # 0.712; spp only better than null, but barely
+ 
+```
+
