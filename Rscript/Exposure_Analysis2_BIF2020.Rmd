@@ -402,13 +402,20 @@ DataSumChg.Vel = DataSum2496.vel %>%
 
 ### Meander and Turn Angle
 ```{r meander/turn angle data, echo=F}
+DataSum2496$TurnAngle_degRel2 = DataSum2496$SumTurnAngleRel
+DataSum2496$TurnAngle_degRel2[DataSum2496$SumTurnAngleRel<0 &
+                              !is.na(DataSum2496$SumTurnAngleRel)] <-
+  DataSum2496$SumTurnAngleRel[DataSum2496$SumTurnAngleRel<0 &
+                               !is.na(DataSum2496$SumTurnAngleRel)] + 360
 
 ## Summarize meander and turn angle
 DataSum2496.meand = DataSum2496 %>%
   #filter(Meander>0.1) %>% # initially added this because many of the meander values are tiny and seem to be causing issues. Generally the fish move straight, but we want to know whether they turn more than normal, when they do turn. Perhaps should adjust all values < threshold to zero then run a zero inflated model on these. Predict the % of time they are moving straight (0) and then evaluate how much they are turning, if they turn. That will be a problem for a later day. 
+  filter(SumTurnAngleAbs<360) %>% #these points are likely those where the fish stays still but the tracker jumps back and forth, making it look like a lot of 180 turns. They represent 0.48% of the dataset here for Bif 2020, at 24 and 96hrs
+  filter(SumDistMoved>0) %>% # makes these plots only the metrics for when the fish is moving (ie: if fish moves, how straight does it move?)
   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, calcConc, RepID) %>%
-  summarize(MnTurnAngle = deg(circ.mean.na(rad(TurnAngleCirc))), 
-            VarTurnAngle = deg(circ.disp.na(rad(TurnAngleCirc))$var), # circular variance
+  summarize(MnTurnAngle = deg(circ.mean.na(rad(SumTurnAngleRel))), 
+            VarTurnAngle = deg(circ.disp.na(rad(SumTurnAngleRel))$var), # circ. variance
             MnMeander = mean(MeanderCirc, na.rm=T),
             SDMeander = sd(MeanderCirc, na.rm=T),
             CVMeander = sd(MeanderCirc, na.rm=T)/abs(mean(MeanderCirc, na.rm=T)))  %>%
@@ -416,7 +423,7 @@ DataSum2496.meand = DataSum2496 %>%
   data.frame()
 
 #keep raw data but remove missing points
-DataSum2496.mraw = DataSum2496[!is.na(DataSum2496$TurnAngle_deg),]
+DataSum2496.mraw = DataSum2496[!is.na(DataSum2496$TurnAngle_degRel2),]
 ```
 
 ```{r meander/turn angle plots, echo=F}
@@ -428,17 +435,7 @@ meanMeander.plot = ggplot(DataSum2496.meand,
   xlab ("Exposure Hours") + 
   scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
   theme_bw()
-  
-mnTurnangle.plot = ggplot(DataSum2496.meand, 
-                           aes(fill=factor(Treatment), y=abs(MnTurnAngle), 
-                              x=factor(ExposureHrs) ) ) + 
-  geom_boxplot(outlier.size = .75) + 
-  #geom_violin(outlier.size = .75) + 
-  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")), scales="free") +
-  ylab("Mean Turn Angle (deg)") + 
-  xlab ("Exposure Hours") + 
-  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
-  theme_bw()
+
   
 sdMeander.plot = ggplot(DataSum2496.meand, 
                            aes(fill=factor(Treatment), y=(SDMeander), 
@@ -457,6 +454,19 @@ CVMeander.plot = ggplot(DataSum2496.meand,
   xlab ("Exposure Hours") + ylim(c(0,100))+
   scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
   theme_bw()
+
+  
+mnTurnangle.plot = ggplot(DataSum2496.meand, 
+                           aes(fill=factor(Treatment), y=abs(MnTurnAngle), 
+                              x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  #geom_violin(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")), scales="free") +
+  ylab("Mean Turn Angle (deg)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+  theme_bw()
+
 
 VarTurnangle.plot = ggplot(DataSum2496.meand, 
                            aes(fill=factor(Treatment), y=(VarTurnAngle), 
@@ -760,8 +770,8 @@ CenterC.plot
 
 ```{r final summarized datasets for opendata}
 
-DataSum2496$TurnAngleCirc = abs(DataSum2496$TurnAngleCirc)
-DataSum2496$MeanderCirc = abs(DataSum2496$MeanderCirc)
+DataSum2496$SumTurnAngleAbs = abs(DataSum2496$SumTurnAngleRel)
+DataSum2496$MeanderCircAbs = abs(DataSum2496$MeanderCirc)
 
 DataSum.summarized = DataSum2496 %>%
   filter(!is.na(InZoneC)) %>%  
@@ -769,11 +779,11 @@ DataSum.summarized = DataSum2496 %>%
            Replicate, RepID) %>%
   summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100),
             MnVel = mean(MnVel, na.rm=T),
-            MnTurnAngle = deg(circ.mean.na(rad(TurnAngleCirc))), 
-            VarTurnAngle = deg(circ.disp.na(rad(TurnAngleCirc))$var), # circular variance
-            MnMeander = mean(MeanderCirc, na.rm=T),
-            SDMeander = sd(MeanderCirc, na.rm=T),
-            CVMeander = sd(MeanderCirc, na.rm=T)/abs(mean(MeanderCirc, na.rm=T)),
+            MnTurnAngle = deg(circ.mean.na(rad(SumTurnAngleAbs))), 
+            VarTurnAngle = deg(circ.disp.na(rad(SumTurnAngleAbs))$var), # circular variance
+            MnMeander = mean(MeanderCircAbs, na.rm=T),
+            SDMeander = sd(MeanderCircAbs, na.rm=T),
+            CVMeander = sd(MeanderCircAbs, na.rm=T)/abs(mean(MeanderCircAbs, na.rm=T)),
             InZoneC = sum(InZoneC, na.rm=T), 
             npos = n()) %>%
   mutate(PercZoneC.1 = InZoneC / npos) %>%

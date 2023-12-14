@@ -66,23 +66,25 @@ DataSumAll.raw = read.csv("outputData/Exposure_Outputdata/Fipronil_2021_Cleaned_
 
 ## Add measured concentrations (versus nominal)
 ```{r chem analysis results}
-chemcsv.raw = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Fipronil_2021_Summary.csv")
-  chemcsv <- chemcsv.raw[chemcsv.raw$chemical=="fipronil" & chemcsv.raw$sample=="spike", c("spp", "nomconc", "calcConc")]
- 
-  
-DataSum96 <- merge(DataSum96.raw, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
- DataSum96$calcConc = as.numeric(DataSum96$calcConc)
- 
-DataSum2496 <- merge(DataSum2496.raw, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
- DataSum96$calcConc = as.numeric(DataSum96$calcConc)
- 
-DataSumAll <- merge(DataSumAll.raw, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
- DataSum96$calcConc = as.numeric(DataSum96$calcConc) 
+## is in Exposure_Analysis1_FIP@021, so removed here. Notes still valid
+
+# chemcsv.raw = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Fipronil_2021_Summary.csv")
+#   chemcsv <- chemcsv.raw[chemcsv.raw$chemical=="fipronil" & chemcsv.raw$sample=="spike", c("spp", "nomconc", "calcConc")]
+#  
+#   
+# DataSum96 <- merge(DataSum96.raw, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
+#  DataSum96$calcConc = as.numeric(DataSum96$calcConc)
+#  
+# DataSum2496 <- merge(DataSum2496.raw, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
+#  DataSum96$calcConc = as.numeric(DataSum96$calcConc)
+#  
+# DataSumAll <- merge(DataSumAll.raw, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
+#  DataSum96$calcConc = as.numeric(DataSum96$calcConc) 
  
 ```
 # this uses 'spike' water analysis, and will report final composite sample in the paper. I think. Remember these were the chemical analysis results that were odd...likely because we used two seperate stock solutions for <100 and >500, which had been mixed by someone else and which were 2-3 months old when I used them. Used the same ones for both GS and WS, and they likely were degrading in the refridgerator between exposures. The best explanation for the chem results we saw was that there were high levels of degredate in the stock solution prior to initiation of the trial, leading to high levels for many of the chemical constituants for the 500 and 1000 ug/L exposures. 
 
-## Add water temps at end of trial for 96
+## Add water temps at end of trial 
 ```{r add indiv water temp increase}
 gstemp = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_IndivBehaviorVideo_GS2021_Temps.csv")
 wstemp = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_IndivBehaviorVideo_WS2021_Temps.csv")
@@ -759,8 +761,8 @@ DataSum2496.mraw = DataSum2496[!is.na(DataSum2496$TurnAngle_deg),]
 ## Summarize meander and turn angle
 DataSumAll.meand = DataSumAll %>%
   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, calcConc, RepID) %>%
-  summarize(MnTurnAngle = deg(circ.mean.na(rad(TurnAngleCirc))), 
-            VarTurnAngle = deg(circ.disp.na(rad(TurnAngleCirc))$var), # circular variance
+  summarize(MnTurnAngle = deg(circ.mean.na(rad(abs(SumTurnAngleRel)))), 
+            VarTurnAngle = deg(circ.disp.na(rad(abs(SumTurnAngleRel)))$var), # circular variance
             MnMeander = mean(MeanderCirc, na.rm=T),
             SDMeander = sd(MeanderCirc, na.rm=T),
             CVMeander = sd(MeanderCirc, na.rm=T)/abs(mean(MeanderCirc, na.rm=T)))  %>%
@@ -1117,8 +1119,8 @@ DataSumAll.summarized = DataSumAll.T %>%
            Tray, Replicate, index, RepID, endtemp, pred.endtemp) %>%
   summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100),
             MnVel = mean(MnVel, na.rm=T),
-            MnTurnAngle = deg(circ.mean.na(rad(TurnAngleCirc))), 
-            VarTurnAngle = deg(circ.disp.na(rad(TurnAngleCirc))$var), # circular variance
+            MnTurnAngle = deg(circ.mean.na(rad(abs(SumTurnAngleRel)))), 
+            VarTurnAngle = deg(circ.disp.na(rad(abs(SumTurnAngleRel)))$var), # circ. var.
             MnMeander = mean(MeanderCirc, na.rm=T),
             SDMeander = sd(MeanderCirc, na.rm=T),
             CVMeander = sd(MeanderCirc, na.rm=T)/abs(mean(MeanderCirc, na.rm=T)),

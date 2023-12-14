@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(readtext) # need this because the ethovision output .txt files have unusual encoding as UTF-16
 library(lme4)
-library(rethinking)
+#library(rethinking)
 library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
 
 knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
@@ -141,11 +141,14 @@ summarize(group_by(WSdata, Trial, Replicate, ExposureHrs, Treatment), max(TrialT
 ```{r cut data}
 GSdatasub = GSdata[,c("index","Trial","Arena","Replicate","ExposureHrs","Treatment","Spp","Contaminant","TrialTime_s","Xcent_mm","Ycent_mm","DistMoved_mm","Vel_mms","Meander_degmmabs","TurnAngle_degabs","Meander_degmmrel","TurnAngle_degrel","InZoneB","InZoneC"),]
 
+## original turn angle code: converted negative turns to to 360deg scale 
 GSdatasub$TurnAngle_degrel2 = GSdatasub$TurnAngle_degrel
-GSdatasub$TurnAngle_degrel2[GSdatasub$TurnAngle_degrel<0 & 
-                              !is.na(GSdatasub$TurnAngle_degrel)] <- 
-  GSdatasub$TurnAngle_degrel[GSdatasub$TurnAngle_degrel<0 & 
+GSdatasub$TurnAngle_degrel2[GSdatasub$TurnAngle_degrel<0 &
+                              !is.na(GSdatasub$TurnAngle_degrel)] <-
+  GSdatasub$TurnAngle_degrel[GSdatasub$TurnAngle_degrel<0 &
                                !is.na(GSdatasub$TurnAngle_degrel)] +360
+
+## Nov 2023, I realized that because I'm summarizing to one metric per 6 positions, I should add the relative angles to get the overall turn angle for the 6-pos summary. Then I can convert to absolute scale if I want to remove directionality, and use the abs scale to calculate meander (degrees turned per distance moved). 
 
 GSdatasub$DistMoved_mm.NA0 = GSdatasub$DistMoved_mm
  GSdatasub$DistMoved_mm.NA0[is.na(GSdatasub$DistMoved_mm)] <- 0
@@ -163,19 +166,21 @@ GSdatasum = GSdatasub %>%
             SumDistMoved = sum(DistMoved_mm, na.rm=T),
             MnVel = mean(Vel_mms, na.rm=T),
             #Meander = mean(Meander_degmm, na.rm=T),
-            TurnAngleCirc = deg(circ.mean.na(rad(TurnAngle_degrel2))),
+            CircMnTurnAngleAbs = deg(circ.mean.na(rad(TurnAngle_degrel2))),
+            SumTurnAngleRel = sum(TurnAngle_degrel, na.rm=T),
             InZoneB = max(InZoneB), 
             InZoneC = max(InZoneC) ) %>%
   ungroup() %>%
   data.frame()
 
 # rather than summarize the meander at each step, recalculate it at these summaruzed steps by taking the mean heading (turn angle over the 0.2 secs) and divide it by the total distance moved in that same period, following the calculations made by Ethovision to calculate meander. 
-GSdatasum$MeanderCirc = GSdatasum$TurnAngleCirc/GSdatasum$SumDistMoved
+GSdatasum$MeanderCirc = GSdatasum$SumTurnAngleRel/GSdatasum$SumDistMoved
 
 
 WSdatasub = WSdata[,c("index","Trial","Arena","Replicate","ExposureHrs","Treatment","Spp","Contaminant","TrialTime_s","Xcent_mm","Ycent_mm","DistMoved_mm","Vel_mms","Meander_degmmabs","TurnAngle_degabs","Meander_degmmrel","TurnAngle_degrel","InZoneB","InZoneC"),]#,"ActivPerc","ActivState"),] # active removed because it's defined as the % of pixels moving in a dish at each time step. But with GS most of the movement was refletions not fish,so this isn't a useful netric this year.
 
 
+## original turn angle code: converted negative turns to to 360deg scale 
 WSdatasub$TurnAngle_degrel2 = WSdatasub$TurnAngle_degrel
 WSdatasub$TurnAngle_degrel2[WSdatasub$TurnAngle_degrel<0 & 
                               !is.na(WSdatasub$TurnAngle_degrel)] <- 
@@ -198,14 +203,15 @@ WSdatasum = WSdatasub %>%
             SumDistMoved = sum(DistMoved_mm, na.rm=T),
             MnVel = mean(Vel_mms, na.rm=T),
             #Meander = mean(Meander_degmm, na.rm=T),
-            TurnAngleCirc = deg(circ.mean.na(rad(TurnAngle_degrel2))),
+            CircMnTurnAngleAbs = deg(circ.mean.na(rad(TurnAngle_degrel2))),
+            SumTurnAngleRel = sum(TurnAngle_degrel, na.rm=T),
             InZoneB = max(InZoneB), 
             InZoneC = max(InZoneC) ) %>%
   ungroup() %>%
   data.frame()
 
 # rather than summarize the meander at each step, recalculate it at these summaruzed steps by taking the mean heading (turn angle over the 0.2 secs) and divide it by the total distance moved in that same period, following the calculations made by Ethovision to calculate meander. 
-WSdatasum$MeanderCirc = WSdatasum$TurnAngleCirc/WSdatasum$SumDistMoved
+WSdatasum$MeanderCirc = WSdatasum$SumTurnAngleRel/WSdatasum$SumDistMoved
 ```
 
 #### combine WS and GS data
@@ -320,7 +326,6 @@ acclimplot.meand + facet_wrap(~ExposureHrs)
 ```
 ### generally less meander in first two minutes, but no acclimation signal after that. Set acclimation time to 3 min.
 
-
 #### Evaluate for proper acclimation time - InZoneC
 ```{r inzone acclim test}
 data.frame(table(acclimdat$InZoneC))
@@ -347,8 +352,6 @@ acclimplot.zone + facet_wrap(~ExposureHrs)
 
 ```
 ### No clear indication of acclimation differences; Set acclimation time to 3 min.
-
-
 
 #### Evaluate for proper acclimation time - activity
 ```{r activity acclim test}
@@ -380,6 +383,8 @@ acclimplot.zone + facet_wrap(~ExposureHrs)
 ```{r remove acclim time} 
 
 DataSum2496 = DataSum2496[DataSum2496$TrialTime>(3*60),]
+
+# all trials end at 900s of recording, or 15 minutes; so removing first 3 makes each recording 12 minutes exactly
 
 ```
 

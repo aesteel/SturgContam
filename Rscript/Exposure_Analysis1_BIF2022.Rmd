@@ -11,10 +11,11 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(readtext) # need this because the ethovision output .txt files have unusual encoding as UTF-16
 library(lme4)
-library(rethinking)
+#library(rethinking)
 library(circular)
 library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
 library(rstatix)
+library(chron)
 
 knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
 ```
@@ -65,7 +66,7 @@ WSdatadir = "/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_Etho
   
 # read in file names 
 WSfilelist = list.files(path=WSdatadir, pattern="Track-WScontam") 
-  ## for now I've pulled out everything tha isn't 96hrs
+  ## for now I've pulled out everything from Camera 4; issues with tracks and needs editing
 ```
 
 #### Read in data
@@ -115,7 +116,7 @@ WSfilelist = list.files(path=WSdatadir, pattern="Track-WScontam")
 
 ```{r corrections}
 # remove trial 45 until can edit later
-WSdata = WSdata[WSdata$tray!="C",]
+WSdatasub1 = WSdata[!(WSdata$ExposureHrs==96 & WSdata$tray=="C"),]
 ```
 
 #### summarize the data into larger time-chunks to facilitate analysis and visualization (the large dataset doesn't move particularly fast...). Recorded with 30 positions per second, summarized those to 5 positions per second (each trial thus created 6000 positions over 20 minutes, if all data were collected).    
@@ -124,7 +125,7 @@ WSdata = WSdata[WSdata$tray!="C",]
 
 ```{r cut data}
 
-WSdatasub = WSdata[,c("Arena","rep","ExposureHrs","nomconc_ngL",
+WSdatasub = WSdatasub1[,c("Arena","rep","ExposureHrs","nomconc_ngL",
                       "tray","temp","TrackLength","TrialTime_s","RecTime_s",
                       "Xcent_mm","Ycent_mm","Xnose_mm","Ynose_mm","Xtail_mm","Ytail_mm",
                     "Area_mm2","AreaChange_mm2","Elong",
@@ -142,18 +143,19 @@ WSdatasum = WSdatasub %>%
             MnDistMoved = mean(DistMoved_mm, na.rm=T),
             SumDistMoved = sum(DistMoved_mm, na.rm=T),
             #Meander = mean(Meander_degmm, na.rm=T),
-           # TurnAngleCirc = deg(circ.mean.na(rad(TurnAngleRel_deg2))),
+            CircMnTurnAngleAbs = deg(circ.mean.na(rad(TurnAngleAbs_deg))),
+            #SumTurnAngleRel = sum(TurnAngleRel_deg, na.rm=T),
             InZone_Cent25 = max(InZone_Cent25),
             InZone_Cent15 = max(InZone_Cent15)) %>%
   ungroup() %>%
   data.frame()
 
 # rather than summarize the meander at each step, recalculate it at these summarized steps by taking the mean heading (turn angle over the 0.2 secs) and divide it by the total distance moved in that same period, following the calculations made by Ethovision to calculate meander. 
-#WSdatasum$MeanderCirc = WSdatasum$TurnAngleCirc/WSdatasum$SumDistMoved
+WSdatasum$MeanderCirc = WSdatasum$TurnAngleCirc/WSdatasum$SumDistMoved
 
 ```
 
-#### combine WS and GS data
+#### clean data types
 ```{r comb data}
 DataSum = WSdatasum
  #DataSum$Trial = factor(DataSum$Trial) 

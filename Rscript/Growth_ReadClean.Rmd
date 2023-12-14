@@ -78,7 +78,7 @@ GrowTemp$measurebin = cut(GrowTemp$dph, breaks=c(0,10,16,35,47,200), labels=past
 ### Add Chem Analysis
 ```{r add chem analy}
 # add measured concentrations to the dataframe
-ChemAnalysis = read.csv("rawData/ChemAnalysisResults_CompiledforR.csv")
+ChemAnalysis = read.csv("../rawData/ChemAnalysisResults_CompiledforR.csv")
 fipChem_reduced = filter(ChemAnalysis, Contaminant=="Fipronil", Sample=="spike")
 
 Grow2021.tempr <- merge(Grow2021, fipChem_reduced, all.x=T)

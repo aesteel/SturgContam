@@ -164,13 +164,17 @@ GSdata = GSdata[!(GSdata$ExposureHrs==96 & GSdata$Spp=="GS" & GSdata$Tray=="D"),
 ```{r cut data}
 GSdatasub = GSdata[,c("index","Trial","Arena","Replicate","ExposureHrs","Treatment","Tray","Spp","Contaminant","RecTime_s","Xcent_mm","Ycent_mm","DistMoved_mm","Vel_mms","MeanderRel_degmm","TurnAngleRel_deg","InZoneC"),]
 
+## original turn angle code: converted negative turns to to 360deg scale 
 GSdatasub$TurnAngleRel_deg2 = GSdatasub$TurnAngleRel_deg
 GSdatasub$TurnAngleRel_deg2[GSdatasub$TurnAngleRel_deg<0 & 
                               !is.na(GSdatasub$TurnAngleRel_deg)] <- 
   GSdatasub$TurnAngleRel_deg[GSdatasub$TurnAngleRel_deg<0 & 
                                !is.na(GSdatasub$TurnAngleRel_deg)] +360
 
-# I don't think this analysis went anywhere
+## Nov 2023, I realized that because I'm summarizing to one metric per 6 positions, I should add the relative angles to get the overall turn angle for the 6-pos summary. Then I can convert to absolute scale if I want to remove directionality, and use the abs scale to calculate meander (degrees turned per distance moved). 
+
+
+# I don't think this analysis went anywhere in 2020, so didn't use it here
 # GSdatasub$DistMoved_mm.NA0 = GSdatasub$DistMoved_mm
 #  GSdatasub$DistMoved_mm.NA0[is.na(GSdatasub$DistMoved_mm)] <- 0
 
@@ -187,23 +191,29 @@ GSdatasum = GSdatasub %>%
             SumDistMoved = sum(DistMoved_mm, na.rm=T),
             MnVel = mean(Vel_mms, na.rm=T),
             #Meander = mean(Meander_degmm, na.rm=T),
-            TurnAngleCirc = deg(circ.mean.na(rad(TurnAngleRel_deg2))),
+            CircMnTurnAngleAbs = deg(circ.mean.na(rad(TurnAngleRel_deg2))),
+            SumTurnAngleRel = sum(TurnAngleRel_deg, na.rm=T),
             InZoneC = max(InZoneC) ) %>%
   ungroup() %>%
   data.frame()
 
 # rather than summarize the meander at each step, recalculate it at these summaruzed steps by taking the mean heading (turn angle over the 0.2 secs) and divide it by the total distance moved in that same period, following the calculations made by Ethovision to calculate meander. 
-GSdatasum$MeanderCirc = GSdatasum$TurnAngleCirc/GSdatasum$SumDistMoved
+GSdatasum$MeanderCirc = GSdatasum$SumTurnAngleRel/GSdatasum$SumDistMoved
 
+### repeat for WS ###
 
 WSdatasub = WSdata[,c("index","Trial","Arena","Replicate","ExposureHrs","Treatment","Tray","Spp","Contaminant","RecTime_s","Xcent_mm","Ycent_mm","DistMoved_mm","Vel_mms","MeanderRel_degmm","TurnAngleRel_deg","InZoneC")]
 
+## original turn angle code: converted negative turns to to 360deg scale 
 WSdatasub$TurnAngleRel_deg2 = WSdatasub$TurnAngleRel_deg
 WSdatasub$TurnAngleRel_deg2[WSdatasub$TurnAngleRel_deg<0 & 
                               !is.na(WSdatasub$TurnAngleRel_deg)] <- 
   WSdatasub$TurnAngleRel_deg[WSdatasub$TurnAngleRel_deg<0 & 
                                !is.na(WSdatasub$TurnAngleRel_deg)] +360
 
+# Nov 2023, I realized that because I'm summarizing to one metric per 6 positions, I should add the relative angles to get the overall turn angle for the 6-pos summary. Then I can convert to absolute scale if I want to remove directionality, and use the abs scale to calculate meander (degrees turned per distance moved). 
+
+# I don't think this analysis went anywhere in 2020, so didn't use it here
 # WSdatasub$DistMoved_mm.NA0 = WSdatasub$DistMoved_mm
 #  WSdatasub$DistMoved_mm.NA0[is.na(WSdatasub$DistMoved_mm)] <- 0
 
@@ -219,13 +229,14 @@ WSdatasum = WSdatasub %>%
             SumDistMoved = sum(DistMoved_mm, na.rm=T),
             MnVel = mean(Vel_mms, na.rm=T),
             #Meander = mean(Meander_degmm, na.rm=T),
-            TurnAngleCirc = deg(circ.mean.na(rad(TurnAngleRel_deg2))),
+            CircMnTurnAngleAbs = deg(circ.mean.na(rad(TurnAngleRel_deg2))),
+            SumTurnAngleRel = sum(TurnAngleRel_deg, na.rm=T),
             InZoneC = max(InZoneC) ) %>%
   ungroup() %>%
   data.frame()
 
 # rather than summarize the meander at each step, recalculate it at these summarized steps by taking the mean heading (turn angle over the 0.2 secs) and divide it by the total distance moved in that same period, following the calculations made by Ethovision to calculate meander. 
-WSdatasum$MeanderCirc = WSdatasum$TurnAngleCirc/WSdatasum$SumDistMoved
+WSdatasum$MeanderCirc = WSdatasum$SumTurnAngleRel/WSdatasum$SumDistMoved
 
 ```
 
@@ -259,18 +270,50 @@ DataSumAllnom$lineID = 1:nrow(DataSumAllnom)
 
 #### add measured concentrations (versus nominal)
 ```{r chem analysis results}
-  # # don't have this for 2021 yet; should I / can I still present the data next week?
-  # chemcsv = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Summary.csv")
-  #   chemcsv <- chemcsv[, c("spp", "nomconc", "calcConc")]
-  #  
-  # DataSum2496 <- merge(DataSum2496nom, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
-  # 
-  # DataSumAll <- merge(DataSumAllnom, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
+  # don't have this for 2021 yet; should I / can I still present the data next week?
+  chemcsv = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Fipronil_2021_Summary.csv")
+    chemcsv.fip = chemcsv[chemcsv$chemical=="fipronil" & chemcsv$sample=="spike",]
+    chemcsv.fip <- chemcsv.fip[, c("spp", "nomconc", "calcConc")]
 
+  DataSum2496 <- merge(DataSum2496nom, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
 
-# until I get those chem concentration values:
-DataSum2496 <- DataSum2496nom
-DataSumAll <- DataSumAllnom
+#  DataSumAll <- merge(DataSumAllnom, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
+ ## not enough memory! Maybe just that my computer is filling up. Here's a workaround 
+      
+      all.0gs = DataSumAllnom[DataSumAllnom$Treatment==0 & DataSumAllnom$Spp=="GS",]
+      all.1gs = DataSumAllnom[DataSumAllnom$Treatment==1 & DataSumAllnom$Spp=="GS",]
+      all.10gs = DataSumAllnom[DataSumAllnom$Treatment==10 & DataSumAllnom$Spp=="GS",]
+      all.100gs = DataSumAllnom[DataSumAllnom$Treatment==100 & DataSumAllnom$Spp=="GS",]
+      all.500gs = DataSumAllnom[DataSumAllnom$Treatment==500 & DataSumAllnom$Spp=="GS",]
+      all.1000gs = DataSumAllnom[DataSumAllnom$Treatment==1000 & DataSumAllnom$Spp=="GS",]
+      
+      all.0ws = DataSumAllnom[DataSumAllnom$Treatment==0 & DataSumAllnom$Spp=="WS",]
+      all.1ws = DataSumAllnom[DataSumAllnom$Treatment==1 & DataSumAllnom$Spp=="WS",]
+      all.10ws = DataSumAllnom[DataSumAllnom$Treatment==10 & DataSumAllnom$Spp=="WS",]
+      all.100ws = DataSumAllnom[DataSumAllnom$Treatment==100 & DataSumAllnom$Spp=="WS",]
+      all.500ws = DataSumAllnom[DataSumAllnom$Treatment==500 & DataSumAllnom$Spp=="WS",]
+      all.1000ws = DataSumAllnom[DataSumAllnom$Treatment==1000 & DataSumAllnom$Spp=="WS",]
+      
+      all.0gs$calcConc <- 0.01
+      all.1gs$calcConc <- 0.86
+      all.10gs$calcConc <- 8.95
+      all.100gs$calcConc <- 99.5
+      all.500gs$calcConc <- 565.8
+      all.1000gs$calcConc <- 1206.03
+      
+      all.0ws$calcConc <- 0.01
+      all.1ws$calcConc <- 0.76
+      all.10ws$calcConc <- 8.3
+      all.100ws$calcConc <- 64.17
+      all.500ws$calcConc <- 411.27
+      all.1000ws$calcConc <- 971.8
+      
+      all.list = list(all.0gs, all.1gs, all.10gs, all.100gs, all.500gs, all.1000gs,
+                      all.0ws, all.1ws, all.10ws, all.100ws, all.500ws, all.1000ws)
+
+DataSumAll = do.call(rbind, all.list)
+  
+
 ```
 
 
@@ -350,7 +393,6 @@ acclimplot.meand + facet_wrap(~ExposureHrs, scales="free")
 ```
 ### potentially greater SD in first 2 min at higher concentrations. Set acclimation time to 3 min.
 
-
 #### Evaluate for proper acclimation time - InZoneC
 ```{r inzone acclim test}
 data.frame(table(acclimdat$InZoneC))
@@ -388,8 +430,7 @@ DataSum96 = DataSum96[DataSum96$TrialTime>(2*60),] # the first 60 seconds alread
 
 DataSum2496 = DataSum2496[DataSum2496$TrialTime>(2*60),] # the first 60 seconds already removed in tracking procedure
 
-DataSumAll = DataSumAll[DataSumAll$TrialTime>(2*60),] # the first 60 seconds already removed in tracking procedure
-
+DataSumAll = DataSumAll[DataSumAll$TrialTime>(2*60),] # the first 60 seconds already 
 ```
 
 
