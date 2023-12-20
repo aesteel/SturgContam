@@ -55,29 +55,52 @@ circ.disp.na = function(x) {
 ```
 
 
-## Prep Data for 2022 WS Exposures
+## Prep Data for 2022 WS Exposures and 2023 GS Exposures
   
-The data used here were tracked in Ethovision XT17 then filtered with "Lowess 5 points, Max 5cm, Min 0.2cm". As of Oct 2022 no additional editing has been completed
+The WS data used here were tracked in Ethovision XT17 then filtered with "Lowess 5 points, Max 5cm, Min 0.2cm". As of Oct 2022 no additional editing has been completed
+  
+The GS data used here were tracked in Ethovision XT17 then filtered with _______. No additional editing has occured in Ethovision (12/08/2023)  
   
 #### Read in metadata 
-```{r read metadata}
+```{r read directories and file names}
 # set directory where .txt files are for each species
-WSdatadir = "/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_WS2022/"
+WSdatadir = "/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Complete_WS2022/AsOf_Dec8_2023/"
   
 # read in file names 
-WSfilelist = list.files(path=WSdatadir, pattern="Track-WScontam") 
+WSfilelist = list.files(path=WSdatadir, pattern="Track-WScontam_Exposure_alltemps") 
   ## for now I've pulled out everything from Camera 4; issues with tracks and needs editing
+
+
+# set directory where .txt files are for each species
+GSdatadir = "/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_EthoExport_Initial_GS2023/Unedited202301208/"
+  
+# read in file names 
+GSfilelist = list.files(path=GSdatadir, pattern="Track-Exposure_GS2023_AllTemps") 
+  ## for now I've pulled out everything from Camera 4; issues with tracks and needs editing
+
 ```
 
 #### Read in data
 ```{r read data}
 # prep new column names for datafiles (current ones buried in .txt header)
     datcolNamesWS = c("TrialTime_s","RecTime_s",
-                      "Xcent_mm","Ycent_mm","Xnose_mm","Ynose_mm","Xtail_mm","Ytail_mm",
+                      "Xcent_mm","Ycent_mm",
+                      "Xnose_mm","Ynose_mm","Xtail_mm","Ytail_mm",
                     "Area_mm2","AreaChange_mm2","Elong",
-                    "Direc_deg","TurnAngleAbs_deg","AngVelAbs_degS","MeanderAbs_degMM",
+                    "Direc_deg","TurnAngleRel_deg","MeanderRel_degMM",
                     "InZone_Cent25","InZone_Cent15",
-                    "DistMoved_mm","X1")
+                    "DistMoved_mm","Vel","Moving","NotMoving",
+                    "MeanderAbs_degMM","TurnAngleAbs_deg","Direc_deg",
+                    "X1")
+
+    datcolNamesGS = c("TrialTime_s","RecTime_s",
+                      "Xcent_mm","Ycent_mm",
+                    "Area_mm2","AreaChange_mm2","Elong",
+                    "Direc_deg","TurnAngleAbs_deg","MeanderAbs_degMM",
+                    "DistMoved_mm","Vel","Moving","NotMoving",
+                    "TurnAngleRel_deg","MeanderRel_degMM",
+                    "InZone_B","InZone_C","X1")
+
  
 # function to read and ammend ethovision files to compile later     
  readTrialDat.func =function(datadir, datcolNames, x) {
@@ -92,7 +115,8 @@ WSfilelist = list.files(path=WSdatadir, pattern="Track-WScontam")
       trialidat$nomconc_ngL <- trialheader[39,2]
       trialidat$ExposureHrs <- trialheader[35,2]
       trialidat$tray <- trialheader[38,2]
-      trialidat$rep <- trialheader[40,2]
+      trialidat$cam <- trialheader[36,2]
+      #trialidat$rep <- trialheader[40,2]
       trialidat$SubjectNotFound <- trialheader[30,2]
       trialidat$TrackLength <- trialheader[16,2]
       trialidat$TrialDateTime <- trialheader[20,2]
@@ -100,7 +124,8 @@ WSfilelist = list.files(path=WSdatadir, pattern="Track-WScontam")
       trialidat$Arena <- trialheader[6,2]
       
     Treatment = paste0(trialidat$ExposureHrs[1], "-", trialidat$temp[1],"C-", 
-                       trialidat$nomconc[1],"ngL-R", trialidat$rep[1])
+                       trialidat$nomconc[1],"ngL-", trialidat$Arena[1] )
+                       #trialidat$rep[1]) # rep not in GS2023 metadata
     print(Treatment) 
       # check point to make sure it's working correctly; can comment out if it is
       
@@ -111,11 +136,14 @@ WSfilelist = list.files(path=WSdatadir, pattern="Track-WScontam")
 # do.call function to use above function to read and then rbind all the trial datafiles into one df per species    
 
   WSdata = do.call(rbind, lapply(WSfilelist, readTrialDat.func, datadir = WSdatadir,  datcolNames = datcolNamesWS) )
+  
+  
+  GSdata = do.call(rbind, lapply(GSfilelist, readTrialDat.func, datadir = GSdatadir,  datcolNames = datcolNamesGS) )
 
 ```
 
 ```{r corrections}
-# remove trial 45 until can edit later
+# remove WS trial 45 
 WSdatasub1 = WSdata[!(WSdata$ExposureHrs==96 & WSdata$tray=="C"),]
 ```
 
@@ -123,51 +151,100 @@ WSdatasub1 = WSdata[!(WSdata$ExposureHrs==96 & WSdata$tray=="C"),]
 
 #### Also add datacolumn for distanced moved where NA is replaced with 0 
 
-```{r cut data}
+```{r cut WS data}
 
-WSdatasub = WSdatasub1[,c("Arena","rep","ExposureHrs","nomconc_ngL",
+WSdatasub = WSdatasub1[,c("Arena","ExposureHrs","nomconc_ngL",
                       "tray","temp","TrackLength","TrialTime_s","RecTime_s",
-                      "Xcent_mm","Ycent_mm","Xnose_mm","Ynose_mm","Xtail_mm","Ytail_mm",
-                    "Area_mm2","AreaChange_mm2","Elong",
-                    "Direc_deg","TurnAngleAbs_deg","AngVelAbs_degS","MeanderAbs_degMM",
-                    "InZone_Cent25","InZone_Cent15",
-                    "DistMoved_mm")]
+                      "Xcent_mm","Ycent_mm",
+                      "TurnAngleRel_deg","MeanderRel_degMM",
+                      "InZone_Cent25","InZone_Cent15","DistMoved_mm",
+                      "Moving","NotMoving")]
 
 WSdatasub$cut = cut_width(WSdatasub$RecTime_s, 0.2, boundary=0, labels=F)
 
 WSdatasum = WSdatasub %>%
-  group_by(temp,ExposureHrs,nomconc_ngL,Arena,rep,tray,cut) %>%
+  group_by(temp,ExposureHrs,nomconc_ngL,Arena,tray,cut) %>%
   summarize(TrialTime = round(mean(RecTime_s),1),
             Xcent = mean(Xcent_mm, na.rm=T),
             Ycent = mean(Ycent_mm, na.rm=T),
             MnDistMoved = mean(DistMoved_mm, na.rm=T),
             SumDistMoved = sum(DistMoved_mm, na.rm=T),
             #Meander = mean(Meander_degmm, na.rm=T),
-            CircMnTurnAngleAbs = deg(circ.mean.na(rad(TurnAngleAbs_deg))),
-            #SumTurnAngleRel = sum(TurnAngleRel_deg, na.rm=T),
+            #CircMnTurnAngleAbs = deg(circ.mean.na(rad(TurnAngleAbs_deg))),
+            SumTurnAngleRel = sum(TurnAngleRel_deg, na.rm=T),
             InZone_Cent25 = max(InZone_Cent25),
             InZone_Cent15 = max(InZone_Cent15)) %>%
+  mutate(spp <- "WS") %>%
   ungroup() %>%
   data.frame()
 
 # rather than summarize the meander at each step, recalculate it at these summarized steps by taking the mean heading (turn angle over the 0.2 secs) and divide it by the total distance moved in that same period, following the calculations made by Ethovision to calculate meander. 
-WSdatasum$MeanderCirc = WSdatasum$TurnAngleCirc/WSdatasum$SumDistMoved
+WSdatasum$MeanderCirc = WSdatasum$SumTurnAngleRel/WSdatasum$SumDistMoved
 
 ```
 
-#### clean data types
+```{r add calc conc to WS}
+chemcsvWS = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Bifenthrin_2022_WSSummary.csv")
+
+WSdatasum1 <- merge(WSdatasum, chemcsvWS[,c("nomconc_ngL","calcConc")], by="nomconc_ngL", all.x=T)
+
+```
+
+
+```{r cut GS data}
+
+GSdatasub = GSdata[,c("Arena","ExposureHrs","nomconc_ngL",
+                      "tray","temp","TrackLength","TrialTime_s","RecTime_s",
+                      "Xcent_mm","Ycent_mm",
+                      "TurnAngleRel_deg","MeanderRel_degMM",
+                      "InZone_B","InZone_C","DistMoved_mm",
+                      "Moving","NotMoving")]
+
+GSdatasub$cut = cut_width(GSdatasub$RecTime_s, 0.2, boundary=0, labels=F)
+
+GSdatasum = GSdatasub %>%
+  group_by(temp,ExposureHrs,nomconc_ngL,Arena,tray,cut) %>%
+  summarize(TrialTime = round(mean(RecTime_s),1),
+            Xcent = mean(Xcent_mm, na.rm=T),
+            Ycent = mean(Ycent_mm, na.rm=T),
+            MnDistMoved = mean(DistMoved_mm, na.rm=T),
+            SumDistMoved = sum(DistMoved_mm, na.rm=T),
+            #Meander = mean(Meander_degmm, na.rm=T), # calculate this later
+            #CircMnTurnAngleRel = deg(circ.mean.na(rad(TurnAngleRel_deg))),
+            SumTurnAngleRel = sum(TurnAngleRel_deg, na.rm=T),
+            InZone_B = max(InZone_B),
+            InZone_C = max(InZone_C)) %>%
+  mutate(spp <- "GS") %>%
+  ungroup() %>%
+  data.frame()
+
+# rather than summarize the meander at each step, recalculate it at these summarized steps by taking the mean heading (turn angle over the 0.2 secs) and divide it by the total distance moved in that same period, following the calculations made by Ethovision to calculate meander. 
+GSdatasum$MeanderCirc = GSdatasum$SumTurnAngleRel/GSdatasum$SumDistMoved
+
+```
+
+```{r add calc conc to WS}
+chemcsvGS = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Bifenthrin_2023_GSSummary.csv")
+
+GSdatasum1 <- merge(GSdatasum, chemcsvGS[,c("nomconc_ngL","calcConc")], by="nomconc_ngL", all.x=T)
+
+```
+
+#### combine WS and GS
 ```{r comb data}
-DataSum = WSdatasum
- #DataSum$Trial = factor(DataSum$Trial) 
- DataSum$rep = factor(DataSum$rep) 
- #DataSum$RepID = as.factor(paste0(DataSum$Treatment, "-", DataSum$Spp, "-", DataSum$Replicate))
- 
- DataSum$uniqueID = paste(DataSum$nomconc_ngL, DataSum$temp, DataSum$rep, sep="-") 
+
+WSdatasum2 <- WSdatasum1 %>%
+  rename(InZone_C = InZone_Cent15, InZone_B = InZone_Cent25) %>%
+  data.frame()
+
+DataSum = rbind(WSdatasum2, GSdatasum1)
+
+ DataSum$uniqueID = paste(DataSum$spp, DataSum$temp, DataSum$nomconc_ngL, sep="-") 
 ```
 
-```{r reduce dataset further} 
+```{r reduce dataset further, eval=FALSE} 
 # # reduce range of data to analyze; 3min of acclimation, 12 min of trial (180 - 900 s, should have 3600 data points per fish per trial). That was used for 2020, so we'll use it here too for comparison. Can toy with adding more trial time but don't think it's necessary
-#  
+  
 # DataSumcut15 = DataSum[DataSum$TrialTime<(14*60),] # the first tray didn't have lights ona t beginning of trial, so the trial time and the record time don't match the rest of the dataset. Thus, I've switched the above to 'rectime_s' instead, which begins 60seconds into the official trial (after lights are on and test conditions are met). Thus, this is 14*60 becase that is 15 minutes into the trial, 14 minutes into recording. 
 # 
 # # even smaller dataset to plot only the exposure hours that are comparable among the two species
@@ -183,28 +260,12 @@ DataSum = WSdatasum
 ```
 
 
-#### add measured concentrations (versus nominal)
-```{r chem analysis results}
-  # # don't have this for 2021 yet; should I / can I still present the data next week?
-  # chemcsv = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Summary.csv")
-  #   chemcsv <- chemcsv[, c("spp", "nomconc", "calcConc")]
-  #  
-  # DataSum2496 <- merge(DataSum2496nom, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
-  # 
-  # DataSumAll <- merge(DataSumAllnom, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
-
-
-# until I get those chem concentration values:
-DataSum2496 <- DataSum2496nom
-DataSumAll <- DataSumAllnom
-```
-
 
 
 #### write out cleaned dataframe for use in subsequent codes
 ```{r write out data, echo=FALSE, eval=FALSE}
 
-write.csv(DataSum, "outputData/Exposure_Outputdata/Bifenthrin_2022_Cleaned_NoConc_96hrs.csv", row.names=F)
+write.csv(DataSum, "outputData/Exposure_Outputdata/Bifenthrin_2022_23_Cleaned_NoConc.csv", row.names=F)
 
 ```
 
