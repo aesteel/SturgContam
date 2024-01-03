@@ -58,9 +58,9 @@ circ.disp.na = function(x) {
 
 ## Read in Cleaned Data ("Exposure_Analysis1.Rmd")
 ```{r read in clean data}
-DataSum96.raw = read.csv("outputData/Exposure_Outputdata/Fipronil_2021_Cleaned_NoConc_96hrs.csv")
-DataSum2496.raw = read.csv("outputData/Exposure_Outputdata/Fipronil_2021_Cleaned_NoConc_2496hrs.csv")
-DataSumAll.raw = read.csv("outputData/Exposure_Outputdata/Fipronil_2021_Cleaned_NoConc_Allhrs.csv")
+#DataSum96.raw = read.csv("outputData/Exposure_Outputdata/Fipronil_2021_Cleaned_NoConc_96hrs.csv")
+#DataSum2496.raw = read.csv("outputData/Exposure_Outputdata/Fipronil_2021_Cleaned_NoConc_2496hrs.csv")
+DataSumAll.raw = read.csv("outputData/Exposure_Outputdata/Fipronil_2021_Cleaned_Conc_Allhrs.csv")
 ```
 
 
@@ -108,11 +108,13 @@ tempdat$pred.endtemp[tempdat$species=="WS"] = 6.83281 + 21.94528*tempdat$time[te
 
 ggplot(tempdat, aes(x=endtemp, y=pred.endtemp, color=species)) + geom_point() + geom_line(data = data.frame(x=14:20, y=14:20), aes(x=x, y=y), color="black", lty=2)
 
-DataSum96.T = merge(DataSum96, tempdat, by.x=c("Spp","ExposureHrs","Tray","Replicate"), by.y=c("species","Exposure.Hr","Tray","rep"), all.x=T)
+#DataSum96.T = merge(DataSum96, tempdat, by.x=c("Spp","ExposureHrs","Tray","Replicate"), by.y=c("species","Exposure.Hr","Tray","rep"), all.x=T)
  # this uses the control as a sample for all of the corresponding replicate numbers
-DataSum96 = DataSum96.T
+#DataSum96 = DataSum96.T
 
-DataSumAll.T = merge(DataSumAll, tempdat, by.x=c("Spp","ExposureHrs","Tray","Replicate"), by.y=c("species","Exposure.Hr","Tray","rep"), all.x=T)
+DataSumAll.T = merge(DataSumAll.raw, tempdat, 
+                     by.x=c("Spp","ExposureHrs","Tray","Replicate"), 
+                     by.y=c("species","Exposure.Hr","Tray","rep"), all.x=T)
  # this uses the control as a sample for all of the corresponding replicate numbers
 ```
 
@@ -127,8 +129,8 @@ DataSumAll.T = merge(DataSumAll, tempdat, by.x=c("Spp","ExposureHrs","Tray","Rep
 ```{r distance data, echo=F}
 
 ## Summarize to take total distance (sum moved in a trial) for each fish replicate
-DataSum96$calcConc = DataSum96$Treatment ## temporary place holder until we get the results on conc back from Luann
-DataSum96.dist = DataSum96 %>%
+DataSum96.dist = DataSumAll.T %>%
+  filter(ExposureHrs %in% c(96)) %>%
   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Tray, calcConc, Spp, RepID) %>%
   #summarize(TotalfishDist = sum(SumDistMoved, na.rm=T)) %>%
   summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100)) %>%
@@ -137,8 +139,8 @@ DataSum96.dist = DataSum96 %>%
 
 
 ## Summarize to take total distance (sum moved in a trial) for each fish replicate
-DataSum2496$calcConc = DataSum2496$Treatment ## temporary place holder until we get the results on conc back from Luann
-DataSum2496.dist = DataSum2496 %>%
+DataSum2496.dist = DataSumAll.T %>%
+  filter(ExposureHrs %in% c(24,96)) %>%
   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Tray, calcConc, Spp, RepID) %>%
   #summarize(TotalfishDist = sum(SumDistMoved, na.rm=T)) %>%
   summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100)) %>%
@@ -147,8 +149,7 @@ DataSum2496.dist = DataSum2496 %>%
 
 
 ## Summarize for all timepoints to take total distance (sum moved in a trial) for each fish replicate
-DataSumAll$calcConc = DataSumAll$Treatment ## temporary place holder until we get the results on conc back from Luann
-DataSumAll.dist = DataSumAll %>%
+DataSumAll.dist = DataSumAll.raw %>%
   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Tray, calcConc, Spp, RepID) %>%
   #summarize(TotalfishDist = sum(SumDistMoved, na.rm=T)) %>%
   summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100)) %>%
@@ -185,36 +186,38 @@ totfishdist_hist = ggplot(DataSum2496.dist, aes(x=TotalfishDist_m) ) +
                          Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+ #scales="free") +
                      theme_bw()
 
-totfishdist = ggplot(DataSum2496.dist, aes(fill=factor(Treatment), y=TotalfishDist_m, 
-                               x=factor(ExposureHrs) ) ) + 
+totfishdist2496 = ggplot(DataSum2496.dist, aes(fill=factor(Treatment), y=TotalfishDist_m*100, x=factor(ExposureHrs) ) ) + 
                       geom_boxplot(outlier.size = .75) + 
                       facet_wrap(~Spp, labeller = labeller(
-                        Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),#)+
-                        scales="free") +
-                      ylab("Total Trial Distance (m)") + 
+                        Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")) )+
+                        #scales="free") +
+                      ylab("Total Trial Distance (cm)") + 
                       xlab("Exposure Hours") +
-                      scale_fill_viridis_d(name="Nominal Fpironil\nConcentration (ug/L)") + 
+                      scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
                       theme_bw()
 
-totfishdist
+totfishdist2496
 
+tiff("figures/Exposure_OutputFigs/TotalDistance_Fip_GSWS_2496hrs.tiff", width=170, height=65, units="mm", compression="lzw", res=150)
+totfishdist2496
+dev.off()
 
 ### with all four timepoints
     totfishdistAll_hist = ggplot(DataSumAll.dist, aes(x=TotalfishDist_m) ) + 
                          geom_histogram(bins=15) + 
                          facet_wrap(Treatment~Spp, labeller = labeller(
-                             Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+ #scales="free") +
+                             Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+ 
                          theme_bw()
     
-    totfishdistAll = ggplot(DataSumAll.dist, aes(fill=factor(Treatment), y=TotalfishDist_m, 
+    totfishdistAll = ggplot(DataSumAll.dist, aes(fill=factor(Treatment), y=TotalfishDist_m*100, 
                                    x=factor(ExposureHrs) ) ) + 
                           geom_boxplot(outlier.size = .75) + 
                           facet_wrap(~Spp, labeller = labeller(
                             Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),#)+
                             scales="free") +
-                          ylab("Total Trial Distance (m)") + 
+                          ylab("Total Trial Distance (cm)") + 
                           xlab("Exposure Hours") +
-                          scale_fill_viridis_d(name="Nominal Fpironil\nConcentration (ug/L)") + 
+                          scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
                           theme_bw()
     
     totfishdistAll
@@ -1050,10 +1053,11 @@ activefish
 
 ### Sumarize time spent in center
 ```{r center zone data, echo=F} 
-DataSum2496.centC = DataSum2496 %>%
+DataSum2496.centC = DataSumAll.raw %>%
+  filter(ExposureHrs %in% c(24,96)) %>%
   filter(!is.na(InZoneC)) %>%  ### will this bias the data if I remove those points where there isn't a detection? If the fish is more likely to be in the center when it's stationary, and it's more likely to be undetected when it's stationary, this may bias these values and under-represent the effect of the Fipronil (more stationary when strongly affected)
   # also note, this line doesn't actually change the results because summing the InZoneC column drops all NA automatically; this line above just makes that explicit
-  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID) %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID, Tray) %>%
   summarize(InZoneC = sum(InZoneC, na.rm=T),# InZoneB = sum(InZoneB, na.rm=T), 
             npos = n()) %>%
   mutate(PercZoneC.1 = InZoneC / npos) %>%
@@ -1063,9 +1067,9 @@ DataSum2496.centC = DataSum2496 %>%
   data.frame()
 
 
-DataSumAll.centC = DataSumAll %>%
+DataSumAll.centC = DataSumAll.raw %>%
   filter(!is.na(InZoneC)) %>%  
-  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID) %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID, Tray) %>%
   summarize(InZoneC = sum(InZoneC, na.rm=T), npos = n()) %>%
   mutate(PercZoneC.1 = InZoneC / npos) %>%
   ungroup()  %>%
@@ -1075,17 +1079,24 @@ DataSumAll.centC = DataSumAll %>%
 
 ```{r center zone plots, echo=F}
 
-CenterC.plot = ggplot(DataSum2496.centC, 
+CenterC.plot2496 = ggplot(DataSum2496.centC, 
                            aes(fill=factor(Treatment), y=(PercZoneC.1), 
                                x=factor(ExposureHrs) ) ) + 
   geom_boxplot(outlier.size = .75) + 
   #geom_violin()+
   facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
-  ylab("% of recorded positions in Central Zone") + 
+  ylab("% of recorded positions\nin Central Zone") + 
   xlab ("Exposure Hours") + 
   scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
   theme_bw()
-CenterC.plot
+CenterC.plot2496
+
+
+tiff("figures/Exposure_OutputFigs/PercZone_Fip_GSWS_2496hr.tiff", width=170, height=65, units="mm", compression="lzw", res=150)
+CenterC.plot2496
+dev.off()
+
+
 
 
 CenterCAll.plot = ggplot(DataSumAll.centC, 
@@ -1099,6 +1110,12 @@ CenterCAll.plot = ggplot(DataSumAll.centC,
   scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
   theme_bw()
 CenterCAll.plot
+
+tiff("figures/Exposure_OutputFigs/PercZone_Fip_GSWS_Allhrs.tiff", width=140, height=45, units="mm", compression="lzw", res=150)
+CenterCAll.plot
+dev.off()
+
+
 
 ```
 

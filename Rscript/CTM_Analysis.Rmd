@@ -60,7 +60,7 @@ ctm_dat$stage = factor(ctm_dat$stage, levels=c("larvae","juvenile"))
 ```{r summarize data, echo=FALSE, message=FALSE}
 ctm_sum <- ctm_dat %>% 
   group_by(nomconc, contaminant, stage, acclimtemp, spp) %>% 
-  summarize(mean_ctm = mean(ctm_c, na.rm=T),
+  summarise(mean_ctm = mean(ctm_c, na.rm=T),
             sd_ctm = sd(ctm_c, na.rm=T),
             mean_mass = mean(mass_g, na.rm=T),
             sd_mass = sd(mass_g, na.rm=T),
@@ -110,7 +110,7 @@ dev.off()
 
 ```{r basic plots rawdata 15C by contam-spp, echo=FALSE}
 
-# All Points for larvae (not all juv entered yet for 2023, so not including in report
+# All Points for larvae 
 fip15_ctm_dat = filter(ctm_dat, contaminant=="Fipronil", acclimtemp==15)
 
 all_fip15C_CTM = ggplot(fip15_ctm_dat, 
@@ -148,7 +148,7 @@ dev.off()
 
 ```{r basic plots summary, echo=FALSE}
 # fip
-Fip_sumstat = ggplot(filter(ctm_sum, contaminant=="Fipronil"), 
+Fip_sumstat = ggplot(filter(ctm_sum, contaminant=="Fipronil", nomconc %in% c(0,1,10,100)), 
                      aes(x = factor(nomconc), y = mean_ctm, 
                          color = log(nomconc+1), shape = stage))+
   geom_point(size=4.0, position = position_dodge(width = 0.1))+ 
@@ -168,7 +168,7 @@ Fip_sumstat = ggplot(filter(ctm_sum, contaminant=="Fipronil"),
   #                       breaks=log(c(1,2,11,101,1001)), labels=c(0,1,10,100,1000) )+
   theme_bw()
 
-tiff("figures/CTM_WSGS_MeanSE_FipOnly_forreport.jpeg",  width=450, height=350, units="px", compression="lzw", res=100)
+tiff("figures/CTM_WSGS_MeanSE_FipOnly_lower4_forreport.jpeg",  width=450, height=350, units="px", compression="lzw", res=100)
  Fip_sumstat
 dev.off()
 
@@ -242,40 +242,52 @@ dev.off()
 
 ## Simple stats
 ```{r piecemeal anova  stats, fig.height=3, fig.width=3, eval=FALSE}
+
 ctm_dat$nomconc = factor(ctm_dat$nomconc)
 
 # split data
-ctm_dat$nomconc = factor(ctm_dat$nomconc)
 
 larvae_dat.bifWS <- ctm_dat[ctm_dat$stage=="larvae" & ctm_dat$spp=="WS" & ctm_dat$contaminant=="Bifenthrin", ]
-larvae_dat.fipWS <- ctm_dat[ctm_dat$stage=="larvae" & ctm_dat$spp=="WS" & ctm_dat$contaminant=="Fipronil", ]
+larvae_dat.fipWS <- ctm_dat[ctm_dat$stage=="larvae" & ctm_dat$spp=="WS" & ctm_dat$contaminant=="Fipronil" & ctm_dat$nomconc %in% c(0,1,10,100), ]
 larvae_dat.bifGS <- ctm_dat[ctm_dat$stage=="larvae" & ctm_dat$spp=="GS" & ctm_dat$contaminant=="Bifenthrin", ]
-larvae_dat.fipGS <- ctm_dat[ctm_dat$stage=="larvae" & ctm_dat$spp=="GS" & ctm_dat$contaminant=="Fipronil", ]
+larvae_dat.fipGS <- ctm_dat[ctm_dat$stage=="larvae" & ctm_dat$spp=="GS" & ctm_dat$contaminant=="Fipronil" & ctm_dat$nomconc %in% c(0,1,10,100), ]
 
 
 juv_dat.bifWS <- ctm_dat[ctm_dat$stage=="juvenile" & ctm_dat$spp=="WS" & ctm_dat$contaminant=="Bifenthrin", ]
-juv_dat.fipWS <- ctm_dat[ctm_dat$stage=="juvenile" & ctm_dat$spp=="WS" & ctm_dat$contaminant=="Fipronil", ]
+juv_dat.fipWS <- ctm_dat[ctm_dat$stage=="juvenile" & ctm_dat$spp=="WS" & ctm_dat$contaminant=="Fipronil" & ctm_dat$nomconc %in% c(0,1,10,100), ]
 juv_dat.bifGS <- ctm_dat[ctm_dat$stage=="juvenile" & ctm_dat$spp=="GS" & ctm_dat$contaminant=="Bifenthrin", ]
-juv_dat.fipGS <- ctm_dat[ctm_dat$stage=="juvenile" & ctm_dat$spp=="GS" & ctm_dat$contaminant=="Fipronil", ]
+juv_dat.fipGS <- ctm_dat[ctm_dat$stage=="juvenile" & ctm_dat$spp=="GS" & ctm_dat$contaminant=="Fipronil" & ctm_dat$nomconc %in% c(0,1,10,100), ]
 
   
   lbw_anova <- aov(ctm_c ~ nomconc, data = larvae_dat.bifWS)
   summary(lbw_anova)# as continuous: F = 0.232, P=0.631; as factor: F = 0.091, P=0.965
-  lfw_anova <- aov(ctm_c ~ nomconc, data = larvae_dat.fipWS)
-  summary(lfw_anova)# as continuous: F = 14.93, P=0.0002; as factor: F = 3.155, P=0.0114*
-   TukeyHSD(lfw_anova) #1000 vs 0, p.adj = 0.122; 1000 vs 1 p.adj = 0.036; 
-                       #1000 vs 10, p.adj = 0.062; 1000 va 100, p.adj=0.015
+  lfw_anova <- aov(ctm_c ~ nomconc, data = larvae_dat.fipWS) 
+  summary(lfw_anova)
+  # as continuous, with 6 concentrations: F = 14.93, P=0.0002
+  # as factor, with 6 concentrations: F = 3.155, P=0.0114*
+  # as continuous, with 4 concentrations: F = 0.498, P=0.484
+  # as factor, with 4 concentrations: F = 0.245, P=0.865
+   TukeyHSD(lfw_anova) # with 6 conc (no significance with 4 conc) 
+                          #1000 vs 0, p.adj = 0.122
+                          #1000 vs 1 p.adj = 0.036
+                          #1000 vs 10, p.adj = 0.062
+                          #1000 va 100, p.adj=0.015
+   
   lbg_anova <- aov(ctm_c ~ nomconc, data = larvae_dat.bifGS)
   summary(lbg_anova)# as continuous: F = 0.232, P=0.856; as factor: F = 
   lfg_anova <- aov(ctm_c ~ nomconc, data = larvae_dat.fipGS)
-  summary(lfg_anova)# as continuous: F = 0.048, P=0.827; as factor: F = 
+  summary(lfg_anova)
+  # as continuous, with 6 concentrations: F = 0.048, P=0.827
+  # as continuous, with 4 concentrations: F = 0.4, P=0.529
+  # as factor, with 4 concentrations: F = 1.002, P=0.398
 
+  
   jbw_anova <- aov(ctm_c ~ nomconc, data = juv_dat.bifWS)
-  summary(jbw_anova)#non-sig
+  summary(jbw_anova)#non-sig with 6 or 4 conc
   jfw_anova <- aov(ctm_c ~ nomconc, data = juv_dat.fipWS)
-  summary(jfw_anova)#*non-sig
+  summary(jfw_anova)#*non-sig with 6 or 4 conc
   jfg_anova <- aov(ctm_c ~ nomconc, data = juv_dat.fipGS)
-  summary(jfg_anova)#non-sig
+  summary(jfg_anova)#non-sig with 6 or 4 conc
 
 ```
 
@@ -300,19 +312,29 @@ juv_dat.fipGS <- ctm_dat[ctm_dat$stage=="juvenile" & ctm_dat$spp=="GS" & ctm_dat
   # dredge(addmod15) # best model is with only app, spp + contam is 1.98 AIC higher when fit with nomconc as a factor, summary suggests general trend od decreasing CTM with increasing nomconc (factor, not linear). fit with nomconc as numeric and the same model is still selected, with a nearly equal model including nomconc (tiny effect size, deltaAIC 0.25)
 
 # this doesn't have measured concentraitons in it yet; harumph
-ctm_datFip= filter(ctm_dat, contaminant=="Fipronil", !is.na(ctm_c))
+ctm_datFip= filter(ctm_dat, contaminant=="Fipronil", !is.na(ctm_c), nomconc%in% c(0,1,10,100))
+ctm_datFip$nomconc = as.numeric(as.character(ctm_datFip$nomconc))
 fullmod_fip = lm(ctm_c ~ spp*I(log(nomconc+1)) + spp*dph + dph*nomconc, data = ctm_datFip, na.action="na.fail")
-  plot(fullmod_fip) # pretty great
+  plot(fullmod_fip) # good
   summary(fullmod_fip)
-  dredge(fullmod_fip) # best model has two interactions, both by spp
+  dredge(fullmod_fip) # with 6 concentrations, best model has two interactions, both by spp
+   # with only 4 concentrations best model only has dph, spp, and thier interaction
 
+  redmod_fip = lm(ctm_c ~ spp*dph, data = ctm_datFip, na.action="na.fail")
+  plot(redmod_fip) # good
+  summary(redmod_fip)
+  dredge(redmod_fip) # with 6 concentrations, best model has two interactions, both by spp
+   # with only 4 concentrations best model only has dph, spp, and thier interaction
+
+  
+  
   ctm_datFipGS= filter(ctm_datFip, spp=="GS", !is.na(ctm_c))
   fullmod_fipGS1 = lm(ctm_c ~ dph*I(log(nomconc+1)), data = ctm_datFipGS, na.action="na.fail")
     plot(fullmod_fipGS1) # pretty good
     summary(fullmod_fipGS1)
     dredge(fullmod_fipGS1) # best model only has age/recovery time
     
-####### used this one #######  
+####### used this one when using 6 conc; used full with only 4 conc #######  
   fullmod_fipGS2 = lm(ctm_c ~ dph+I(log(nomconc+1)), data = ctm_datFipGS, na.action="na.fail")
     plot(fullmod_fipGS2) # pretty good
     summary(fullmod_fipGS2)
@@ -324,7 +346,7 @@ fullmod_fip = lm(ctm_c ~ spp*I(log(nomconc+1)) + spp*dph + dph*nomconc, data = c
     summary(fullmod_fipWS1)
     dredge(fullmod_fipWS1) # best model with everything, but next best is addirive, with deltaAIC=1.59 ... tough call
     
-####### used this one #######
+####### used this one when using 6 conc; used full with only 4 conc  #######
   fullmod_fipWS2 = lm(ctm_c ~ dph+I(log(nomconc+1)), data = ctm_datFipWS, na.action="na.fail")
   plot(fullmod_fipWS2) # pretty good
   summary(fullmod_fipWS2) # contam is very significant if small in effect size, but this does seem to be only for the larval size class so I'm inclined to keep the interaction term and all it's messiness

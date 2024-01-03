@@ -1,0 +1,420 @@
+---
+title: "Foraging Ethovision Analysis - Data Cleaning"
+author: "Anna Steel"
+date: "5/16/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(readtext) # need this because the ethovision output .txt files have unusual encoding as UTF-16
+library(lme4)
+library(rethinking)
+library(circular)
+library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
+
+knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
+```
+
+```{r utility functions}
+# calculate hypotenuse of triangle created by two xy locations
+
+distmov = function(x1,x2,y1,y2) { dm = sqrt((x1-x2)^2 + (y1-y2)^2); return(dm)}
+
+# calculate number steps between detections; use summarized dataset (5 pos/sec)
+nstep = function(t2,t1, interv=0.2) {
+  if (t2-t1 < 0) stop('time steps backwards?')
+  nstep <- ( (t2-t1) / interv)
+  return(nstep)
+  }
+
+circ.mean.na = function(x) {
+  x2 = x[!is.na(x)]
+  sinr <- sum(sin(x2))
+  cosr <- sum(cos(x2))
+  circmean <- atan2(sinr, cosr)
+  return(circmean)
+}
+
+
+circ.disp.na = function(x) {
+  x2 = x[!is.na(x)]
+    n <- length(x2)
+    c <- sum(cos(x2))
+    s <- sum(sin(x2))
+    r <- sqrt(c^2 + s^2)
+    rbar <- r/n
+    var <- 1 - rbar
+    data.frame(n, r, rbar, var)
+}
+
+```
+
+
+## Prep Data for 2021 GS/WS Foraging
+  
+Raw data was acquired and edited in ethovision, completed May 2022. Editing removed points that caused rapid jumps of the fish location across longer than reasonable distances. It did NOT interpolate across missing points, which may have been prudent in hindsight. Also, there were many tracks where ethovision had a hard time finding the fish at the start; mostly an issue for the 'post' tracks since there was no time automatically skipped like there was with the 'pre' tracks
+
+The data used here were tracked with the ethovision projects named "Foraging_WSFip_2021" and "Foraging_GSFip_2021"
+  
+  
+#### Read in metadata 
+```{r read metadata}
+# set directory where .txt files are for each species
+GSdatadir = "/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Foraging_EthoExport_Complete_GS2021/GSFip_settingsTBD/"
+WSdatadir = "/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Foraging_EthoExport_Complete_WS2021/WSFip_Foraging_settingsTBD/"
+
+# read in file names 
+GSfilelist = list.files(path=GSdatadir, pattern="Track-Foraging")
+  
+WSfilelist = list.files(path=WSdatadir, pattern="Track-Foraging") 
+  
+# read in hand-made triallist to add experimental data to movement file   - not accurate for these foraging trials; need to get the trial list out of ethovision and never exported it; can i? Can also pull the data from the headers of the files, in the read-in step below. These metadata files DO have weight and length, might be the ultimate purpose of them; can reduce the columns here if so, because the files serve no other purpose er. 
+      GStriallist = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Ethovision Trial List GS2021 Foraging.csv")
+          GStriallist$index = paste(GStriallist$TrialID, GStriallist$Barrel, sep="-")
+          GStriallist$Notes <- NULL
+
+      WStriallist = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Ethovision Trial List WS2021 Foraging.csv")
+          WStriallist$index = paste(WStriallist$TrialID, WStriallist$Barrel, sep="-")
+          WStriallist$Notes <- NULL
+```
+
+## Read in data
+```{r read data}
+# prep column names for datafiles (buried in .txt header)
+    datcolNamesGS = c("TrialTime_s","RecTime_s","Xcent_cm","Ycent_cm",
+                    "Area_cm2","AreaChange_cm2","Elong","DistMoved_cm","Vel_cms",
+                    "InZoneFZ1","InZoneFZ2","InZoneFZ3","InZoneFZ4",
+                   "MeanderRel_degcm","TurnAngleRel_deg",
+                   "InZoneAny","MeanderAbs_degcm","TurnAngleAbs_deg","Pink-Pre")
+    datcolNamesWS = c("TrialTime_s","RecTime_s","Xcent_cm","Ycent_cm",
+                    "Area_cm2","AreaChange_cm2","Elong","DistMoved_cm","Vel_cms",
+                    "InZoneFZ1","InZoneFZ2","InZoneFZ3","InZoneFZ4",
+                    "InZoneAny","MeanderAbs_degcm","TurnAngleAbs_deg",
+                    "MeanderRel_degcm","TurnAngleRel_deg","Pre-Pink")
+   
+    
+# function to read and ammend ethovision files to compile later     
+    readTrialDat.func =function(datadir, triallist, datcolNames, x) {
+      
+      trialheader = read.csv(paste0(datadir, x), sep=",",header=F, fileEncoding="UTF-16")[1:40,]
+      
+      trialidat = read.csv(paste0(datadir, x), sep=",", skip=40, header=F, fileEncoding="UTF-16")
+         names(trialidat) = datcolNames
+
+      trialidat$ColorHeader <- trialheader[33,2]
+      trialidat$ExposRepHeader <- trialheader[34,2]
+      trialidat$BarrelIDHeader <- trialheader[35,2]
+      trialidat$TrialIDHeader <- trialheader[36,2]
+      trialidat$PrePostHeader <- trialheader[37,2]
+
+      trialidat$TrackLengthHeader <- trialheader[16,2]
+      trialidat$TrialDateTimeHeader <- trialheader[20,2]
+      trialidat$SubjectNotFoundHeader <- trialheader[30,2]
+      
+      # add relevant information from filename; in this case, it's only the trial# 
+      subfilei.pre = substr(x, 33, 37) # allots space for three digits of trial number 
+      subfilei = trimws(subfilei.pre) # removes the extra spaces as needed
+
+      trialidat$TrialIDFile = subfilei
+      
+      trialidat$index = paste(trialidat$TrialIDHeader, trialidat$BarrelIDHeader, sep="-")
+
+      # pair file name index (above) with trial list index to assign treatments (conc and hour) to individual fish/trials
+      
+      trialidat2 = merge(trialidat, triallist[,c("index","Spp","Contaminant","Date","Treatment", "tlmm","massg")], by="index", all.x=T)
+      
+      print(subfilei) # check point to make sure it's working correctly; can comment out if it is
+      return(trialidat2) 
+    }
+    
+
+# do.call function to use above function to read and then rbind all the trial datafiles into one df per species    
+  GSdata = do.call(rbind, lapply(GSfilelist, readTrialDat.func, datadir = GSdatadir, triallist= GStriallist, datcolNames = datcolNamesGS) )
+    
+  WSdata = do.call(rbind, lapply(WSfilelist, readTrialDat.func, datadir = WSdatadir, triallist= WStriallist, datcolNames = datcolNamesWS) )       
+```
+
+
+
+#### summarize the data into larger time-chunks to facilitate analysis and visualization (the large dataset doesn't move particularly fast...). Recorded WS with 30 positions per second, summarized those to 5 positions per second (summarized across 6 points). But GS were recorded with 60 positions per second (as I discovered later), which means those tracks were summarized across 12 points. Both resulted in ~8000 positions per trial. 
+
+#### Also add datacolumn for distanced moved where NA is replaced with 0 
+
+```{r cut data}
+GSdatasub = GSdata[,c("index","TrialIDFile","Date","TrialIDHeader","BarrelIDHeader","PrePostHeader",
+                      "Treatment","ColorHeader", 
+                      "ExposRepHeader","TrackLengthHeader","SubjectNotFoundHeader",
+                       "tlmm","massg",  
+                      "Spp","Contaminant",
+                      "TrialTime_s","RecTime_s","Xcent_cm","Ycent_cm",
+                      "DistMoved_cm","Vel_cms","MeanderRel_degcm","TurnAngleRel_deg","InZoneAny"),]
+
+
+GSdatasub$TurnAngleRel_deg2 = GSdatasub$TurnAngleRel_deg
+GSdatasub$TurnAngleRel_deg2[GSdatasub$TurnAngleRel_deg<0 & 
+                              !is.na(GSdatasub$TurnAngleRel_deg)] <- 
+  GSdatasub$TurnAngleRel_deg[GSdatasub$TurnAngleRel_deg<0 & 
+                               !is.na(GSdatasub$TurnAngleRel_deg)] +360
+
+GSdatasub$cut = cut_width(GSdatasub$TrialTime_s, 0.2, boundary=0, labels=F)
+
+names(GSdatasub) = c("index","TrialID","Date","T_ID","Barrel","PrePost",
+                      "Treatment","Color", 
+                      "ExposRep", "TrackLength","SubjectNotFound",
+                      "tlmm","massg", "Spp","Contaminant",
+                      "TrialTime_s","RecTime_s","Xcent_cm","Ycent_cm",
+                      "DistMoved_cm","Vel_cms","MeanderRel_degcm","TurnAngleRel_deg","InZoneAny",
+                      "TurnAngleRel_deg2", "cut")
+
+
+GSdatasum = GSdatasub %>%
+  group_by(index, TrialID, Date, T_ID, Barrel, PrePost, ExposRep, TrackLength, SubjectNotFound, Treatment, Spp, Contaminant, tlmm, massg, cut) %>%
+  summarize(TrialTime = round(mean(TrialTime_s),1),
+            Xcent = mean(Xcent_cm, na.rm=T),
+            Ycent = mean(Ycent_cm, na.rm=T),
+            MnDistMoved = mean(DistMoved_cm, na.rm=T),
+            #MnDistMoved.NA0 = mean(DistMoved_mm.NA0, na.rm=T),
+            SumDistMoved = sum(DistMoved_cm, na.rm=T),
+            MnVel = mean(Vel_cms, na.rm=T),
+            #MeanderRel = mean(MeanderRel_degmm, na.rm=T), # do this seperately below with circular stats for turn angle
+            TurnAngleCirc = deg(circ.mean.na(rad(TurnAngleRel_deg2))),
+            InZoneAny = max(InZoneAny) ) %>%
+  ungroup() %>%
+  data.frame()
+
+# rather than summarize the meander at each step, recalculate it at these summarized steps by taking the mean heading (turn angle over the 0.2 secs) and divide it by the total distance moved in that same period, following the calculations made by Ethovision to calculate meander. 
+GSdatasum$MeanderCirc = GSdatasum$TurnAngleCirc/GSdatasum$SumDistMoved
+
+
+## repeat for WS
+WSdatasub = WSdata[,c("index","TrialIDFile","Date","TrialIDHeader","BarrelIDHeader","PrePostHeader",
+                      "Treatment","ColorHeader", 
+                      "ExposRepHeader","TrackLengthHeader","SubjectNotFoundHeader",
+                      "tlmm","massg",  
+                      "Spp","Contaminant",
+                      "TrialTime_s","RecTime_s","Xcent_cm","Ycent_cm",
+                      "DistMoved_cm","Vel_cms","MeanderRel_degcm","TurnAngleRel_deg","InZoneAny"),]
+
+
+WSdatasub$TurnAngleRel_deg2 = WSdatasub$TurnAngleRel_deg
+WSdatasub$TurnAngleRel_deg2[WSdatasub$TurnAngleRel_deg<0 & 
+                              !is.na(WSdatasub$TurnAngleRel_deg)] <- 
+  WSdatasub$TurnAngleRel_deg[WSdatasub$TurnAngleRel_deg<0 & 
+                               !is.na(WSdatasub$TurnAngleRel_deg)] +360
+
+WSdatasub$cut = cut_width(WSdatasub$TrialTime_s, 0.2, boundary=0, labels=F)
+
+names(WSdatasub) = c("index","TrialID","Date","T_ID","Barrel","PrePost",
+                      "Treatment","Color", 
+                      "ExposRep", "TrackLength","SubjectNotFound",
+                      "tlmm","massg", "Spp","Contaminant",
+                      "TrialTime_s","RecTime_s","Xcent_cm","Ycent_cm",
+                      "DistMoved_cm","Vel_cms","MeanderRel_degcm","TurnAngleRel_deg","InZoneAny",
+                      "TurnAngleRel_deg2", "cut")
+
+
+WSdatasum = WSdatasub %>%
+  group_by(index, TrialID, Date, T_ID, Barrel, PrePost, ExposRep, TrackLength, SubjectNotFound, Treatment, Spp, Contaminant, tlmm, massg, cut) %>%
+  summarize(TrialTime = round(mean(TrialTime_s),1),
+            Xcent = mean(Xcent_cm, na.rm=T),
+            Ycent = mean(Ycent_cm, na.rm=T),
+            MnDistMoved = mean(DistMoved_cm, na.rm=T),
+            #MnDistMoved.NA0 = mean(DistMoved_mm.NA0, na.rm=T),
+            SumDistMoved = sum(DistMoved_cm, na.rm=T),
+            MnVel = mean(Vel_cms, na.rm=T),
+            #MeanderRel = mean(MeanderRel_degmm, na.rm=T), # do this seperately below with circular stats for turn angle
+            TurnAngleCirc = deg(circ.mean.na(rad(TurnAngleRel_deg2))),
+            InZoneAny = max(InZoneAny) ) %>%
+  ungroup() %>%
+  data.frame()
+
+# rather than summarize the meander at each step, recalculate it at these summarized steps by taking the mean heading (turn angle over the 0.2 secs) and divide it by the total distance moved in that same period, following the calculations made by Ethovision to calculate meander. 
+WSdatasum$MeanderCirc = WSdatasum$TurnAngleCirc/WSdatasum$SumDistMoved
+
+```
+
+
+#### combine WS and GS data
+```{r comb data}
+DataSum = rbind(GSdatasum, WSdatasum)
+
+# clean data types
+ DataSum$TrialID = factor(DataSum$TrialID) 
+ DataSum$Barrel = factor(DataSum$Barrel) 
+ DataSum$ExposRep = factor(DataSum$ExposRep) 
+ DataSum$Date = as.POSIXct(DataSum$Date, format="%m/%d/%y") 
+    
+# add indicies 
+ DataSum$RepID = as.factor(paste(DataSum$Spp, DataSum$Treatment, DataSum$T_ID, DataSum$Barrel, sep="-"))
+ DataSum$uniqueID = paste(DataSum$RepID, DataSum$PrePost, sep="-") 
+ 
+# recalculate track length and % with no fish
+ DataSum$SubjectNotFound = as.numeric(trimws(substr(DataSum$SubjectNotFound, 1, 4))) #trimws() # removes the extra spaces as needed
+ DataSum$TrackLengthSec = as.numeric(substr(DataSum$TrackLength, 6, 7))*60 + as.numeric(substr(DataSum$TrackLength, 9,14))
+ 
+```
+
+
+### explore the data
+```{r explore sampling differences}
+
+detections = data.frame(table(GSdata$index))
+ names(detections) = c("index","Freq")
+ detections = detections[!(detections$Freq==0),]
+mean(detections$Freq)
+ggplot(data = detections, aes(x=Freq)) + geom_histogram()
+ ## GS with ~50,000 detections per track
+
+detections = data.frame(table(WSdata$index))
+ names(detections) = c("index","Freq")
+ detections = detections[!(detections$Freq==0),]
+mean(detections$Freq)
+ggplot(data = detections, aes(x=Freq)) + geom_histogram()
+ ## WS with ~25,000 detections per track. 
+
+
+
+detections = data.frame(table(DataSum$RepID, DataSum$Spp, DataSum$PrePost))
+ names(detections) = c("RepID","Spp","Freq")
+ detections = detections[!(detections$Freq==0),]
+mean(detections$Freq)
+ggplot(data = detections, aes(x=Freq)) + geom_histogram() + facet_wrap(~Spp)
+ ## all with ~8000 detections per track after summarizing. 
+
+detections = data.frame(table(DataSum$RepID, DataSum$Spp, DataSum$PrePost))
+ names(detections) = c("RepID","Spp","PrePost","Freq")
+ detections = detections[!(detections$Freq==0),]
+ggplot(data = detections, aes(x=Freq)) + geom_histogram() + facet_grid(PrePost~Spp)
+ # indeed, there are more detections for the 'post' trials than the 'pre'
+mean(detections[detections$PrePost=="Pre","Freq"])  # 4014
+mean(detections[detections$PrePost=="Post","Freq"])  # 4325
+
+```
+## TANGENT: When I set up the acquisition for the two trials I set the GS to record 60 detections per second, and WS to record 30 detections per second. This may have been why the editing was so extensive for the GS but so much less problematic for the WS. I suppose I could go back and retrack the GS at 30 detections/second, but that seems like such a waste! However, it's probably the best if I'm going to compare the two species directly. If I publish each spp seperately, then maybe this difference is okay.
+
+```{r explore trial time differences}
+metatrial = DataSum[!duplicated(DataSum$uniqueID),]
+ # 290 total trials tracked
+
+table(metatrial$Spp, metatrial$PrePost, metatrial$Treatment)
+ # looks mostly balanced
+
+metatrial[metatrial$TrackLengthSec<800, c("Spp","Treatment","PrePost")]
+ # only 5 trials that don't seem to have the full (or near) video time
+ # GS @ 0Pre,500Post,1000Post, WS @ 10Pre, 500Pre
+ 
+metatrial[metatrial$SubjectNotFound>10, c("Spp","Treatment","PrePost")] 
+ # all WS, which makes me wonder if it's an issue with the tracking resolution afterall? When threshold is 10, 4 tracks are of GS, and 38 are of WS, mostly equally split between pre and post
+ # before making any decisions on this front, I should get a better sense of what this metric is. =/
+```
+
+```{r clean up distance 0}
+
+distlist = split(DataSum$SumDistMoved, DataSum$uniqueID) # cool trick!
+prop0func = function(x) {sum(x==0) / length(x)}
+
+prop0_bytrial = data.frame(sapply(distlist, prop0func))
+  prop0_bytrial$uniqueID = row.names(prop0_bytrial)
+  colnames(prop0_bytrial)[1] = "propdist0"
+  row.names(prop0_bytrial) = 1:nrow(prop0_bytrial)
+
+# add these numbers back into DataSum
+  DataSum.temp = merge(DataSum, prop0_bytrial, by="uniqueID", all.x=T)
+  DataSum = DataSum.temp
+  
+# look at distribution of trials with high levels of missing data   
+ggplot(data = DataSum, aes(x=factor(Treatment), y=propdist0, group=factor(Treatment))) + geom_boxplot() + facet_wrap(PrePost~Spp)
+
+# how does this metric align with the 'subject not found' metric?
+ggplot(data = DataSum, aes(x=SubjectNotFound, y=propdist0)) + geom_point() + geom_smooth(method = "lm") + facet_wrap(PrePost~Spp)
+
+
+```
+## TANGENT: Again, the tracks from the WS seem much poorer than those for the GS. Lots of missing data. I wonder if I can improve the tracking settings to improve this; for now I'll treat the two species differently, and then will go back to CABA and see if I can re-track the WS. Or perhaps I ended up working on / exporting the less optimally tracked ethovision project? Glimmer of hope that I can just pull from the other tracks. =)
+
+## as for the alignment of SubjectNotFound anf distance=0 metrics, for the 'pre' datasets they line up wonderfully! But for 'post' there is a lot more scatter. I think that since we're not seeing an immediate response of the fish to the food, perhaps we should re-run the ethovision exports with the same burn-in time. And based on the tracks I edited, only 20-30seconds of burn in may be enough? I may be able to change the code after the tracking and export it again from there, rather than re-tracking. Could be a quick fix; not sure if it would un-do my track edits though. =/
+
+# trim data files and remove worst low-quality tracks
+```{r data filtering}
+DataSum2 = DataSum[DataSum$TrackLengthSec>800,]
+
+trialmax = 810
+trialmin = 90
+DataSum3 = DataSum2[DataSum2$TrialTime>trialmin & DataSum2$TrialTime<trialmax,] 
+# evens out the extra minute for the post-tracks, and removes the same chunk of time fro mpost trials as pre; keeps exactly 12 minutes of trial time (versus 12.83 or something awkward). 
+
+DataSum4 = DataSum3[DataSum3$propdist0<0.4,]
+# in total this has removed ~7% of positions and 9 trials
+
+# add additional cut column to separate each pre and post trial in to 4 segments
+triallength=trialmax-trialmin
+trialcuts = triallength*5 # number of positions per second in summarization
+segmentn = 4
+ DataSum4$segment = cut_width(DataSum4$cut, trialcuts/segmentn, boundary=(trialcuts/segmentn + (trialmin*5)), labels=F) # 'boundary' gives us the center of one bin; other ways to do this that may be easier, but this was quick and effective. 
+  # check for evenness of segments:
+  summarize(group_by(DataSum4, segment), mincut = min(cut), maxcut = max(cut), cutwindow = max(cut) - min(cut))
+# adjust so post segments are 5-8
+  DataSum4$segment[DataSum4$PrePost=="Post"] = DataSum4$segment[DataSum4$PrePost=="Post"] + 4
+   summarize(group_by(DataSum4, segment), mincut = min(cut), maxcut = max(cut), cutwindow = max(cut) - min(cut))
+```
+
+## preliminary look at results
+```{r prelim plots} 
+DistByTrial = summarize(group_by(DataSum4, uniqueID, Spp, Treatment, T_ID, Barrel, PrePost), totaldist = sum(SumDistMoved))
+ DistByTrial$PrePost = factor(DistByTrial$PrePost, levels=c("Pre", "Post"))
+
+DistByTrial_sub4 = summarize(group_by(DataSum4, uniqueID, Spp, Treatment, T_ID, Barrel, PrePost, segment), totaldist = sum(SumDistMoved))
+ DistByTrial_sub4$PrePost = factor(DistByTrial_sub4$PrePost, levels=c("Pre", "Post"))
+ 
+ 
+ggplot(data = DistByTrial, aes(x=factor(PrePost), y=totaldist, fill=factor(PrePost)) ) + 
+  geom_boxplot() + facet_grid(Spp~Treatment) + theme_bw()
+
+ggplot(data = DistByTrial_sub4, aes(x=factor(segment), y=totaldist, fill=factor(PrePost)) ) + 
+  geom_boxplot() + facet_grid(Spp~Treatment) + theme_bw()
+
+ggplot(data = DistByTrial_sub4[DistByTrial_sub4$segment %in% 3:6,], aes(x=factor(segment), y=totaldist, fill=factor(PrePost)) ) + 
+  geom_boxplot() + facet_grid(Spp~Treatment) + theme_bw()
+
+
+
+gsdistmod.time = lm(totaldist ~ segment*Treatment, data = DistByTrial_sub4[DistByTrial_sub4$Spp=="GS",])
+ summary(gsdistmod.time)
+ anova(gsdistmod.time)
+ 
+gsdistmod.feed = lm(totaldist ~ PrePost*Treatment, data = DistByTrial_sub4[DistByTrial_sub4$Spp=="GS",])
+ summary(gsdistmod.feed)
+ anova(gsdistmod.feed)
+ 
+ 
+wsdistmod.time = lm(totaldist ~ factor(segment) + factor(Treatment), data = DistByTrial_sub4[DistByTrial_sub4$Spp=="WS",])
+ summary(wsdistmod.time)
+ anova(wsdistmod.time)
+ #contrasts(emmeans(wsdistmod.time, specs="segment", by="Treatment"))
+
+wsdistmod.feed = lm(totaldist ~ PrePost*Treatment, data = DistByTrial_sub4[DistByTrial_sub4$Spp=="WS",])
+ summary(wsdistmod.feed)
+ anova(wsdistmod.feed)
+ 
+
+
+InZonePerc = summarize(group_by(DataSum4, uniqueID, Spp, Treatment, T_ID, Barrel, PrePost), InZonePerc = sum(InZoneAny, na.rm=T) )
+ InZonePerc$PrePost = factor(InZonePerc$PrePost, levels=c("Pre", "Post"))
+ InZonePerc$InZonePerc[is.na(InZonePerc$InZonePerc)] <- 0
+
+ggplot(data = InZonePerc, aes(x=factor(PrePost), y=InZonePerc, fill=factor(PrePost)) ) + 
+  geom_boxplot() + facet_grid(Spp~Treatment, scales = "free") + theme_bw()
+
+gszonemod = lm(InZonePerc ~ PrePost*Treatment, data = InZonePerc[InZonePerc$Spp=="GS",])
+  anova(gszonemod)
+wszonemod = lm(InZonePerc ~ PrePost*Treatment, data = InZonePerc[InZonePerc$Spp=="WS",])
+  anova(wszonemod)
+
+
+
+```
+
+### Take home impression: the fish do seem to be moving more in the second half of the trial; whether that is because they gradually move more over time, or because of the food cue is not very clear. Bummer of a study design. =/ BUT the effect of changed activity with time does seem to have a relationship with the pesticide concentration, for WS?? Maybe....
+But they also do NOT seem to be spending more time in the target zones after the food was introduced.  curious. 

@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(readtext) # need this because the ethovision output .txt files have unusual encoding as UTF-16
 library(lme4)
-library(rethinking)
+#library(rethinking)
 library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
 library(patchwork)
 library(circular)
@@ -19,6 +19,8 @@ library(chron)
 library(rstatix)
 library(MuMIn)
 library(viridis)
+library(emmeans)
+library(broom)
 
 knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
 ```
@@ -56,25 +58,32 @@ circ.disp.na = function(x) {
     data.frame(n, r, rbar, var)
 }
 
+
+unscale = function(x) {
+  center = attr(x,"scaled:center")
+  scale = attr(x,"scaled:scale")
+  if(is.null(center)) {print("This variable is not scaled or does not have mean and sd as attributes"); break}
+  unscaled = (x * scale) + center
+  attributes(unscaled) <- NULL
+  return(unscaled)
+}
+  
+
 ```
 
 
 ## Read in Cleaned Data ("Exposure_Analysis1.Rmd")
 ```{r read in clean data}
-DataSum96temp.raw = read.csv("outputData/Exposure_Outputdata/Bifenthrin_2022_Cleaned_NoConc_96hrs.csv")
+DataSum.raw = read.csv("outputData/Exposure_Outputdata/Bifenthrin_2022_23_Cleaned_Conc_FilteredPrelim_Allhrs.csv")
+ # using the one that was filtered coarsely in R (removed many trials that were questionable); revisit this base dataset after editing in ethovision
 
-# can repeat for more exposure timepoints later, if desired
+DataSum.raw$nomconc_ngL = as.numeric(DataSum.raw$nomconc_ngL)
+DataSum.raw$temp = as.numeric(DataSum.raw$temp)
+DataSum.raw$ExposureHrs = as.numeric(DataSum.raw$ExposureHrs)
+DataSum.raw$calcConc = as.numeric(DataSum.raw$calcConc)
+
 ```
 
-## Add measured concentrations (versus nominal)
-```{r chem analysis results}
- chemcsvtemp.raw = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Bifenthrin_2022_WSSummary.csv")
-
-DataSum96temp.cc <- merge(DataSum96temp.raw, chemcsvtemp.raw, by.x=c("nomconc_ngL"), by.y=c("nomconc_ngL"), all.x=T)
-  DataSum96temp.cc$calcConc[DataSum96temp.cc$calcConc=="ND"] = 0
-  DataSum96temp.cc$calcConc = as.numeric(DataSum96temp.cc$calcConc)
- 
-```
 
 ## Add water temps at end of trial
 ```{r add indiv water temp increase}
@@ -106,12 +115,6 @@ DataSum96temp.cc <- merge(DataSum96temp.raw, chemcsvtemp.raw, by.x=c("nomconc_ng
 ```
 
 
-### remove results for WS trial 45 (tray C, 96hr, 189C) until can review them in ethovision
-```{r remove trial 45-WS}
-DataSum96temp = DataSum96temp.cc[!(DataSum96temp.cc$tray=="C"),]
-
-```
-
 
 # plots and exploration are in Exposure_Analysis2, with select plots copied here
 
@@ -123,97 +126,384 @@ DataSum96temp = DataSum96temp.cc[!(DataSum96temp.cc$tray=="C"),]
 ## Distance #####
 ```{r distance data, echo=F}
 ## Summarize to take total distance (sum moved in a trial) for each fish replicates
-DataSum96temp.dist = DataSum96temp %>%
-  group_by(Arena, rep, ExposureHrs, nomconc_ngL, calcConc, tray, temp) %>%
+DataSum.dist = DataSum.raw %>%
+  group_by(spp, ExposureHrs, nomconc_ngL, temp, calcConc, tray, Arena) %>%
   summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100)) %>%
   ungroup()  %>%
-  
   mutate(lnCalcConc = log(calcConc+1)) %>%
   mutate(lnCalcConc2 = (log(calcConc+1))^2) %>%
   #mutate(lnCalcConcC= scale(lnCalcConc, scale=FALSE)) %>%
   #mutate(lnCalcConcC2 = lnCalcConcC^2 ) %>% 
    # order of transformations matters (log then scale then square)
-
   data.frame()
+
 
 
 ```
 
 ```{r distance rawdata plots}
 ## with 96
-totfishdist96.bif22 = ggplot(DataSum96temp.dist, 
+totfishdist.bif22 = ggplot(DataSum.dist, 
                              aes(fill=factor(nomconc_ngL), y=TotalfishDist_m, 
-                               x=factor(nomconc_ngL) ) ) + 
+                               x=factor(ExposureHrs) ) ) + 
                       geom_boxplot(outlier.size = .75) + 
-                      facet_wrap(~temp) + #, labeller = labeller(
-                       # Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),#)+
-                       # scales="free") +
+                      facet_grid(spp~temp, labeller = labeller(
+                        Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                        temp = c("12"="12C", "15"="15C", "18"="18C")),
+                        scales="free") +
                       ylab("Total Trial Distance (m)") + 
                       xlab("Nominal Bifenthrin Concentration (ng/L)") +
-                      scale_fill_viridis_d(name="") + 
+                      scale_fill_manual(values=viridis(6)[1:4], 
+                              name="Nominal Bifenthrin\nConcentration (ng/L)") + 
                       theme_bw()
 
-totfishdist96.bif22
-
-## with 96, by temperature
-viridis_6col = viridis(6)
-totfishdist96.bif22.temp = ggplot(DataSum96temp.dist, 
-                             aes(fill=factor(nomconc_ngL), y=TotalfishDist_m, 
-                               x=factor(temp) ) ) + 
-                      geom_boxplot(outlier.size = .75) + 
-                      facet_grid(~nomconc_ngL, labeller = labeller(
-                        nomconc_ngL = c("0"="0 ng/L bifenthrin",
-                                        "10"="10 ng/L bifenthrin",
-                                        "100"="100 ng/L bifenthrin",
-                                        "500"="500 ng/L bifenthrin")) )+
-                       # scales="free") +
-                      ylab("Total Trial Distance (m)") + 
-                      xlab("Water Temperature (\u00B0C)") +
-                      scale_fill_manual(guide=F, values=viridis_6col[1:4]) + 
-                      theme_bw()
-
-totfishdist96.bif22.temp
+totfishdist.bif22
 
 
 ```
 
 
-```{r distance frequentist models}
+```{r distance frequentist linear models - combined all hours}
 
-disttemp.lmWS = lm(TotalfishDist_m ~ lnCalcConc*temp + lnCalcConc2*temp,
-               data=DataSum96temp.dist, na.action=na.fail) 
- summary(disttemp.lmWS)  # no significance
- dredge(disttemp.lmWS) # best model has polynomial and temp and interaction
+DataSum.dist.scaled = DataSum.dist %>%
+  mutate(temp.sc = scale(temp)) %>%
+  mutate(calcConc.sc = scale(calcConc)) %>% 
+  mutate(lnCalcConc.sc = scale(lnCalcConc))
 
+# check linear relationship btwn calc conc and dist
+ggplot(DataSum.dist, aes(x=calcConc, y=TotalfishDist_m, color=spp)) + 
+  geom_point() + 
+  geom_smooth(method="lm") + 
+  facet_grid(spp ~ temp) + 
+  theme_bw()
+
+ggplot(DataSum.dist, aes(x=lnCalcConc, y=TotalfishDist_m, color=spp)) + 
+  geom_point() + 
+  geom_smooth(method="lm") + 
+  facet_grid(spp ~ temp) + 
+  theme_bw()
+
+ggplot(DataSum.dist, aes(x=lnCalcConc, y=log(TotalfishDist_m), color=spp)) + 
+  geom_point() + 
+  geom_smooth(method="lm") + 
+  facet_grid(spp ~ temp) + 
+  theme_bw()
+
+
+### looked at several models/variables, all quite similar 
+# disttemp.LMint = lm(TotalfishDist_m ~ spp*calcConc.sc*temp.sc,
+#                data=DataSum.dist.scaled, na.action=na.fail)
+#  plot(disttemp.LMint) # some issues at the upper tail of the distn, residuals great
+#  summary(disttemp.LMint)  # adjRsq = 0.72
+#  dredge(disttemp.LMint)  # all selected in best model
+# 
+# disttemp.LMadd = lm(TotalfishDist_m ~ spp + calcConc.sc + temp.sc,
+#                data=DataSum.dist.scaled, na.action=na.fail)
+#  plot(disttemp.LMadd) # same issues at the upper tail of the distn, less great residuals
+#  summary(disttemp.LMadd)  # adjRsq = 0.71
+#  dredge(disttemp.LMadd)  # all selected in best model
+# 
+# disttemp.LMaddlog = lm(TotalfishDist_m ~ spp + lnCalcConc.sc + temp.sc,
+#                data=DataSum.dist.scaled, na.action=na.fail)
+#  plot(disttemp.LMaddlog) # doesn't fix issues
+#  summary(disttemp.LMaddlog)  #  adjRsq = 0.71
+#  dredge(disttemp.LMaddlog)  # all selected in best model
+# 
+# disttemp.LMaddquad = lm(TotalfishDist_m ~ spp*calcConc*temp + spp*(calcConc^2)*temp,
+#                data=DataSum.dist.scaled, na.action=na.fail)
+#  plot(disttemp.LMaddquad) # doesn't fix issues
+#  summary(disttemp.LMaddquad)  #  adjRsq = 0.72
+#  dredge(disttemp.LMaddquad)  # all significant
+# 
+# disttemp.LMint2 = lm(TotalfishDist_m ~ spp*calcConc.sc + spp*temp.sc + calcConc.sc*temp.sc,
+#                data=DataSum.dist.scaled, na.action=na.fail)
+#  plot(disttemp.LMint2) # some issues at the upper tail of the distn, residuals great
+#  summary(disttemp.LMint2)  #  adjRsq = 0.72
+#  dredge(disttemp.LMint2)  # all selected except conc*spp
+#  
+disttemp.LMint3 = lm(TotalfishDist_m ~ spp*temp.sc + calcConc.sc*temp.sc + tray,
+               data=DataSum.dist.scaled, na.action=na.fail) 
+ plot(disttemp.LMint3) # some issues at the upper tail of the distn, residuals great
+ summary(disttemp.LMint3)  #  adjRsq = 0.72 (0.73 if add tray)
+ #dredge(disttemp.LMint3)  # all selected in best model
  
-disttemp.lmWS2 = lm(TotalfishDist_m ~ lnCalcConc + lnCalcConc2*temp,
-               data=DataSum96temp.dist, na.action=na.fail) 
- summary(disttemp.lmWS2)  # now lncalcConc2 and interaction with temp is significant
- dredge(disttemp.lmWS2)
+  DataSum.dist.scaled.GS = filter(DataSum.dist.scaled, spp=="GS")
+disttemp.LMint3.GS = lm(TotalfishDist_m ~ lnCalcConc.sc*temp.sc + tray,
+               data=DataSum.dist.scaled.GS, na.action=na.fail) 
+ plot(disttemp.LMint3.GS) # strong issues at the upper tail of the distn, slope to residuals; GS data not great
+ summary(disttemp.LMint3.GS)  #  adjRsq = 0.17 (with and without tray)
+ #dredge(disttemp.LMint3.GS)  # interaction barely in best model (dAIC is only 0.71)
+ 
+  DataSum.dist.scaled.WS = filter(DataSum.dist.scaled, spp=="WS")
+disttemp.LMint3.WS = lm(TotalfishDist_m ~ calcConc.sc*temp.sc + tray,
+               data=DataSum.dist.scaled.WS, na.action=na.fail) 
+ plot(disttemp.LMint3.WS) # minor issues at the upper tail of the distn, residuals great
+ summary(disttemp.LMint3.WS)  # adjRsq = 0.40 (0.3 without tray)
+ #dredge(disttemp.LMint3.WS)  # all vars in best model
+ 
+ 
+ 
+ 
+ 
+## assess mixed models
+disttemp.LMMint1 = lmer(TotalfishDist_m ~ calcConc.sc*temp.sc + (1|spp) + (1|tray),
+               data=DataSum.dist.scaled, na.action=na.fail) 
+     plot(disttemp.LMMint1) # residuals good
+     qqnorm(resid(disttemp.LMMint1)); qqline(resid(disttemp.LMMint1)) # pretty good
+     summary(disttemp.LMMint1)  # similar to non-mixed model; spp is hugely important, tray is as well (estimates from 0 to 2, while fixed effect sizes range from -1 to 3.4)
+     dredge(disttemp.LMMint1) 
+ 
+disttemp.LMMint2 = lmer(TotalfishDist_m ~ spp + calcConc.sc*temp.sc + (1|tray),
+               data=DataSum.dist.scaled, na.action=na.fail) 
+     plot(disttemp.LMMint2) # residuals good
+     qqnorm(resid(disttemp.LMMint2)); qqline(resid(disttemp.LMMint2)) # pretty good
+     summary(disttemp.LMMint2)  # similar to non-mixed model; spp is hugely important, tray is as well (estimates from 0 to 2, while fixed effect sizes range from -1 to 3.4)
+     dredge(disttemp.LMMint2) 
+  #### estimates are nearly identical when spp is a random vs fixed effect. Use LMMint2.
+     
+     
+     
+### assess ANOVA models
+     
+anv1 = aov(lm(TotalfishDist_m ~ spp + factor(nomconc_ngL)*factor(temp), 
+              data = DataSum.dist))
+summary(anv1)
+TukeyHSD(anv1) 
+  # model with no interactions:
+  # 500 different from all others; all temperatures are different
+
+  # model with interactions, before custom contrasts designed: 
+  # 12C: 500 different from all; 15C: 500 different from 0 and 100; 18C: no differences
+  # all pairwise comparisons between temps at same concentration were significany, except 100ng/L at 15 and 18C. 
  
 
+   
+anvGS = aov(lm(TotalfishDist_m ~ factor(nomconc_ngL)*factor(temp), 
+              data = filter(DataSum.dist, spp=="GS") ) )
+summary(anvGS)
+TukeyHSD(anvGS) # 500 different from 0 and 10, not 100; all temps different
+                # interaction less useful, but sig for 18 vs 12 and vs 15 at 0ng/L, and generally also sig for 12C@500ng/L vs most of the 18C concentrations
+
+anvWS = aov(lm(TotalfishDist_m ~ factor(nomconc_ngL)*factor(temp), 
+              data = filter(DataSum.dist, spp=="WS") ) )
+summary(anvWS)
+TukeyHSD(anvWS) # 500 different from 0, 10, 100; all temps different
+
+      
 ```
 
-## plot frequentist model predictions
-```{r model predictions}
-preddat.temp.WS = expand.grid(lnCalcConc= unique(DataSum96temp.dist$lnCalcConc), temp = c(12,15,18)) 
-                        
-preddat.temp.WS$lnCalcConc2 = preddat.temp.WS$lnCalcConc^2
-preddat.temp.WS = preddat.temp.WS[order(preddat.temp.WS$lnCalcConc),]
-                                           
-WSpreds.temp = predict(disttemp.lmWS2, newdata=preddat.temp.WS, se.fit=TRUE) 
 
-preddat.temp.WS$predTotalDist_m = WSpreds.temp$fit
-preddat.temp.WS$predSE_TotalDist_m = WSpreds.temp$se.fit
-  preddat.temp.WS$spp="WS"
+```{r distance frequentist linear models @ 96hrs}
 
-                
+DataSum96.dist = filter(DataSum.dist, ExposureHrs==96)
+DataSum96.dist$trayspp = paste(DataSum96.dist$spp, DataSum96.dist$tray, sep="-")
 
- # plot model predictions with raw conc scale
-ggplot(preddat.temp.WS, aes(x=exp(lnCalcConc), y=predTotalDist_m, group=temp, fill=temp)) +
-  geom_errorbar(aes(ymin = predTotalDist_m - predSE_TotalDist_m, 
-                    ymax = predTotalDist_m + predSE_TotalDist_m)) + 
-  geom_line(size=0.7) + 
+DataSum96.dist.scaled = DataSum96.dist %>%
+  mutate(temp.sc = scale(temp)) %>%
+  mutate(calcConc.sc = scale(calcConc)) %>% 
+  mutate(lnCalcConc.sc = scale(lnCalcConc))
+
+# check linear relationship btwn calc conc and dist
+ggplot(DataSum96.dist, aes(x=calcConc, y=TotalfishDist_m, color=spp)) + 
+  geom_point() + 
+  geom_smooth(method="loess") + 
+  facet_grid(spp ~ temp) + 
+  theme_bw()
+
+ggplot(DataSum96.dist, aes(x=lnCalcConc, y=TotalfishDist_m, color=spp)) + 
+  geom_point() + 
+  geom_smooth(method="loess") + 
+  facet_grid(spp ~ temp) + 
+  theme_bw()
+
+ggplot(DataSum96.dist, aes(x=lnCalcConc, y=log(TotalfishDist_m), color=spp)) + 
+  geom_point() + 
+  geom_smooth(method="loess") + 
+  facet_grid(spp ~ temp, scales="free") + 
+  theme_bw()
+
+ggplot(DataSum96.dist, aes(x=trayspp, y=TotalfishDist_m, color=spp)) + 
+  geom_boxplot() + 
+  facet_wrap(~ temp, scales="free") + 
+  theme_bw()
+
+### looked at several models/variables, all quite similar 
+# disttemp.LMint = lm(TotalfishDist_m ~ spp*calcConc.sc*temp.sc,
+#                data=DataSum96.dist.scaled, na.action=na.fail)
+#  plot(disttemp.LMint) # some issues at the upper tail of the distn, residuals great
+#  summary(disttemp.LMint)  # adjRsq = 0.72
+#  #dredge(disttemp.LMint)  # all selected in best model
+# 
+# disttemp.LMintlog = lm(TotalfishDist_m ~ spp*lnCalcConc.sc*temp.sc,
+#                data=DataSum96.dist.scaled, na.action=na.fail)
+#  plot(disttemp.LMintlog) # some issues at the upper tail of the distn, residuals great
+#  summary(disttemp.LMintlog)  # adjRsq = 0.72
+#  #dredge(disttemp.LMint)  # all selected in best model
+#  
+# disttemp.LMadd = lm(TotalfishDist_m ~ spp + calcConc.sc + temp.sc,
+#                data=DataSum96.dist.scaled, na.action=na.fail)
+#  plot(disttemp.LMadd) # same issues at the upper tail of the distn, less great residuals
+#  summary(disttemp.LMadd)  # adjRsq = 0.71
+#  #dredge(disttemp.LMadd)  # all selected in best model
+# 
+# disttemp.LMaddlog = lm(TotalfishDist_m ~ spp + lnCalcConc.sc + temp.sc,
+#                data=DataSum96.dist.scaled, na.action=na.fail)
+#  plot(disttemp.LMaddlog) # doesn't fix issues
+#  summary(disttemp.LMaddlog)  #  adjRsq = 0.71
+#  #dredge(disttemp.LMaddlog)  # all selected in best model
+# 
+# disttemp.LMintquad = lm(TotalfishDist_m ~ spp*calcConc*temp + spp*(calcConc^2)*temp,
+#                data=DataSum96.dist.scaled, na.action=na.fail)
+#  plot(disttemp.LMintquad) # doesn't fix issues
+#  summary(disttemp.LMintquad)  #  adjRsq = 0.72
+#  #dredge(disttemp.LMaddquad)  # all significant
+# 
+# disttemp.LMint2 = lm(TotalfishDist_m ~ spp*calcConc.sc + spp*temp.sc + calcConc.sc*temp.sc,
+#                data=DataSum96.dist.scaled, na.action=na.fail)
+#  plot(disttemp.LMint2) # some issues at the upper tail of the distn, residuals great
+#  summary(disttemp.LMint2)  #  adjRsq = 0.72
+#  # dredge(disttemp.LMint2)  # all selected except conc*spp
+# 
+# disttemp.LMint3 = lm(TotalfishDist_m ~ spp*temp.sc + calcConc.sc*temp.sc + tray,
+#                data=DataSum96.dist.scaled, na.action=na.fail) 
+#  plot(disttemp.LMint3) # some issues at the upper tail of the distn, residuals great
+#  summary(disttemp.LMint3)  #  adjRsq = 0.72 (0.73 if add tray)
+#  #dredge(disttemp.LMint3)  # all selected in best model
+#  
+#   DataSum96.dist.scaled.GS = filter(DataSum96.dist.scaled, spp=="GS")
+# disttemp.LMint3.GS = lm(TotalfishDist_m ~ lnCalcConc.sc*temp.sc + tray,
+#                data=DataSum96.dist.scaled.GS, na.action=na.fail) 
+#  plot(disttemp.LMint3.GS) # strong issues at the upper tail of the distn, slope to residuals; GS data not great
+#  summary(disttemp.LMint3.GS)  #  adjRsq = 0.17 (with and without tray)
+#  #dredge(disttemp.LMint3.GS)  # interaction barely in best model (dAIC is only 0.71)
+#  
+#   DataSum96.dist.scaled.WS = filter(DataSum96.dist.scaled, spp=="WS")
+# disttemp.LMint3.WS = lm(TotalfishDist_m ~ calcConc.sc*temp.sc + tray,
+#                data=DataSum96.dist.scaled.WS, na.action=na.fail) 
+#  plot(disttemp.LMint3.WS) # minor issues at the upper tail of the distn, residuals great
+#  summary(disttemp.LMint3.WS)  # adjRsq = 0.40 (0.3 without tray)
+#  #dredge(disttemp.LMint3.WS)  # all vars in best model
+ 
+ 
+ 
+ 
+ 
+## assess mixed models; tray is important
+disttemp.LMMint1 = lmer(TotalfishDist_m ~ calcConc.sc*temp.sc + (1|spp) + (1|trayspp),
+               data=DataSum96.dist.scaled, na.action=na.fail) 
+     plot(disttemp.LMMint1) # residuals good
+     qqnorm(resid(disttemp.LMMint1)); qqline(resid(disttemp.LMMint1)) # pretty good
+     summary(disttemp.LMMint1)  # similar to non-mixed model; spp is hugely important, tray is as well (estimates from 0 to 2, while fixed effect sizes range from -1 to 3.4)
+     dredge(disttemp.LMMint1) 
+ 
+     
+     
+############# best linear model ##################################################     
+disttemp.LMMint2 = lmer(TotalfishDist_m ~ spp + calcConc.sc * temp.sc + (1|trayspp),
+               data=DataSum96.dist.scaled, na.action=na.fail) 
+     
+     plot(disttemp.LMMint2) # residuals good
+     qqnorm(resid(disttemp.LMMint2)); qqline(resid(disttemp.LMMint2)) # pretty good
+     summary(disttemp.LMMint2)  # similar to non-mixed model; spp is hugely important, tray is as well (estimates from 0 to 2, while fixed effect sizes range from -1 to 3.4)
+     dredge(disttemp.LMMint2) 
+  #### estimates are nearly identical when spp is a random vs fixed effect. Use LMMint2.
+#################################################################################     
+
+     
+     
+### assess factor models with custom contrasts ######
+# this was best when dredged with interaction btwn nomconc and temp   
+disttemp.LMMfact2 = lmer(TotalfishDist_m ~ spp+factor(nomconc_ngL)+factor(temp) + (1|tray), data=DataSum96.dist, na.action=na.fail) 
+     plot(disttemp.LMMfact2) # residuals good enough
+     qqnorm(resid(disttemp.LMMfact2)); qqline(resid(disttemp.LMMfact2)) # pretty good
+     anova(disttemp.LMMfact2)
+
+
+     cC.emm <- emmeans(disttemp.LMMfact2, "nomconc_ngL")
+     cC.emm # averaged over spp and temp
+       # nomconc_ngL emmean   SE   df lower.CL upper.CL
+       #           0   22.3 1.13 36.4     20.0     24.6
+       #          10   20.5 1.12 36.7     18.2     22.8
+       #         100   20.4 1.12 35.9     18.1     22.6
+       #         500   15.5 1.12 36.1     13.2     17.7
+    # non-overlapping confedence intervals for 500 and all others
+         
+         contrast(cC.emm, 'tukey') 
+           #     contrast                        estimate   SE  df t.ratio p.value
+           # nomconc_ngL0 - nomconc_ngL10       1.761 1.29 250   1.369  0.5202
+           # nomconc_ngL0 - nomconc_ngL100      1.926 1.28 249   1.505  0.4362
+           # nomconc_ngL0 - nomconc_ngL500      6.834 1.28 250   5.330  <.0001
+           # nomconc_ngL10 - nomconc_ngL100     0.165 1.28 249   0.129  0.9992
+           # nomconc_ngL10 - nomconc_ngL500     5.072 1.28 249   3.961  0.0006
+           # nomconc_ngL100 - nomconc_ngL500    4.907 1.28 249   3.845  0.0009
+    
+         contrast(cC.emm, 'poly') %>% head(3) 
+           # contrast  estimate   SE  df t.ratio p.value
+           # linear      -20.67 4.05 250  -5.101  <.0001
+           # quadratic    -3.15 1.81 249  -1.737  0.0836
+           # cubic        -6.34 4.05 250  -1.564  0.1192
+         
+        
+     t.emm <- emmeans(disttemp.LMMfact2, "temp")
+     t.emm # averaged over nomconc and temp
+           # temp emmean   SE    df lower.CL upper.CL
+           #   12   14.8 1.12 16.81     12.4     17.1
+           #   15   18.7 1.37  9.46     15.7     21.8
+           #   18   25.4 1.17 18.08     23.0     27.9
+
+         contrast(t.emm, 'tukey') 
+           # contrast        estimate   SE    df t.ratio p.value
+           # temp12 - temp15    -3.97 1.77  11.7  -2.247  0.1042
+           # temp12 - temp18   -10.66 1.15 257.6  -9.287  <.0001
+           # temp15 - temp18    -6.69 1.80  12.2  -3.715  0.0076
+    
+         contrast(t.emm, 'poly') %>% head(3) 
+           # contrast  estimate   SE     df t.ratio p.value
+           # linear       10.66 1.15 257.55   9.287  <.0001
+           # quadratic     2.72 3.38   9.65   0.805  0.4404
+         
+           
+```
+
+
+
+
+## plot frequentist model predictions for linear model
+```{r model predictions, eval=FALSE}
+              
+###### FAIL SO FAR ############    
+
+preddat.temp.response = unique(data.frame(spp=DataSum96.dist.scaled$spp,
+                                   #calcConc=unscale(DataSum96.dist.scaled$calcConc.sc),
+                                   #temp = unscale(DataSum96.dist.scaled$temp.sc),
+                                   nomconc_ngL = DataSum96.dist.scaled$nomconc_ngL,
+                                   calcConc.sc = DataSum96.dist.scaled$calcConc.sc,
+                                   temp.sc = DataSum96.dist.scaled$temp.sc,
+                                   trayspp = "Z") )
+preddat.temp.response$predict = predict(disttemp.LMMint2, newdata=preddat.temp.response, 
+                               se.fit=FALSE, allow.new.levels=TRUE)
+
+# 
+#  # plot model predictions with raw conc scale
+# ggplot(preddat.temp.response, aes(x=calcConc, y=predict, group=temp, fill=spp)) +
+#   # geom_errorbar(aes(ymin = predTotalDist_m - predSE_TotalDist_m, 
+#   #                   ymax = predTotalDist_m + predSE_TotalDist_m)) + 
+#   geom_line(size=0.7) + 
+#   geom_point(pch=21, size=3) + 
+#   #scale_fill_manual(values=c("GS"="green3","WS"="grey80"),
+#                     # labels=c("Green Sturgeon","White Sturgeon"),
+#                     # name="Species") + 
+#   scale_y_continuous(name="Total Distance Traversed (cm)", 
+#                      breaks=seq(0,40,5), 
+#                      labels=seq(0,40,5)*100, 
+#                      limits=c(0,43)) + 
+#   facet_grid(spp~temp)+
+#   xlab("Bifenthrin Concentration (ng/L)") +
+#   theme_bw()
+
+
+
+preds = ggplot(preddat.temp.response, aes(x=factor(nomconc_ngL), y=predict, group=factor(nomconc_ngL), fill=factor(temp))) +
   geom_point(pch=21, size=3) + 
   #scale_fill_manual(values=c("GS"="green3","WS"="grey80"),
                     # labels=c("Green Sturgeon","White Sturgeon"),
@@ -222,58 +512,17 @@ ggplot(preddat.temp.WS, aes(x=exp(lnCalcConc), y=predTotalDist_m, group=temp, fi
                      breaks=seq(0,40,5), 
                      labels=seq(0,40,5)*100, 
                      limits=c(0,43)) + 
+  facet_wrap(~spp)+
   xlab("Bifenthrin Concentration (ng/L)") +
   theme_bw()
 
- # plot model predictions with log conc scale
-ggplot(preddat.temp.WS, aes(x=(lnCalcConc), y=predTotalDist_m, group=temp, fill=temp)) +
-  geom_errorbar(aes(ymin = predTotalDist_m - predSE_TotalDist_m, 
-                    ymax = predTotalDist_m + predSE_TotalDist_m)) + 
-  geom_smooth(method="loess", color="black", size=.7) + 
-  geom_point(pch=21, size=3) + 
-  # scale_fill_manual(values=c("GS"="green3","WS"="grey80"),
-  #                   labels=c("Green Sturgeon","White Sturgeon"),
-  #                   name="Species") + 
-  scale_y_continuous(name="Total Distance Traversed (cm)", 
-                     breaks=seq(0,40,5), 
-                     labels=seq(0,40,5)*100, 
-                     limits=c(0,43)) + 
-  xlab("Bifenthrin Concentration (ng/L)") +
-  theme_bw()
+preds + geom_boxplot(data = DataSum96.dist, aes(y=TotalfishDist_m), outlier.size = .75) +
+   geom_point(pch=21, size=3) 
+ 
 
 
-## plot model predictions over raw boxplots
-treat.ref = unique(DataSum96temp.dist[,c("lnCalcConc","nomconc_ngL")])
-preddat.temp.WS = merge(preddat.temp.WS, treat.ref, all.x=T)
-preddat.temp.WS$calcConc = exp(preddat.temp.WS$lnCalcConc)-1 
 
-fourcolors = viridis(6)[1:4]
 
-totfishdist96.bif22 = ggplot(DataSum96temp.dist, 
-                             aes(fill=factor(nomconc_ngL), y=TotalfishDist_m, 
-                               x=factor(nomconc_ngL) ) ) + 
-                      geom_boxplot(outlier.size = .75) + 
-                      geom_errorbar(data=preddat.temp.WS, 
-                                    aes(x=factor(nomconc_ngL), y=predTotalDist_m,
-                                        ymin = predTotalDist_m - predSE_TotalDist_m, 
-                                        ymax = predTotalDist_m + predSE_TotalDist_m),
-                                    color="grey30", width=.2, size=.3) + 
-                      geom_point(data=preddat.temp.WS, 
-                                 aes(x=factor(nomconc_ngL), y=predTotalDist_m), 
-                                 pch=21, size=3, fill="grey60", color="grey30") +
-                      facet_wrap(~temp) + #, labeller = labeller(
-                       # Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),#)+
-                       # scales="free") +
-                      scale_y_continuous(name="Total Distance Traversed (cm)",
-                                         breaks=seq(0,65,10),
-                                         labels=seq(0,65,10)*100,
-                                         limits=c(0,64)) +
-                      xlab("Nominal Bifenthrin Concentration (ng/L)") +
-                      #scale_fill_viridis_d(name="") +
-                      scale_fill_manual(values=fourcolors, name="") + 
-                      theme_bw()
-
-totfishdist96.bif22
 
 
 tiff("figures/Exposure_OutputFigs/TotalDistance_Bif2022_WS_withPreds.tiff", width=140, height=70, units="mm", compression="lzw", res=150)
@@ -281,554 +530,144 @@ totfishdist96.bif22
 dev.off()        
 
 
-
-totfishdist96.bif22.temp = ggplot(DataSum96temp.dist, 
-                             aes(fill=factor(nomconc_ngL), y=TotalfishDist_m*100, 
-                               x=factor(temp) ) ) + 
-                      geom_boxplot(outlier.size = .75) + 
-                       geom_errorbar(data=preddat.temp.WS, 
-                                    aes(x=factor(temp), y=predTotalDist_m*100,
-                                        ymin = predTotalDist_m*100 - predSE_TotalDist_m*100, 
-                                        ymax = predTotalDist_m*100 + predSE_TotalDist_m*100),
-                                    color="grey30", width=.2, size=.3) + 
-                      geom_point(data=preddat.temp.WS, 
-                                 aes(x=factor(temp), y=predTotalDist_m*100), 
-                                 pch=21, size=3, fill="grey60", color="grey30") +
-                      facet_grid(~nomconc_ngL, 
-                                 labeller = labeller( nomconc_ngL = c("0"="0 ng/L bifenthrin",
-                                        "10"="10 ng/L bifenthrin",
-                                        "100"="100 ng/L bifenthrin",
-                                        "500"="500 ng/L bifenthrin")) )+
-                       # scales="free") +
-                      ylab("Total Trial Distance (cm)") + ylim(c(0,6500)) + 
-                      xlab("Water Temperature (\u00B0C)") +
-                      scale_fill_manual(guide=F, values=viridis_6col[1:4]) + 
-                      theme_bw()
-
-totfishdist96.bif22.temp
-
-
-       
-# are the estimates different from control?      
- summary(dist.lmGS.redu)
-  summary(aov(dist.lmGS.redu))
- # none of the concentrations are significantly different for GS
- summary(dist.lmWS.redu)
-  summary(aov(dist.lmWS.redu))
-  trash = lm(TotalfishDist_m ~ factor(lnCalcConc) + factor(lnCalcConc2) + pred.endtemp,
-               data=DataSum96.distWS[DataSum96.distWS$Treatment %in% c(0,1,10,100),]) 
-    summary(trash) 
-    plot(trash)
-      TukeyHSD(aov(trash))
-  # if this is a legit way to model it, the 100 is sig dif from 0. 
+# 
+#        
+# # are the estimates different from control?      
+#  summary(dist.lmGS.redu)
+#   summary(aov(dist.lmGS.redu))
+#  # none of the concentrations are significantly different for GS
+#  summary(dist.lmWS.redu)
+#   summary(aov(dist.lmWS.redu))
+#   trash = lm(TotalfishDist_m ~ factor(lnCalcConc) + factor(lnCalcConc2) + pred.endtemp,
+#                data=DataSum96.distWS[DataSum96.distWS$Treatment %in% c(0,1,10,100),]) 
+#     summary(trash) 
+#     plot(trash)
+#       TukeyHSD(aov(trash))
+#   # if this is a legit way to model it, the 100 is sig dif from 0. 
 
 ```
 
 
 
-```{r distance multi-level Bayesmodels selection, echo=F, eval=F}
-# try setting up the linear model in a bayesian form, same as frequentist model above
+## central zone
 
-DataSum96.dist$lnCalcConcMod = DataSum96.dist$lnCalcConc+1
-DataSum96.dist$lnCalcConc2Mod = (DataSum96.dist$lnCalcConcMod^2)
-DSdist_bmoddat = DataSum96.dist[ ,c("TotalfishDist_m","lnCalcConcMod","lnCalcConc2Mod","Spp","Tray")]
-DSdist_bmoddat$SppDummy <- ifelse(DSdist_bmoddat$Spp=="GS", 0,1)
+```{r center zone frequentist linear models @ 96hrs}
+# thrown together hastily; review
 
-# remove fish from Tray D, GS, 96hrs because I suspect strange tracks (Dec 2021)
-DSdist_bmoddat = DSdist_bmoddat[!(DSdist_bmoddat$Tray=="D" & DSdist_bmoddat$Spp=="GS"),]
+DataSum.cent = DataSum.raw %>%
+  filter(!is.na(InZone_C)) %>%  
+  group_by(spp, ExposureHrs, Arena, tray, nomconc_ngL, calcConc, temp) %>%
+  summarize(InZoneC = sum(InZone_C, na.rm=T), npos = n()) %>%
+  ungroup()  %>%
+  mutate(PercZoneC.1 = InZoneC / npos) %>%
+  data.frame()
 
-set.seed(1995)
-fipdist.blm_int1.ri = map2stan(
-  alist(
-    TotalfishDist_m ~ dnorm(mu, sigma),
-      mu  <- a_tray[Tray] + 
-              bs*SppDummy + 
-              bt*(lnCalcConcMod) + 
-              bt2*(lnCalcConc2Mod) + 
-              bts*(SppDummy)*(lnCalcConcMod) + 
-              bts2*(SppDummy)*(lnCalcConc2Mod),
-          a_tray[Tray] ~ dnorm(a,a_sig),
-            a ~ dnorm(0,10),
-            a_sig ~ dcauchy(0,10),
-        bs ~ dnorm(0,10),
-        bt ~ dnorm(0,10),
-        bt2 ~ dnorm(0,10),
-        bts ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
-    ) ,
-  data = DSdist_bmoddat, iter = 2000, warmup = 500, chains = 4)
+DataSum96.cent = filter(DataSum.cent, ExposureHrs==96)
+DataSum96.cent$trayspp = paste(DataSum96.cent$spp, DataSum96.cent$tray, sep="-")
 
-precis(fipdist.blm_int1.ri)
-plot(precis(fipdist.blm_int1.ri))
-plot(fipdist.blm_int1.ri)
-
-set.seed(1995)
-fipdist.blm_int2.ri = map2stan(
-  alist(
-    TotalfishDist_m ~ dnorm(mu, sigma),
-      mu  <- a_tray[Tray] + 
-              bs*SppDummy + 
-              bt*(lnCalcConc) + 
-              bts*(SppDummy)*(lnCalcConc) + 
-              bts2*(SppDummy)*(lnCalcConc2),
-          a_tray[Tray] ~ dnorm(a,a_sig),
-            a ~ dnorm(0,10),
-            a_sig ~ dcauchy(0,10),
-        bs ~ dnorm(0,10),
-        bt ~ dnorm(0,10),
-        bts ~ dnorm(0,10),
-        bts2 ~ dnorm(0,10),
-    sigma ~ dcauchy(0,10)
-    ) ,
-  data = DSdist_bmoddat, iter = 2000, warmup = 500, chains = 4)
-
-precis(fipdist.blm_int2.ri)
-plot(precis(fipdist.blm_int2.ri))
-plot(fipdist.blm_int2.ri)
-
-# the models run fine, but the curve that is produced by the quadratic isn't the right shape for the data. How do I pick something else? 
-
-```
-###
+DataSum96.cent.scaled = DataSum96.cent %>%
+  mutate(temp.sc = scale(temp)) %>%
+  mutate(calcConc.sc = scale(calcConc))
 
 
-```{r distance multi-level Bayesmodels predict, echo=F, eval=F}
-
-# pull posterior from model:
-set.seed(42)
-post = extract.samples(fipdist.blm_int1.ri)
-
-# set up dataframe to plot posterior predictions
-preddat = list(CalcConc=rep(seq(0, 2250, 2), 4), 
-               lnCalcConc=log(rep(seq(0, 2250, 2),4)+1), 
-               lnCalcConcC=(log(rep(seq(0, 2250, 2),4)+1)) - 
-                 mean(DataSum96.dist$lnCalcConc) ,
-               lnCalcConcC2=((log(rep(seq(0, 2250, 2),4)+1)) - 
-                 mean(DataSum96.dist$lnCalcConc))^2 ,               
-              SppDummy = rep(rep(c(0,1),each=1126),2), 
-               Tray = rep(2,4504))
-
-# make zeros for individual random effects to predict to mean only -> model doesn't have any 'a' this way
-a_tray_zeros = matrix(0,6000,90)  # use this to make the tray-offset zero
-a_global = matrix(post$a,6000,90) # use this if model built with a single intercept (not a global intercept + offset)
-
-# use link to predict to mean only
-link.1.ri <- link(fipdist.blm_int1.ri, n=1000, data= preddat, 
-                         replace = list(a_tray = a_global) )
-                  
-preddat.df <- data.frame(sapply(preddat,c)) # thanks stack overflow! https://stackoverflow.com/questions/4227223/convert-a-list-to-a-data-frame
-
-preddat.df$link_mu_mn <- apply(link.1.ri, 2, mean) 
-preddat.df$link_PI05 = apply(link.1.ri, 2, PI, .95)[1,] 
-preddat.df$link_PI95 = apply(link.1.ri, 2, PI, .95)[2,] 
-
-# plot data
-  preddat.df$Spp <- ifelse(preddat.df$SppDummy==0,"GS","WS")
-
-DistPred_transf_plot = ggplot() + 
-  geom_point(data=DataSum96.dist,
-             aes(x=(lnCalcConcC),                          
-                 y=TotalfishDist_m, 
-                 color=factor(Spp))) + 
-  geom_ribbon(data = preddat.df, aes(x=(lnCalcConcC), 
-              ymin=link_PI05, ymax=link_PI95), 
-              alpha=.4, col="grey70")+
-  geom_line(data = preddat.df, aes(x=(lnCalcConcC), y=link_mu_mn), lwd=.2)+
-    facet_grid(Spp~., scales="free", labeller = labeller(
-      Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
-    scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
-    ylab("Total Distance Traveled (m)") + 
-    scale_x_continuous(name="Fipronil Concentration (ug/L)") +
-    theme_bw()
-
-
-DistPred_orig_plot = ggplot() + 
-  geom_point(data=DataSum96.dist,
-             aes(x=(calcConc),                          
-                 y=TotalfishDist_m, 
-                 color=factor(Spp))) + 
-  geom_ribbon(data = preddat.df, aes(x=(CalcConc), 
-              ymin=link_PI05, ymax=link_PI95), 
-              alpha=.4, col="grey70")+
-  geom_line(data = preddat.df, aes(x=(CalcConc), y=link_mu_mn), lwd=.2)+
-  facet_grid(Spp~., scales="free", labeller = labeller(
-    Spp = c("GS" = "Green Sturgeon", "WS" = "White Sturgeon")))+
-  scale_color_manual(values=c("green3", "steelblue3"), guide=FALSE)+
-  ylab("Total Distance Traveled (cm)") + 
-  scale_x_continuous(name="Fipronil Concentration (ug/L)") + 
-  theme_bw()
-
-DistPred_transf_plot
-DistPred_orig_plot
-
- = ggplot(data=DataSum96.dist,
-             aes(x=log(calcConc),                          
-                 y=log(TotalfishDist_m), 
-                 color=factor(Spp), group=
-                   Spp)) + 
-  geom_point() +
-  geom_smooth()
-
-```
  
+ ##### left off here, and in the red text on page 14 in the report
+
+
+############# best linear model ##################################################    
+ ## assess mixed models; tray is important
+centtemp.LMMint1 = glmer(cbind(InZoneC, (npos-InZoneC)) ~ spp*calcConc.sc + calcConc.sc*temp.sc + (1|trayspp),data=DataSum96.cent.scaled, family="binomial", na.action=na.fail) 
+     plot(centtemp.LMMint1) # residuals good
+     qqnorm(resid(centtemp.LMMint1)); qqline(resid(centtemp.LMMint1)) # pretty good
+     summary(centtemp.LMMint1)  # similar to non-mixed model; spp is hugely important, tray is as well (estimates from 0 to 2, while fixed effect sizes range from -1 to 3.4)
+     dredge(centtemp.LMMint1) 
  
-### Distance Contrasts (bayesian models)
-
-### Study questions: 
-
-###  1) is there an effect (all treatment vs control), and which metrics show an effect
-
-###  2) does that effect change with time [96 treat vs 96 control and 24 treat vs 24 control OR individual change from 24 to 96 (all treatments) as compared to individual change for control between 24 and 96]
-
-###  3) Does the magnitude of the effect vary between species
-
-```{r distance multi-level model density plots, echo=F, eval=F}
-set.seed(1983) 
-postdist = extract.samples(distspp.blm_int5.rise.2)  # maybe change to distspp.blm_int3.rise, and if so, change the model prediction parts in the following chunk and the next. Argh. 
-
-
-# reference table to convert from treatment to centered, log-transformed measured concentrations
-TreatCalcTable = unique(DataSum2496.dist[order(DataSum2496.dist$Treatment)
-                                             ,c("Spp", "Treatment","lnCalcConc", "lnCalcConcC")])
-TreatCalcTable$lnCalcConcC2 = TreatCalcTable$lnCalcConcC ^ 2
+centtemp.LMMadd1 = glmer(cbind(InZoneC, (npos-InZoneC)) ~ spp +calcConc.sc + temp.sc + (1|trayspp),data=DataSum96.cent.scaled, family="binomial", na.action=na.fail) 
+     plot(centtemp.LMMadd1) # residuals good
+     qqnorm(resid(centtemp.LMMadd1)); qqline(resid(centtemp.LMMadd1)) # pretty good
+     summary(centtemp.LMMadd1)  # similar to non-mixed model; spp is hugely important, tray is as well (estimates from 0 to 2, while fixed effect sizes range from -1 to 3.4)
+     dredge(centtemp.LMMadd1) 
+      
+     
+     
+     
+### assess factor models with custom contrasts ######
+# this was best when dredged with interaction btwn nomconc and temp   
+centtemp.LMMfact2 = glmer(cbind(InZoneC, (npos-InZoneC)) ~ spp+factor(nomconc_ngL)+factor(temp) + (1|tray), data=DataSum96.cent.scaled, na.action=na.fail, family="binomial") 
+     plot(centtemp.LMMfact2) # residuals good enough
+     qqnorm(resid(centtemp.LMMfact2)); qqline(resid(centtemp.LMMfact2)) # pretty good
+     anova(centtemp.LMMfact2)
 
 
+     cC.emm <- emmeans(centtemp.LMMfact2, "nomconc_ngL")
+     cC.emm # averaged over spp and temp
+     # nomconc_ngL emmean    SE  df asymp.LCL asymp.UCL
+     #           0  -2.63 0.107 Inf     -2.84     -2.42
+     #          10  -2.63 0.107 Inf     -2.84     -2.42
+     #         100  -2.40 0.107 Inf     -2.61     -2.19
+     #         500  -1.93 0.107 Inf     -2.14     -1.72
+     # non-overlapping confedence intervals for 500 and all others
+         
+         contrast(cC.emm, 'tukey') 
+     # contrast                        estimate      SE  df z.ratio p.value
+     # nomconc_ngL0 - nomconc_ngL10    -0.00252 0.00937 Inf  -0.269  0.9932
+     # nomconc_ngL0 - nomconc_ngL100   -0.23824 0.00886 Inf -26.902  <.0001
+     # nomconc_ngL0 - nomconc_ngL500   -0.70608 0.00826 Inf -85.435  <.0001
+     # nomconc_ngL10 - nomconc_ngL100  -0.23571 0.00883 Inf -26.690  <.0001
+     # nomconc_ngL10 - nomconc_ngL500  -0.70356 0.00821 Inf -85.660  <.0001
+     # nomconc_ngL100 - nomconc_ngL500 -0.46784 0.00765 Inf -61.150  <.0001
+         # they are all different except for o and 10...not sure this is true?
+    
+         contrast(cC.emm, 'poly') %>% head(3) 
+         # contrast  estimate     SE  df z.ratio p.value
+         # linear     2.35395 0.0263 Inf  89.514  <.0001
+         # quadratic  0.46532 0.0121 Inf  38.528  <.0001
+         # cubic     -0.00106 0.0278 Inf  -0.038  0.9694
+         # should consider the quadratic fit in the future
+         
+        
+     t.emm <- emmeans(centtemp.LMMfact2, "temp")
+     t.emm # averaged over nomconc and temp
+         # temp emmean    SE  df asymp.LCL asymp.UCL
+         #   12  -1.91 0.131 Inf     -2.17     -1.66
+         #   15  -2.51 0.185 Inf     -2.87     -2.14
+         #   18  -2.77 0.131 Inf     -3.03     -2.52
 
-# calculate differences between control and treatment at each time point for each species (20 contrasts)
-GS0bif24 = postdist$a +
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC2)
-GS5bif24 = postdist$a + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC2)
-GS100bif24 = postdist$a + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC2)
-GS500bif24 = postdist$a + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC2)
-GS1000bif24 = postdist$a +
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC) + 
-  postdist$bt2* as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC2)
-GS2000bif24 = postdist$a + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC) + 
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC2)
-
-mean(GS0bif24)
-mean(GS5bif24)
- cont.GS_0.5bif_24 = (sum(GS0bif24<GS5bif24) / length(GS0bif24)) 
- cont.GS_0.5bif_24 #72.0% prob that 5 is more than 0
-mean(GS100bif24)
- cont.GS_0.100bif_24 = (sum(GS0bif24<GS100bif24) / length(GS0bif24)) 
- cont.GS_0.100bif_24 #62.4% prob that 100 is more than 0
-mean(GS500bif24)
- cont.GS_0.500bif_24 = (sum(GS0bif24<GS500bif24) / length(GS0bif24)) 
- cont.GS_0.500bif_24 #40.7% prob that 500 is more than 0
-mean(GS1000bif24)
- cont.GS_0.1000bif_24 = (sum(GS0bif24<GS1000bif24) / length(GS0bif24)) 
- cont.GS_0.1000bif_24 #32.8% prob that 1000 is more than 0
-mean(GS2000bif24)
- cont.GS_0.2000bif_24 = (sum(GS0bif24<GS2000bif24) / length(GS0bif24)) 
- cont.GS_0.2000bif_24 #13.7% prob that 2000 is more than 0 (86.3% chance that 2000 is less than 0)
-
-GS24.plot = ggplot() + geom_density(aes(x=GS0bif24, color="black")) + 
-  geom_density(aes(x=GS5bif24, color="green3")) + 
-  geom_density(aes(x=GS100bif24, color="goldenrod")) + 
-  geom_density(aes(x=GS500bif24, color="red3")) + 
-  geom_density(aes(x=GS1000bif24, color="pink")) + 
-  geom_density(aes(x=GS2000bif24, color="steelblue3")) + 
-  scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
-                     values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
-                              "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
-                     labels=c("0 ng/L", "5 ng/L", "100ng/L", 
-                              "500ng/L", "1000ng/L", "2000 ng/L") ) + 
-  xlab("Distance moved (GS @ 24hr)")+
-  theme_bw()
-
-
-# repeat for green sturgeon, 96hr
-
-GS0bif96 = postdist$a + postdist$be +
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==0)$lnCalcConcC2)
-GS5bif96 = postdist$a + postdist$be + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==5)$lnCalcConcC2)
-GS100bif96 = postdist$a + postdist$be + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==100)$lnCalcConcC2)
-GS500bif96 = postdist$a + postdist$be + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==500)$lnCalcConcC2)
-GS1000bif96 = postdist$a + postdist$be +
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC) + 
-  postdist$bt2* as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==1000)$lnCalcConcC2)
-GS2000bif96 = postdist$a + postdist$be + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC) + 
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="GS" & Treatment==2000)$lnCalcConcC2)
-
-mean(GS0bif96)
-mean(GS5bif96)
- cont.GS_0.5bif_96 = (sum(GS0bif96<GS5bif96) / length(GS0bif96)) 
- cont.GS_0.5bif_96 #72.0% prob that 5 is more than 0
-mean(GS100bif96)
-mean(GS500bif96)
-mean(GS1000bif96)
-mean(GS2000bif96)
-
-GS96.plot = ggplot() + geom_density(aes(x=GS0bif96), color="black") + 
-  geom_density(aes(x=GS5bif96), color="green3") + 
-  geom_density(aes(x=GS100bif96), color="goldenrod") + 
-  geom_density(aes(x=GS500bif96), color="red3") + 
-  geom_density(aes(x=GS1000bif96), color="pink") + 
-  geom_density(aes(x=GS2000bif96), color="steelblue3") + 
-  scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
-                     values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
-                              "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
-                     labels=c("0 ng/L", "5 ng/L", "100ng/L", 
-                              "500ng/L", "1000ng/L", "2000 ng/L") ) + 
-  xlab("Distance moved (GS @ 96hr)")+
-  theme_bw()
-
-
-# repeat for white sturgeon, 24hr
-
-WS0bif24 = postdist$a + postdist$bs +
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2) +
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2)
-WS5bif24 = postdist$a + postdist$bs + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)+
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)
-WS100bif24 = postdist$a + postdist$bs + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)+
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)
-WS500bif24 = postdist$a + postdist$bs + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)+
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)
-WS1000bif24 = postdist$a + postdist$bs +
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
-  postdist$bt2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)+
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
-  postdist$bts2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)
-WS2000bif24 = postdist$a + postdist$bs + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)+
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)
-
-mean(WS0bif24)
-mean(WS5bif24)
- cont.WS_0.5bif_24 = (sum(WS0bif24<WS5bif24) / length(WS0bif24)) 
- cont.WS_0.5bif_24 #100% prob that 5 is more than 0
-mean(WS100bif24)
- cont.WS_0.100bif_24 = (sum(WS0bif24<WS100bif24) / length(WS0bif24)) 
- cont.WS_0.100bif_24 #100% prob that 100 is more than 0
-mean(WS500bif24)
- cont.WS_0.500bif_24 = (sum(WS0bif24<WS500bif24) / length(WS0bif24)) 
- cont.WS_0.500bif_24 #55% prob that 500 is more than 0
-mean(WS1000bif24)
- cont.WS_0.1000bif_24 = (sum(WS0bif24<WS1000bif24) / length(WS0bif24)) 
- cont.WS_0.1000bif_24 #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
-mean(WS2000bif24)
- cont.WS_0.2000bif_24 = (sum(WS0bif24<WS2000bif24) / length(WS0bif24)) 
- cont.WS_0.2000bif_24 #0% prob that 2000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
- 
-WS24.plot = ggplot() + geom_density(aes(x=WS0bif24), color="black") + 
-  geom_density(aes(x=WS5bif24), color="green3") + 
-  geom_density(aes(x=WS100bif24), color="goldenrod") + 
-  geom_density(aes(x=WS500bif24), color="red3") + 
-  geom_density(aes(x=WS1000bif24), color="pink") + 
-  geom_density(aes(x=WS2000bif24), color="steelblue3") + 
-  scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
-                     values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
-                              "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
-                     labels=c("0 ng/L", "5 ng/L", "100ng/L", 
-                              "500ng/L", "1000ng/L", "2000 ng/L") ) + 
-  xlab("Distance moved (WS @ 24hr)")+
-  theme_bw()
-
-
-# repeat for white sturgeon, 96hr
-
-
-WS0bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2) +
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==0)$lnCalcConcC2)
-WS5bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2) +
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==5)$lnCalcConcC2)
-WS100bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2) +
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==100)$lnCalcConcC2)
-WS500bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2) +
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC) +
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==500)$lnCalcConcC2)
-WS1000bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
-  postdist$bt2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2) +
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC) + 
-  postdist$bts2* as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==1000)$lnCalcConcC2)
-WS2000bif96 = postdist$a + postdist$bs + postdist$be + post$bse + 
-  postdist$bt*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
-  postdist$bt2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2) +
-  postdist$bts1*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC) + 
-  postdist$bts2*as.numeric(subset(TreatCalcTable, Spp=="WS" & Treatment==2000)$lnCalcConcC2)
-
-mean(WS0bif96)
-mean(WS5bif96)
- cont.WS_0.5bif_96 = (sum(WS0bif96<WS5bif96) / length(WS0bif96)) 
- cont.WS_0.5bif_96 #100% prob that 5 is more than 0
-mean(WS100bif96)
- cont.WS_0.100bif_96 = (sum(WS0bif96<WS100bif96) / length(WS0bif96)) 
- cont.WS_0.100bif_96 #100% prob that 100 is more than 0
-mean(WS500bif96)
- cont.WS_0.500bif_96 = (sum(WS0bif96<WS500bif96) / length(WS0bif96)) 
- cont.WS_0.500bif_96 #55.0% prob that 500 is more than 0
-mean(WS1000bif96)
- cont.WS_0.1000bif_96 = (sum(WS0bif96<WS1000bif96) / length(WS0bif96)) 
- cont.WS_0.1000bif_96 #0% prob that 1000 is more than 0 (i.e. 100% prob that 1000 is less than 0)
-mean(WS2000bif96)
- cont.WS_0.2000bif_96 = (sum(WS0bif96<WS2000bif96) / length(WS0bif96)) 
- cont.WS_0.2000bif_96 #0% prob that 2000 is more than 0 (i.e. 100% prob that 2000 is less than 0)
-
-WS96.plot = ggplot() + geom_density(aes(x=WS0bif96), color="black") + 
-  geom_density(aes(x=WS5bif96), color="green3") + 
-  geom_density(aes(x=WS100bif96), color="goldenrod") + 
-  geom_density(aes(x=WS500bif96), color="red3") + 
-  geom_density(aes(x=WS1000bif96), color="pink") + 
-  geom_density(aes(x=WS2000bif96), color="steelblue3") + 
-  scale_color_manual(name="Nominal Bifenthrin\nConcentration", 
-                     values=c("black"="black", "green3"="green3", "goldenrod"="goldenrod",
-                              "red3"="red3", "pink"="pink","steelblue3"="steelblue3"), 
-                     labels=c("0 ng/L", "5 ng/L", "100ng/L", 
-                              "500ng/L", "1000ng/L", "2000 ng/L") ) + 
-  xlab("Distance moved (WS @ 96hr)")+
-  theme_bw()
-
-GS24.plot + GS96.plot + WS24.plot + WS96.plot
-
-predgroups = list(GS0bif24, GS5bif24,GS100bif24,GS500bif24,GS1000bif24,GS2000bif24,
-                  GS0bif96, GS5bif96,GS100bif96,GS500bif96,GS1000bif96,GS2000bif96,
-                  WS0bif24, WS5bif24,WS100bif24,WS500bif24,WS1000bif24,WS2000bif24,
-                  WS0bif96, WS5bif96,WS100bif96,WS500bif96,WS1000bif96,WS2000bif96)
-PredGroupNames =  as.character(expression(GS0bif24,GS5bif24,GS100bif24,GS500bif24,
-                                          GS1000bif24,GS2000bif24,
-                   GS0bif96, GS5bif96,GS100bif96,GS500bif96,GS1000bif96,GS2000bif96,
-                   WS0bif24, WS5bif24,WS100bif24,WS500bif24,WS1000bif24,WS2000bif24,
-                   WS0bif96, WS5bif96,WS100bif96,WS500bif96,WS1000bif96,WS2000bif96))
-posterior.preds = data.frame(PredGroupNames = PredGroupNames, 
-                             PredMeans = sapply(predgroups, mean),
-                             Pred95CIl = sapply(predgroups, quantile, 0.05),
-                             Pred95CIu = sapply(predgroups, quantile, 0.95))
-```
-#### if use this in a paper, recolor to a more intuitive gradient and add legend
- 
- 
-```{r distance multi-level model time and spp contrasts, echo=F, eval=F}
-# this uses the predicted posteriors for distance moved, calculated above
-
-# GS vs WS
-cont.GS.WS_0bif_24 = sum(GS0bif24<WS0bif24) / length(GS0bif24)
- cont.GS.WS_0bif_24 # 100% probability that GS will move less than WS
-
- cont.GS.WS_0bif_96 = sum(GS0bif96<WS0bif96) / length(GS0bif96)
- cont.GS.WS_0bif_96 # 100% probability that GS will move less than WS
-cont.GS.WS_2000bif_96 = sum(GS2000bif96<WS2000bif96) / length(GS2000bif96)
- cont.GS.WS_2000bif_96 # 99.89% probability that GS will move less than WS
-
-
-# Green Sturgeon, Exposure Hr
-cont.GS0bif_96.24 = (sum(GS0bif96<GS0bif24) / length(GS0bif96)) 
-# cont.GS5bif_96.24 = (sum(GS5bif96<GS5bif24) / length(GS5bif96))
-# cont.GS100bif_96.24 = (sum(GS100bif96<GS100bif24) / length(GS100bif96))
-# cont.GS500bif_96.24 = (sum(GS500bif96<GS500bif24) / length(GS500bif96))
-# cont.GS1000bif_96.24 = (sum(GS1000bif96<GS1000bif24) / length(GS1000bif96))
-# cont.GS2000bif_96.24 = (sum(GS2000bif96<GS2000bif24) / length(GS2000bif96))
-
-cont.GS0bif_96.24
-# ; cont.GS5bif_96.24; cont.GS100bif_96.24; cont.GS500bif_96.24; cont.GS1000bif_96.24; cont.GS2000bif_96.24
-
-# ha! they're all the same, because there's no interaction of exposure time and treatment. 
- # 4.8% of the samples from the posterior showed less distance moved at 96 than 24; so most likely that movement is greater at 96 than 24 (95.2%)
-
-GS0bif_96.24.plot = ggplot() + geom_density(aes(x=GS0bif96), color="steelblue3") + 
-  geom_density(aes(x=GS0bif24), color="green3") + 
-  xlab("Distance moved - GS @ 0 ng/L bifenthrin\n24 vs 96 hrs)") +
-  theme_bw()
-# GS5bif_96.24.plot = ggplot() + geom_density(aes(x=GS5bif96), color="steelblue3") + 
-#   geom_density(aes(x=GS5bif24), color="green3") + 
-#   xlab("Distance moved - GS @ 5 ng/L bifenthrin\n24 vs 96 hrs)") +
-#   theme_bw()
-# GS100bif_96.24.plot = ggplot() + geom_density(aes(x=GS100bif96), color="steelblue3") + 
-#   geom_density(aes(x=GS100bif24), color="green3") + 
-#   xlab("Distance moved - GS @ 100 ng/L bifenthrin\n24 vs 96 hrs)") +
-#   theme_bw()
-# GS500bif_96.24.plot = ggplot() + geom_density(aes(x=GS500bif96), color="steelblue3") + 
-#   geom_density(aes(x=GS500bif24), color="green3") + 
-#   xlab("Distance moved - GS @ 500 ng/L bifenthrin\n24 vs 96 hrs)") +
-#   theme_bw()
-# GS1000bif_96.24.plot = ggplot() + geom_density(aes(x=GS1000bif96), color="steelblue3") + 
-#   geom_density(aes(x=GS1000bif24), color="green3") + 
-#   xlab("Distance moved - GS @ 1000 ng/L bifenthrin\n24 vs 96 hrs)") +
-#   theme_bw()
-# GS2000bif_96.24.plot = ggplot() + geom_density(aes(x=GS2000bif96), color="steelblue3") + 
-#   geom_density(aes(x=GS2000bif24), color="green3") + 
-#   xlab("Distance moved - GS @ 2000 ng/L bifenthrin\n24 vs 96 hrs)") +
-#   theme_bw()
-
-# use patchwork grammar to plot multiple plots
-GS0bif_96.24.plot
-#(GS0bif_96.24.plot|GS5bif_96.24.plot|GS100bif_96.24.plot)/(GS500bif_96.24.plot|GS1000bif_96.plot|GS2000bif_96.plot)
-
-cont.GS0bif_96.24 # 4.8% chance that GS move less at 96hrs than 24hrs (ie: move more with age)
-# cont.GS5bif_96.24
-# cont.GS100bif_96.24
-# cont.GS500bif_96.24
-# cont.GS1000bif_96.24
-# cont.GS2000bif_96.24
-
-
-
-# White Sturgeon: probability of a difference between 24 and 96 hours, at each treatment level
-cont.WS0bif_96.24 = (sum(WS0bif96<WS0bif24) / length(WS0bif96)) 
-cont.WS0bif_96.24
-# 4.8% of the samples from the posterior showed less distance moved at 96 than 24; so most likely that movement is greater at 96 than 24 (95.2%)
-
-WS0bif_96.24.plot = ggplot() + geom_density(aes(x=WS0bif96), color="steelblue3") + 
-  geom_density(aes(x=WS0bif24), color="green3") + 
-  xlab("Distance moved - WS @ 0 ng/L bifenthrin\n24 vs 96 hrs)") +
-  theme_bw()
-WS0bif_96.24.plot
-
-
+         contrast(t.emm, 'tukey') 
+         # contrast        estimate      SE  df z.ratio p.value
+         # temp12 - temp15    0.591 0.22624 Inf   2.613  0.0244
+         # temp12 - temp18    0.857 0.00814 Inf 105.245  <.0001
+         # temp15 - temp18    0.266 0.22630 Inf   1.175  0.4681
+         # 12 dif from 15 and 18 (p<0.03)
+    
+         contrast(t.emm, 'poly') %>% head(3) 
+         # contrast  estimate      SE  df  z.ratio p.value
+         # linear      -0.857 0.00814 Inf -105.245  <.0001
+         # quadratic    0.325 0.45247 Inf    0.719  0.4723
+         
+           
 ```
 
-#### well, these plots all look about the same, as they should since there's no interaction for concentration * exposure time; which fits the contrast value - it is 95.2% likely (for all comparisons of concentation, because there isn't an interaction) that for Green Sturgeon the distance moved at 96hrs (7ph) is greater than the distance moved at 24hrs (4 dph). But for white sturgeon, it's a 100% chance that there is less movement at 96hrs than at 24hrs exposure. 
 
 
-
-
-
-
+#### left of here after a hasty run through a variety of stats and an unsatisfying interpretation for the final report. Ugg. 
  
      
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## Velocity Models - abandoned b/c very similar pattern to distance #####
 ### Velocity 

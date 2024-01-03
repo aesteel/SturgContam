@@ -1,0 +1,867 @@
+---
+title: "Exposure_Analysis2 - Exploratory Analysis"
+author: "Anna Steel"
+date: "9/3/2021"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readtext) # need this because the ethovision output .txt files have unusual encoding as UTF-16
+library(lme4)
+library(circular)
+library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
+library(rstatix)
+library(chron)
+
+knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
+```
+
+```{r utility functions, include=FALSE}
+# calculate hypotenuse of triangle created by two xy locations
+
+distmov = function(x1,x2,y1,y2) { dm = sqrt((x1-x2)^2 + (y1-y2)^2); return(dm)}
+
+# calculate number steps between detections; use summarized dataset (5 pos/sec)
+nstep = function(t2,t1, interv=0.2) {
+  if (t2-t1 < 0) stop('time steps backwards?')
+  nstep <- ( (t2-t1) / interv)
+  return(nstep)
+  }
+
+
+circ.mean.na = function(x) {
+  x2 = x[!is.na(x)]
+  sinr <- sum(sin(x2))
+  cosr <- sum(cos(x2))
+  circmean <- atan2(sinr, cosr)
+  return(circmean)
+}
+
+circ.disp.na = function(x) {
+  x2 = x[!is.na(x)]
+    n <- length(x2)
+    c <- sum(cos(x2))
+    s <- sum(sin(x2))
+    r <- sqrt(c^2 + s^2)
+    rbar <- r/n
+    var <- 1 - rbar
+    data.frame(n, r, rbar, var)
+}
+
+```
+
+
+## Read in Cleaned Data ("Exposure_Analysis1.Rmd")
+```{r read in clean data}
+
+DataSumAll.raw = read.csv("outputData/Foraging_GSWS_Fipronil2021_Cleaned_Conc.csv")
+
+DataSumAll.raw$exptTrialID = paste(DataSumAll.raw$spp, DataSumAll.raw$exptTrialID, DataSumAll.raw$barrel, sep="-")
+
+DataSumAll.raw$Treatment = paste(DataSumAll.raw$spp, DataSumAll.raw$nomconc, DataSumAll.raw$prepost, sep="-")
+
+DataSumAll.raw$TrialFullID = paste(DataSumAll.raw$exptTrialID, DataSumAll.raw$nomconc,  sep="-")
+```
+
+
+## remove erroneous top two concentrations and tidy data types
+```{r remove top two conc}
+DataSumAll.4 = filter(DataSumAll.raw, nomconc<=100)
+
+DataSumAll.4$NotFound = as.numeric(substr(DataSumAll.4$SubjectNotFound, 1,3))
+
+DataSumAll.4$TrialDateTime = as.POSIXct(DataSumAll.4$TrialDateTime, format="%m/%d/%Y %H:%M:%S", tz="Etc/GMT-8")
+
+DataSumAll.4$prepost = factor(DataSumAll.4$prepost, level=c("Pre","Post"))
+
+DataSumAll.4$TrackLength.sec = as.numeric(hms(substr(DataSumAll.4$TrackLength, 3, 14)))
+```
+
+
+
+
+## Exploratory Plots for each metric (Total distance travelled, Mean velocity, Meander and Turn angle, Use of zones (% time)) 
+  
+  
+### Distance  
+  
+```{r distance data, echo=F}
+
+## Summarize to take total distance (sum moved in a trial) for each fish replicate
+DataSum.dist = DataSumAll.4 %>%
+  group_by(exptTrialID, Treatment, TrialFullID,
+           spp, nomconc, calcConc, prepost, barrel, 
+           TrackLength.sec, NotFound, TrialDateTime,
+           testtemp, tlmm, massg, hatchdate, dph,uniqueID) %>%
+  summarise(TotalfishDist_cm = sum(SumDistMoved, na.rm=T)/(10),
+            MnTurnAngle = deg(circ.mean.na(rad(abs(SumTurnAngleRel)))), 
+            VarTurnAngle = deg(circ.disp.na(rad(abs(SumTurnAngleRel)))$var), 
+            MnMeander = mean(Meander, na.rm=T),
+            SDMeander = sd(Meander, na.rm=T),
+            InZoneAny = sum(InZone_Any, na.rm=T), npos = n()) %>% 
+            # remember sometimes tidyverse is unabashedly British
+  mutate(PercZoneAny = InZoneAny / npos) %>%
+  ungroup()  %>%
+  data.frame()
+  
+# checks
+filter(as.data.frame(table(DataSum.dist$uniqueID)), Freq>2)
+
+hist(DataSum.dist$NotFound)
+ NotFound.filt = 20
+ (nrow(filter(DataSum.dist, NotFound>NotFound.filt)) / nrow(DataSum.dist) )*100
+   #if filter=25 then 5.2% of tracks removed
+   #if filter=20 then 7.3% of tracks removed
+   #if filter=15 then 10.9% of tracks removed
+   #if filter=10 then 15.6% of tracks removed
+ 
+ table(DataSum.dist$nomconc, DataSum.dist$prepost, DataSum.dist$spp)
+ table(filter(DataSum.dist, NotFound<=NotFound.filt)$nomconc, 
+       filter(DataSum.dist, NotFound<=NotFound.filt)$prepost, 
+       filter(DataSum.dist, NotFound<=NotFound.filt)$spp)
+ 
+DataSum.dist20 = filter(DataSum.dist, NotFound<=20) 
+ 
+# standardize distance by track recording time
+dist20.mean.length = mean(DataSum.dist20$TrackLength.sec)
+
+DataSum.dist20$TotalfishDist_cmSTD = (DataSum.dist20$TotalfishDist_cm / DataSum.dist20$TrackLength.sec) * dist20.mean.length
+
+
+#write.csv(DataSum.dist20, "outputData/Foraging_GSWS_Fip2021_Cleaned_Conc_Filtered_Dec2023.csv", row.names=F)
+
+```
+
+```{r distance boxplots}
+
+totfishdist_hist = ggplot(DataSum.dist20, aes(x=TotalfishDist_cmSTD) ) + 
+                     geom_histogram(bins=15) + 
+                     facet_wrap(nomconc~spp, labeller = labeller(
+                         Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+ #scales="free") +
+                     theme_bw()
+
+totfishdist = ggplot(DataSum.dist20, aes(x=factor(nomconc), y=TotalfishDist_cmSTD, 
+                               fill=factor(prepost) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_wrap(~spp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),
+                        scales="free") +
+                      ylab("Total Trial Distance (cm)\nStandardized by track duration") + 
+                      xlab("Nominal Fipronil\nConcentration (ug/L)") +
+                      scale_fill_discrete(name="Trial Period", 
+                                          labels=c("Pre food cue","Post food cue")) + 
+                      theme_bw()
+
+totfishdist
+
+
+totfishta = ggplot(DataSum.dist20, aes(x=factor(nomconc), y=MnTurnAngle, 
+                               fill=factor(prepost) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_wrap(~spp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),
+                        scales="free") +
+                      ylab("Mean Turn Angle (deg)") + 
+                      xlab("Nominal Fipronil\nConcentration (ug/L)") +
+                      scale_fill_discrete(name="Trial Period", 
+                                          labels=c("Pre food cue","Post food cue")) + 
+                      theme_bw()
+
+totfishta + coord_cartesian(ylim=c(-15,15))
+
+
+
+totfishmeand = ggplot(DataSum.dist20, aes(x=factor(nomconc), y=MnMeander, 
+                               fill=factor(prepost) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_wrap(~spp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),
+                        scales="free") +
+                      ylab("Mean point-to-point Meander (deg/mm)") + 
+                      xlab("Nominal Fipronil\nConcentration (ug/L)") +
+                      scale_fill_discrete(name="Trial Period", 
+                                          labels=c("Pre food cue","Post food cue")) + 
+                      theme_bw()
+
+totfishmeand + coord_cartesian(ylim=c(-15,15))
+
+
+totfishzone = ggplot(DataSum.dist20, aes(x=factor(nomconc), y=PercZoneAny, 
+                               fill=factor(prepost) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_wrap(~spp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),
+                        scales="free") +
+                      ylab("Percent of time near a feeding zone") + 
+                      xlab("Nominal Fipronil\nConcentration (ug/L)") +
+                      scale_fill_discrete(name="Trial Period", 
+                                          labels=c("Pre food cue","Post food cue")) + 
+                      theme_bw()
+
+totfishzone
+modz = glmer(cbind(InZoneAny, (npos-InZoneAny)) ~ I(log(calcConc))*prepost + (1|exptTrialID), data = DataSum.dist20, family="binomial")
+summary(modz) #hm. maybe something interesting here
+
+
+tiff("figures/Foraging_TotalDistanceSTD_nf20_Fip_GSWS.tiff", width=170, height=65, units="mm", compression="lzw", res=150)
+totfishdist
+dev.off()
+```
+
+```{r visualizing as dist change pre post}
+
+ # look at the CHANGE between mean distance before and after, per fish
+
+
+paired.trials = data.frame(table(DataSum.dist20$exptTrialID))
+paired.trials = paired.trials[paired.trials$Freq>=2,"Var1"]
+
+#DataSum.dist20 = DataSum.dist20[order(DataSum.dist20$exptTrialID, DataSum.dist20$prepost),]
+# DataSum.distdiff = DataSum.dist20 %>%
+#   filter(exptTrialID %in% paired.trials) %>%
+#   mutate(mean.npos = mean(npos)) %>%
+#   group_by(exptTrialID, spp, nomconc, barrel, calcConc, testtemp, tlmm, massg, TotalfishDist_cmSTD, npos) %>%
+#   summarise(TotalDist_Diff = TotalfishDist_cmSTD[2] - TotalfishDist_cmSTD[1],
+#             TotalDist_Diff_STDnpos = TotalDist_Diff*mean.npos) %>%
+#   ungroup() %>% data.frame()
+#   
+  
+
+DataSum.distdiff =filter(DataSum.dist20, prepost=="Pre", exptTrialID %in% paired.trials)
+DataSum.distdiff$TotalDist_Diff = NA
+DataSum.distdiff = DataSum.distdiff %>% rename(TotalfishDist_cmSTD_pre = TotalfishDist_cmSTD)
+
+for(i in DataSum.distdiff$exptTrialID) {
+    x = DataSum.dist20
+    dif = x[x$exptTrialID == i & x$prepost=="Post","TotalfishDist_cmSTD"] - x[x$exptTrialID == i & x$prepost=="Pre","TotalfishDist_cmSTD"]
+    DataSum.distdiff$TotalDist_Diff[DataSum.distdiff$exptTrialID==i] = dif
+}
+# value is how many more cm fish moved post than pre
+
+hist(DataSum.distdiff$TotalDist_Diff)
+hist(DataSum.distdiff$testtemp)
+
+
+
+pre.post.diff = ggplot(data = DataSum.distdiff, aes(x=factor(nomconc), y=TotalDist_Diff, 
+                       fill=spp)) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_wrap(~spp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),
+                        scales="free") +
+                      ylab("Difference in Total Distance swam\nPre vs Post Food Addition")+ 
+                              #(cm)\n(distances standardized by trial length)") + 
+                      xlab("Nominal Fipronil Concentration (ug/L)") +
+                      scale_fill_manual(values=c("green3","grey90"), guide=FALSE)+
+                      theme_bw()
+
+pre.post.diff
+
+tiff("figures/Foraging_Diff_in_TotalDistanceSTD_nf20_Fip_GSWS.tiff", width=170, height=65, units="mm", compression="lzw", res=150)
+pre.post.diff
+dev.off()
+
+```
+
+
+## quick models for report
+```{r quick foraging distance models}
+
+GSdist = filter(DataSum.distdiff, spp=="GS")
+
+m1.gs = lm(TotalDist_Diff ~ calcConc + testtemp + tlmm, data=GSdist)
+ plot(m1.gs) # okay; some outliers at the top of the qqnorm
+ summary(m1.gs) # no significant variables, when modeled as continuous
+ 
+m2.gs = lm(TotalDist_Diff ~ factor(nomconc) + testtemp + tlmm, data=GSdist)
+ plot(m2.gs) # okay; some outliers at the top of the qqnorm
+ summary(m2.gs) # still no significant variables, when modeled with conc as factor
+ anova(m2.gs)
+  cC.emm <- emmeans(m2.gs, "nomconc")
+  cC.emm; contrast(cC.emm, 'tukey') 
+
+m3.gs = lm(TotalDist_Diff ~ calcConc + tlmm, data=GSdist)
+ plot(m3.gs) # mostly the same as m1
+ summary(m3.gs) # no significant variables, when modeled as continuous
+
+m4.gs = lm(TotalDist_Diff ~ factor(calcConc), data=GSdist)
+ plot(m4.gs) # mostly the same as m1
+ anova(m4.gs)
+
+ 
+ 
+WSdist = filter(DataSum.distdiff, spp=="WS")
+
+m1.ws = lm(TotalDist_Diff ~ calcConc + testtemp + tlmm, data=WSdist)
+ plot(m1.ws)# okay; some outliers at the top of the qqnorm but better than GS
+ summary(m1.ws) # temperature significant, but not conc when continous predictor
+ 
+m2.ws = lm(TotalDist_Diff ~ factor(nomconc) + testtemp + tlmm, data=WSdist)
+ plot(m2.ws) # okay; some outliers at the top of the qqnorm but better than GS
+ summary(m2.ws) # temp still only significant predictor; just too much variance to see diff
+ anova(m2.ws)
+  cC.emm <- emmeans(m2.ws, "nomconc")
+  cC.emm; contrast(cC.emm, 'tukey') 
+
+m3.ws = lm(TotalDist_Diff ~ calcConc + tlmm, data=WSdist)
+ plot(m3.ws) # pretty good
+ summary(m3.ws) # no significant variables, when modeled as continuous
+
+m4.ws = lm(TotalDist_Diff ~ factor(calcConc), data=WSdist)
+ plot(m4.ws) # pretty good
+ anova(m4.ws) # still no significance
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### copied from distance and not yet edited
+
+
+
+
+### Velocity 
+```{r velocity data, echo=F}
+
+## Summarize movement velocity
+ 
+DataSum2496.vel = DataSum2496 %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
+  summarize(MnVel = mean(MnVel, na.rm=T), npos = n()) %>%
+  ungroup()  %>%
+  data.frame()
+```
+
+```{r velocity plots}
+
+MoveVel.plot = ggplot(DataSum2496.vel, 
+                           aes(fill=factor(Treatment), y=MnVel, 
+                               x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")), scales="free") +
+  ylab("Mean movement velocity (mm/s)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+
+MoveVel.plot
+```
+
+```{r other ways of visualizing velocity}
+
+ # look at the CHANGE between mean vel of control (mean for treatment-exposurehrs) and target conc (each individual)
+ 
+MeanVel0 = DataSum2496.vel %>%
+  subset(Treatment==0) %>%
+  group_by(Spp, ExposureHrs) %>%
+  summarize(mean0_Vel = mean(MnVel)) %>%
+  ungroup %>% data.frame
+
+DataSumDiff.Vel = merge(DataSum2496.vel, MeanVel0, all.x=T)
+
+DataSumDiff.Vel$VelDiff = DataSumDiff.Vel$MnVel - DataSumDiff.Vel$mean0_Vel
+
+
+  cntrlfishVel = ggplot(DataSumDiff.Vel, 
+                         aes(y=VelDiff/10, x=factor(Treatment),fill=factor(Treatment) ) ) + 
+                       geom_hline(yintercept = 0, lwd=.6, linetype="dashed", color="red")+
+                       geom_boxplot(outlier.size = .75) + 
+                       facet_grid(ExposureHrs~Spp, labeller = labeller(
+                         Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                         ExposureHrs = c("24"="24 hours exposed","96"="96 hours exposed")))+
+                       ylab("Change in Swimming Velocity\n treatment vs control") + 
+                       xlab("Fipronil Nominal Conc") +
+                       scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+                       theme_bw()
+                          
+  cntrlfishVel
+
+# look at the change between 24 and 96 hours for each treamtent-spp
+ 
+DataSum2496.vel$ExposureHrsChr = paste0("ExpHr",DataSum2496.vel$ExposureHrs)
+
+DataSumChg.Vel = DataSum2496.vel %>%
+  select(-index, -Trial, -Arena,-ExposureHrs) %>%
+  pivot_wider(names_from=ExposureHrsChr, values_from=MnVel) %>%
+  mutate(chngVel = ExpHr96 - ExpHr24) %>%
+  data.frame()
+
+
+  chngfishVel.box = ggplot(DataSumChg.Vel, 
+                           aes(y=chngVel/10,  x=factor(Treatment),fill=factor(Treatment) ) ) +
+                   geom_hline(yintercept = 0, lwd=.6, linetype="dashed", color="red")+
+                   geom_boxplot(outlier.size = .75) + 
+                    facet_wrap(~Spp, labeller = labeller(
+                      Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
+                    ylab("Change in Swimming Velocity\nfrom 24 to 96 hrs of exposure") + 
+                    xlab("Fipronil Nominal Conc") +
+                    scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+                    theme_bw()
+  
+  chngfishVel.box
+  
+  
+  chngfishVel.py = ggplot(DataSumChg.Vel, 
+                           aes(y=chngVel/10, x=log(calcConc+1), color=Spp ) ) + 
+                  geom_hline(yintercept = 0, lwd=.6, linetype="dashed", color="red")+
+                  geom_point() + 
+                  facet_wrap(~Spp, labeller = labeller(
+                    Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
+                  ylab("Change in Swimming Velocity\nfrom 24 to 96 hrs of exposure)") + 
+                  xlab("log(Fipronil Concentration (ug/L))") +
+                  scale_color_manual(values=c("green3","grey60")) + 
+                  theme_bw()
+  
+  chngfishVel.py
+  
+```
+# the trends look the same as distance, so for now I won't run models on velocity. Can add later if needed. 
+
+
+
+
+
+
+### Meander and Turn Angle
+
+```{r meander/turn angle data, echo=F}
+
+## Summarize meander and turn angle
+DataSum96.meand = DataSum96 %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp) %>%#, calcConc, RepID) %>%
+  summarize(MnTurnAngle = deg(circ.mean.na(rad(TurnAngleCirc))), 
+            VarTurnAngle = deg(circ.disp.na(rad(TurnAngleCirc))$var), # circular variance
+            MnMeander = mean(MeanderCirc, na.rm=T),
+            SDMeander = sd(MeanderCirc, na.rm=T),
+            CVMeander = sd(MeanderCirc, na.rm=T)/abs(mean(MeanderCirc, na.rm=T)))  %>%
+  ungroup()  %>%
+  data.frame()
+
+#keep raw data but remove missing points
+DataSum96.mraw = DataSum96[!is.na(DataSum96$TurnAngle_deg),]
+
+
+## Summarize meander and turn angle
+DataSum2496.meand = DataSum2496 %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, calcConc, RepID) %>%
+  summarize(MnTurnAngle = deg(circ.mean.na(rad(TurnAngleCirc))), 
+            VarTurnAngle = deg(circ.disp.na(rad(TurnAngleCirc))$var), # circular variance
+            MnMeander = mean(MeanderCirc, na.rm=T),
+            SDMeander = sd(MeanderCirc, na.rm=T),
+            CVMeander = sd(MeanderCirc, na.rm=T)/abs(mean(MeanderCirc, na.rm=T)))  %>%
+  ungroup()  %>%
+  data.frame()
+
+#keep raw data but remove missing points
+DataSum2496.mraw = DataSum2496[!is.na(DataSum2496$TurnAngle_deg),]
+
+
+
+## Summarize meander and turn angle
+DataSumAll.meand = DataSumAll %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, calcConc, RepID) %>%
+  summarize(MnTurnAngle = deg(circ.mean.na(rad(abs(SumTurnAngleRel)))), 
+            VarTurnAngle = deg(circ.disp.na(rad(abs(SumTurnAngleRel)))$var), # circular variance
+            MnMeander = mean(MeanderCirc, na.rm=T),
+            SDMeander = sd(MeanderCirc, na.rm=T),
+            CVMeander = sd(MeanderCirc, na.rm=T)/abs(mean(MeanderCirc, na.rm=T)))  %>%
+  ungroup()  %>%
+  data.frame()
+
+#keep raw data but remove missing points
+DataSumAll.mraw = DataSumAll[!is.na(DataSumAll$TurnAngle_deg),]
+```
+
+```{r meander/turn angle plots 2496, echo=F}
+meanMeander.plot = ggplot(DataSum2496.meand, 
+                           aes(fill=factor(Treatment), y=abs(MnMeander), 
+                               x=factor(ExposureHrs) ) ) + geom_boxplot(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Mean Meander (deg/mm)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+  
+mnTurnangle.plot = ggplot(DataSum2496.meand, 
+                           aes(fill=factor(Treatment), y=abs(MnTurnAngle), 
+                              x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  #geom_violin(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Mean Turn Angle (deg)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+  
+sdMeander.plot = ggplot(DataSum2496.meand, 
+                           aes(fill=factor(Treatment), y=(SDMeander), 
+                               x=factor(ExposureHrs) ) ) + geom_boxplot(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Standard Deviation of Meander (deg/mm)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+
+CVMeander.plot = ggplot(DataSum2496.meand, 
+                           aes(fill=factor(Treatment), y=(CVMeander), 
+                               x=factor(ExposureHrs) ) ) + geom_boxplot(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Coef-Var of Meander (deg/mm)") + 
+  xlab ("Exposure Hours") + ylim(c(0,100))+
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+
+VarTurnangle.plot = ggplot(DataSum2496.meand, 
+                           aes(fill=factor(Treatment), y=(VarTurnAngle), 
+                              x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  #geom_violin(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Circular Variance of Turn Angle (deg)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+
+
+meanMeander.plot
+sdMeander.plot # this plot seems to show the cleanest trends and the tightest boxes. why?
+CVMeander.plot
+mnTurnangle.plot
+VarTurnangle.plot
+```
+
+```{r meander/turn angle plots All, echo=F}
+meanMeander.plot = ggplot(DataSumAll.meand, 
+                           aes(fill=factor(Treatment), y=abs(MnMeander), 
+                               x=factor(ExposureHrs) ) ) + geom_boxplot(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Mean Meander (deg/mm)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+  
+mnTurnangle.plot = ggplot(DataSumAll.meand, 
+                           aes(fill=factor(Treatment), y=abs(MnTurnAngle), 
+                              x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  #geom_violin(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Mean Turn Angle (deg)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+  
+sdMeander.plot = ggplot(DataSumAll.meand, 
+                           aes(fill=factor(Treatment), y=(SDMeander), 
+                               x=factor(ExposureHrs) ) ) + geom_boxplot(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Standard Deviation of Meander (deg/mm)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+
+CVMeander.plot = ggplot(DataSumAll.meand, 
+                           aes(fill=factor(Treatment), y=(CVMeander), 
+                               x=factor(ExposureHrs) ) ) + geom_boxplot(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Coef-Var of Meander (deg/mm)") + 
+  xlab ("Exposure Hours") + ylim(c(0,100))+
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+
+VarTurnangle.plot = ggplot(DataSumAll.meand, 
+                           aes(fill=factor(Treatment), y=(VarTurnAngle), 
+                              x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  #geom_violin(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("Circular Variance of Turn Angle (deg)") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+
+
+meanMeander.plot
+sdMeander.plot # this plot seems to show the cleanest trends and the tightest boxes. why?
+CVMeander.plot
+mnTurnangle.plot
+VarTurnangle.plot
+```
+
+```{r visualizing as distns of percent change in circular turn angle at 96}
+DataSum96.ta = DataSum96.meand
+
+DataSum96.ta.cont = DataSum96.ta[DataSum96.ta$Treatment==0, c("Spp","ExposureHrs","Replicate","MnTurnAngle","VarTurnAngle")]
+   DataSum96.ta.cont = rename(DataSum96.ta.cont,
+                                 ControlMnTA = MnTurnAngle,
+                                 ControlVarTA = VarTurnAngle)
+   
+DataSum96.ta.treat = DataSum96.ta[DataSum96.ta$Treatment!=0, c("Spp","ExposureHrs","Replicate","Treatment","MnTurnAngle","VarTurnAngle")]
+
+DataSum96.ta.pseudowide = merge(DataSum96.ta.treat, DataSum96.ta.cont, all.x=T)
+
+dist.func = function(a,b) { 
+  g <- expand.grid(data.frame(a, b))
+  PercDiff <- (g$b - g$a)/g$a
+  return(PercDiff) 
+  }
+  
+PercChg96 = DataSum96.ta.pseudowide %>%
+  group_by(Spp, Treatment, Replicate) %>%
+  summarize(PercChgMn_TA = dist.func(a=ControlMnTA, b=MnTurnAngle),
+            PercChgVar_TA = dist.func(a=ControlVarTA, b=VarTurnAngle)) %>%
+           ungroup() %>% data.frame()
+PercChg96$Treatment = factor(PercChg96$Treatment)
+
+  PercChgMnTA.GSlm = lm(PercChgMn_TA ~ Treatment, 
+                     data = PercChg96[PercChg96$Spp=="GS",])
+    PercChgMnTA.GSaov = aov(PercChgMnTA.GSlm)
+    summary(PercChgMnTA.GSaov)
+      emmeans(PercChgMnTA.GSlm, specs="Treatment") # dif from 0?
+      TukeyHSD(PercChgMnTA.GSaov) # dif from eachother?
+       # nothing is significantly different
+     
+    PercChgMnTA.WSlm = lm(PercChgMn_TA ~ factor(Treatment), 
+                     data = PercChg96[PercChg96$Spp=="WS",])
+    PercChgMnTA.WSaov = aov(PercChgMnTA.WSlm)
+    summary(PercChgMnTA.WSaov)
+      emmeans(PercChgMnTA.WSlm, specs="Treatment") # dif from 0?
+      TukeyHSD(PercChgMnTA.WSaov)
+       # nothing is significantly different
+    
+  PercChgVarTA.GSlm = lm(PercChgVar_TA ~ factor(Treatment), 
+                     data = PercChg96[PercChg96$Spp=="GS",])
+    PercChgVarTA.GSaov = aov(PercChgVarTA.GSlm)
+    summary(PercChgVarTA.GSaov)
+      TukeyHSD(PercChgVarTA.GSaov)
+       # nothing is significantly different
+     
+    PercChgVarTA.WSlm = lm(PercChgVar_TA ~ factor(Treatment), 
+                     data = PercChg96[PercChg96$Spp=="WS",])
+    PercChgVarTA.WSaov = aov(PercChgVarTA.WSlm)
+    summary(PercChgVarTA.WSaov)
+      TukeyHSD(PercChgVarTA.WSaov)
+       # nothing is significantly different from the other treatments
+    
+      
+# are the boxes different from zero?      
+onesamp.ttest <- PercChg96 %>%
+  group_by(Spp, Treatment) %>%
+  t_test(PercChgVar_TA~1) %>%
+  adjust_pvalue(method = "BH") %>%
+  add_significance() %>%
+  data.frame()
+onesamp.ttest
+
+      
+
+DistnChgMnta.96= ggplot(PercChg96, 
+                         aes(y=PercChgMn_TA, x=factor(Treatment),
+                             fill=factor(Treatment)) ) + 
+                       geom_hline(yintercept = 0, lwd=.6, 
+                                  linetype="dashed", color="black")+
+                       geom_boxplot()+#outlier.shape=NA) +                      
+  #geom_point(fill="grey60") + 
+                       facet_grid(.~Spp, labeller = labeller(
+                         Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),
+                         scales="free" )+
+                       geom_hline(yintercept = c(-0.5,0.5), lwd=.6, 
+                              linetype="dashed", color="red") +
+                       ylab("Change in Mean Turning Angle (deg)") + #ylim(c(-6,6)) +
+                       xlab("Fipronil Nominal Concentration") +
+                       scale_fill_viridis_d(guide=F)+
+                       theme_bw()
+DistnChgMnta.96
+
+
+DistnChgVarTA.96= ggplot(PercChg96, 
+                         aes(y=PercChgVar_TA, x=factor(Treatment),
+                             fill=factor(Treatment)) ) + 
+                       geom_hline(yintercept = 0, lwd=.6, 
+                                  linetype="dashed", color="black")+
+                      geom_hline(yintercept = c(-0.5, 0.5), lwd=.3, 
+                              linetype="dashed", color="red") +
+                        geom_boxplot(outlier.shape=NA) +                      
+  #geom_point(fill="grey60") + 
+                       facet_grid(.~Spp, labeller = labeller(
+                         Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),
+                         scales="free" )+
+                       ylab("Change in Circular Variance \nof Turn Angle (deg)") + 
+                        ylim(c(-1,1)) +
+                       xlab("Fipronil Nominal Concentration") +
+                       scale_fill_viridis_d(guide=F)+
+                       theme_bw()
+DistnChgVarTA.96
+
+
+tiff("/Users/Anna/Documents/ResearchGit/SturgContam/figures/Exposure_OutputFigs/VarTA_Fip96_Perchg.tiff", width=142, height=70, units="mm", compression="lzw", res=150)
+DistnChgVarTA.96
+dev.off()
+
+```
+
+
+### modelling for meander is in ExposureAnalysis3.rmd
+
+
+
+
+
+
+### Time moving (distance moved > .5mm)
+```{r active time data, echo=F }
+
+#WS need longer distance to see trend; mm=2 is good
+#GS need shorter distance to see trend; mm=.5 is good
+threshold_mm=.5
+
+DataSum2496 <- mutate(DataSum2496,
+                active = ifelse(SumDistMoved > threshold_mm, 1, 0))
+
+PlotData_propactive = DataSum2496 %>%
+  group_by(Replicate, ExposureHrs, Treatment, Spp, RepID) %>%
+  summarize(npos=n(), nactive = sum(active), propactive = sum(active)/n() ) %>%
+  ungroup() %>%
+  data.frame()
+```
+
+```{r active time plots, echo=F}
+
+activefish = ggplot(PlotData_propactive, 
+                           aes(fill=factor(Treatment), y=propactive, 
+                               x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  facet_wrap(~Spp, labeller = labeller(
+    Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
+    #scales="free") +
+  ylab("proportion with active movement") + 
+  xlab("Exposure Hours") +#("Fipronil Nominal Conc.") + 
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+
+activefish
+
+```
+
+
+
+
+
+### Sumarize time spent in center
+```{r center zone data, echo=F} 
+DataSum2496.centC = DataSumAll.raw %>%
+  filter(ExposureHrs %in% c(24,96)) %>%
+  filter(!is.na(InZoneC)) %>%  ### will this bias the data if I remove those points where there isn't a detection? If the fish is more likely to be in the center when it's stationary, and it's more likely to be undetected when it's stationary, this may bias these values and under-represent the effect of the Fipronil (more stationary when strongly affected)
+  # also note, this line doesn't actually change the results because summing the InZoneC column drops all NA automatically; this line above just makes that explicit
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID, Tray) %>%
+  summarize(InZoneC = sum(InZoneC, na.rm=T),# InZoneB = sum(InZoneB, na.rm=T), 
+            npos = n()) %>%
+  mutate(PercZoneC.1 = InZoneC / npos) %>%
+  #mutate(PercZoneC.2 = InZoneC / (InZoneC+InZoneB)) %>%
+  # ran this comparison to see how much the NA can influence the data, and it seems to be minor
+  ungroup()  %>%
+  data.frame()
+
+
+DataSumAll.centC = DataSumAll.raw %>%
+  filter(!is.na(InZoneC)) %>%  
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID, Tray) %>%
+  summarize(InZoneC = sum(InZoneC, na.rm=T), npos = n()) %>%
+  mutate(PercZoneC.1 = InZoneC / npos) %>%
+  ungroup()  %>%
+  data.frame()
+
+```
+
+```{r center zone plots, echo=F}
+
+CenterC.plot2496 = ggplot(DataSum2496.centC, 
+                           aes(fill=factor(Treatment), y=(PercZoneC.1), 
+                               x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  #geom_violin()+
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("% of recorded positions\nin Central Zone") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+CenterC.plot2496
+
+
+tiff("figures/Exposure_OutputFigs/PercZone_Fip_GSWS_2496hr.tiff", width=170, height=65, units="mm", compression="lzw", res=150)
+CenterC.plot2496
+dev.off()
+
+
+
+
+CenterCAll.plot = ggplot(DataSumAll.centC, 
+                           aes(fill=factor(Treatment), y=(PercZoneC.1), 
+                               x=factor(ExposureHrs) ) ) + 
+  geom_boxplot(outlier.size = .75) + 
+  #geom_violin()+
+  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("% of recorded positions in Central Zone") + 
+  xlab ("Exposure Hours") + 
+  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
+  theme_bw()
+CenterCAll.plot
+
+tiff("figures/Exposure_OutputFigs/PercZone_Fip_GSWS_Allhrs.tiff", width=140, height=45, units="mm", compression="lzw", res=150)
+CenterCAll.plot
+dev.off()
+
+
+
+```
+
+These are some pretty good plots for WS. I think I'll use the distance moved (most intuitive), the turn angle, and the centerC plots. 
+
+```{r presentation plots}
+totfishdist
+sdMeander.plot
+activefish
+CenterC.plot
+```
+
+```{r final summarized datasets for opendata}
+
+DataSumAll.summarized = DataSumAll.T %>%
+  filter(!is.na(InZoneC)) %>%  
+  group_by(Spp, Contaminant, ExposureHrs, Treatment, calcConc, 
+           Tray, Replicate, index, RepID, endtemp, pred.endtemp) %>%
+  summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100),
+            MnVel = mean(MnVel, na.rm=T),
+            MnTurnAngle = deg(circ.mean.na(rad(abs(SumTurnAngleRel)))), 
+            VarTurnAngle = deg(circ.disp.na(rad(abs(SumTurnAngleRel)))$var), # circ. var.
+            MnMeander = mean(MeanderCirc, na.rm=T),
+            SDMeander = sd(MeanderCirc, na.rm=T),
+            CVMeander = sd(MeanderCirc, na.rm=T)/abs(mean(MeanderCirc, na.rm=T)),
+            InZoneC = sum(InZoneC, na.rm=T), 
+            npos = n()) %>%
+  mutate(PercZoneC.1 = InZoneC / npos) %>%
+  ungroup()  %>%
+  data.frame()
+
+write.csv(DataSumAll.summarized, "/Users/Anna/Documents/ResearchGit/SturgContam/outputData/Exposure_Outputdata/Fipronil_2021_Cleaned_Conc_Summarized.csv")
+
+
+```

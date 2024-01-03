@@ -57,30 +57,199 @@ circ.disp.na = function(x) {
 ```
 
 
-## Read in Cleaned Data ("Exposure_Analysis1_WSBIF2022.Rmd")
+## Read in Cleaned Data ("Exposure_Analysis1_BIF2022.Rmd")
 ```{r read in clean data}
-DataSum96temp.raw = read.csv("outputData/Exposure_Outputdata/Bifenthrin_2022_Cleaned_NoConc_96hrs.csv")
-# DataSum2496.raw = read.csv("outputData/Exposure_Outputdata/Fipronil_2021_Cleaned_NoConc_2496hrs.csv")
- DataSumAll.raw = read.csv("outputData/Exposure_Outputdata/Bifenthrin_2022_Cleaned_Conc_Allhrs.csv")
+
+DataSumAll.raw = read.csv("outputData/Exposure_Outputdata/Bifenthrin_2022_23_Cleaned_Conc_Allhrs.csv")
+
 ```
 
 ```{r filter}
-DataSum96temp <- DataSum96temp.raw[DataSum96temp.raw$tray!="C",]
-```                   
-## Add measured concentrations (versus nominal)
-```{r chem analysis results}
-# chemcsv.raw = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Fipronil_2021_Summary.csv")
-#   chemcsv <- chemcsv.raw[chemcsv.raw$chemical=="fipronil" & chemcsv.raw$sample=="spike", c("spp", "nomconc", "calcConc")]
-#  
-#   
-# DataSum96 <- merge(DataSum96.raw, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
-#  DataSum96$calcConc = as.numeric(DataSum96$calcConc)
-#  
- 
+# already missing WS-24hr-trayI (wrong video transfered), WS-96hr-trayC, GS-48hr-trayG, trayI, tray K (videos didn't record)
+
+## Remove the 15 rows where the fish never moved at all; likely not tracking
+# revisit after further ethovision review/edits 
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="A1" & tray=="B") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="B1" & tray=="H") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="B3" & tray=="B") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="B3" & tray=="I") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="C2" & tray=="K") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="D1" & tray=="H") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="D1" & tray=="I") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="D2" & tray=="K") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==48 &
+                  Arena=="C2" & tray=="L") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==48 &
+                  Arena=="C3" & tray=="H") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==72 &
+                  Arena=="A3" & tray=="D") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==72 &
+                  Arena=="B1" & tray=="H") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==72 &
+                  Arena=="C3" & tray=="L") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==96 &
+                  Arena=="C2" & tray=="C") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==96 &
+                  Arena=="D3" & tray=="H") )
+
+
+
+
+
+## Remove the 21 rows where the fish didn't move enough to get a single turn angle
+# revisit after further ethovision review/edits 
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="A1" & tray=="I") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="A3" & tray=="D") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="C1" & tray=="C") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="C2" & tray=="C") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="C3" & tray=="C") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="D2" & tray=="H") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="D3" & tray=="C") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="D3" & tray=="D") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==48 &
+                  Arena=="A1" & tray=="L") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==48 &
+                  Arena=="B1" & tray=="D") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==48 &
+                  Arena=="B3" & tray=="H") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==48 &
+                  Arena=="D2" & tray=="H") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==72 &
+                  Arena=="A2" & tray=="H") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==96 &
+                  Arena=="A2" & tray=="D") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==96 &
+                  Arena=="B1" & tray=="H") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==96 &
+                  Arena=="B3" & tray=="C") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==96 &
+                  Arena=="B3" & tray=="D") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==96 &
+                  Arena=="C1" & tray=="C") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==96 &
+                  Arena=="C1" & tray=="D") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==96 &
+                  Arena=="D2" & tray=="H") )
+
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==96 &
+                  Arena=="D2" & tray=="I") )
+
+
+## correct the mistaken nomconc assignments from trial list (correct tray orientation)
+DataSumAll.raw[DataSumAll.raw$ExposureHrs=="24" & DataSumAll.raw$spp=="WS" & 
+                  DataSumAll.raw$tray%in% c("A","E") & 
+                  DataSumAll.raw$Arena %in% c("B3","C2","D1"),]$nomconc_ngL <- 100
+
+## correct nomconc for reversed trays (24hr, tray C,D; 96hr tray B,F)
+DataSumAll.raw[DataSumAll.raw$ExposureHrs=="24" & DataSumAll.raw$spp=="WS" & 
+                  DataSumAll.raw$tray%in% c("C","D") & 
+                  DataSumAll.raw$Arena %in% c("B3","C2","D1"),]$nomconc_ngL <- 0
+DataSumAll.raw[DataSumAll.raw$ExposureHrs=="24" & DataSumAll.raw$spp=="WS" & 
+                   DataSumAll.raw$tray%in% c("C","D") & 
+                   DataSumAll.raw$Arena %in% c("A2","B1","D3"),]$nomconc_ngL <- 10
+DataSumAll.raw[DataSumAll.raw$ExposureHrs=="24" & DataSumAll.raw$spp=="WS" & 
+                  DataSumAll.raw$tray%in% c("C","D") & 
+                  DataSumAll.raw$Arena %in% c("A3","B2","C1"),]$nomconc_ngL <- 100
+DataSumAll.raw[DataSumAll.raw$ExposureHrs=="24" & DataSumAll.raw$spp=="WS" & 
+                  DataSumAll.raw$tray%in% c("C","D") & 
+                  DataSumAll.raw$Arena %in% c("A1","C3","D2"),]$nomconc_ngL <- 500
+DataSumAll.raw[DataSumAll.raw$ExposureHrs=="96" & DataSumAll.raw$spp=="WS" & 
+                   DataSumAll.raw$tray%in% c("B","F") & 
+                   DataSumAll.raw$Arena %in% c("B3","C2","D1"),]$nomconc_ngL <- 0
+DataSumAll.raw[DataSumAll.raw$ExposureHrs=="96" & DataSumAll.raw$spp=="WS" & 
+                   DataSumAll.raw$tray%in% c("B","F") & 
+                   DataSumAll.raw$Arena %in% c("A2","B1","D3"),]$nomconc_ngL <- 10
+DataSumAll.raw[DataSumAll.raw$ExposureHrs=="96" & DataSumAll.raw$spp=="WS" & 
+                  DataSumAll.raw$tray%in% c("B","F") & 
+                  DataSumAll.raw$Arena %in% c("A3","B2","C1"),]$nomconc_ngL <- 100
+DataSumAll.raw[DataSumAll.raw$ExposureHrs=="96" & DataSumAll.raw$spp=="WS" & 
+                  DataSumAll.raw$tray%in% c("B","F") & 
+                  DataSumAll.raw$Arena %in% c("A1","C3","D2"),]$nomconc_ngL <- 500
+
+## remove two GS replicates where mean track meander is extremely small or large (no editing on tracks yet; revisit after manually edit tracks)
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="A1" & tray=="K") )
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==24 &
+                  Arena=="B1" & tray=="J") )
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="WS" & ExposureHrs==24 &
+                  Arena=="B2" & tray=="A") )
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==48 &
+                  Arena=="B1" & tray=="A") )
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==48 &
+                  Arena=="C2" & tray=="D") )
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==48 &
+                  Arena=="D2" & tray=="C") )
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==72 &
+                  Arena=="B1" & tray=="K") )
+DataSumAll.raw = filter(DataSumAll.raw, !(spp=="GS" & ExposureHrs==72 &
+                  Arena=="B3" & tray=="D") )
+
+write.csv(DataSumAll.raw, "/Users/Anna/Documents/ResearchGit/SturgContam/outputData/Exposure_Outputdata/Bifenthrin_2022_23_Cleaned_Conc_FilteredPrelim_Alllhrs.csv")
+
 ```
 
 
-## Add water temps at end of trial for 96 -->
+```{r check sample size}
+## Check remaining sample size
+uniquereps  = unique(DataSumAll.raw[,c("spp","temp","ExposureHrs","tray","Arena","nomconc_ngL")])
+
+table(uniquereps$ExposureHrs, uniquereps$temp, uniquereps$nomconc_ngL, 
+      uniquereps$spp)
+ # low reps for GS 18C @ 48hr (all nomconc) (5-6 per treatment)
+```                   
+
+
+
+## Add water temps at end of trial 
 ```{r add indiv water temp increase}
 # gstemp = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_IndivBehaviorVideo_GS2021_Temps.csv")
 # wstemp = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/Exposure_IndivBehaviorVideo_WS2021_Temps.csv")
@@ -120,52 +289,106 @@ DataSum96temp <- DataSum96temp.raw[DataSum96temp.raw$tray!="C",]
 ```{r distance data, echo=F}
 
 ## Summarize to take total distance (sum moved in a trial) for each fish replicate
-DataSum96$calcConc = DataSum96$nomconc_ngL ## temporary place holder until we get the results on conc back from Luann
-DataSum96.dist = DataSum96 %>%
-  group_by(Arena, rep, ExposureHrs, nomconc_ngL, tray, temp) %>%
+DataSumAll.dist = DataSumAll.raw %>%
+  group_by(spp, ExposureHrs, Arena, tray, nomconc_ngL, temp) %>%
   #summarize(TotalfishDist = sum(SumDistMoved, na.rm=T)) %>%
   summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100)) %>%
+  mutate(ExposureHrs = as.numeric(ExposureHrs)) %>%
   ungroup()  %>%
   data.frame()
+
+# Use this to identify any fish with zero movement; consider erroneous tracking
+check = DataSumAll.dist[DataSumAll.dist$TotalfishDist_m==0,]
 
 ```
 
 ```{r distance boxplots}
-## with 96
-totfishdist96.bif22 = ggplot(DataSum96.dist, 
-                             aes(fill=factor(nomconc_ngL), y=TotalfishDist_m, 
-                               x=factor(nomconc_ngL) ) ) + 
+
+### with only 24hr and 96hr timepoints
+DataSum2496.dist = filter(DataSumAll.dist, ExposureHrs %in% c(24,96))
+
+# totfishdist2496_hist = ggplot(DataSum2496.dist, aes(x=TotalfishDist_m) ) + 
+#                      geom_histogram(bins=15) + 
+#                      facet_wrap(nomconc_ngL~spp, labeller = labeller(
+#                          spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
+#                          #scales="free") +
+#                      theme_bw()
+# 
+#     totfishdist2496_hist
+
+totfishdist2496 = ggplot(DataSum2496.dist, 
+                        aes(fill=factor(nomconc_ngL), y=TotalfishDist_m*100, 
+                               x=factor(ExposureHrs) ) ) + 
                       geom_boxplot(outlier.size = .75) + 
-                      facet_wrap(~temp) + #, labeller = labeller(
-                       # Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),#)+
-                       # scales="free") +
-                      ylab("Total Trial Distance (m)") + 
-                      xlab("Nominal Bifenthrin Concentration (ng/L)") +
-                      scale_fill_viridis_d(name="") + 
+                      facet_grid(spp~temp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                        temp = c("12"="12C", "15"="15C", "18"="18C")),#)+
+                        scales="free") +
+                      ylab("Total Trial Distance (cm)") + 
+                      xlab("Exposure Hours") +
+                      scale_fill_manual(values=viridis(6)[1:4], 
+                              name="Nominal Bifenthrin\nConcentration (ng/L)") + 
                       theme_bw()
-
-totfishdist96.bif22
-
-
     
-tiff("figures/Exposure_OutputFigs/TotalDistance_Bif_by_temp_raw.tiff", width=240, height=70, units="mm", compression="lzw", res=150)
-totfishdist96.bif22
+    totfishdist2496
+
+
+tiff("figures/Exposure_OutputFigs/TotalDistance_Bif_GSWS_2496hrs.tiff", width=210, height=100, units="mm", compression="lzw", res=150)
+totfishdist2496
 dev.off()
 
+ 
 
-totfishdist96.biftemp22 = ggplot(DataSum96.dist, 
-                             aes(fill=factor(nomconc_ngL), y=TotalfishDist_m, 
-                               x=factor(temp) ) ) + 
+### with all four timepoints
+totfishdistAll_hist = ggplot(DataSumAll.dist, aes(x=TotalfishDist_m) ) + 
+                     geom_histogram(bins=15) + 
+                     facet_wrap(nomconc_ngL~spp, labeller = labeller(
+                         spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
+                         #scales="free") +
+                     theme_bw()
+
+    totfishdistAll_hist
+
+totfishdistAll = ggplot(DataSumAll.dist, 
+                        aes(fill=factor(nomconc_ngL), y=TotalfishDist_m*100, 
+                               x=factor(ExposureHrs) ) ) + 
                       geom_boxplot(outlier.size = .75) + 
-                      facet_grid(~nomconc_ngL) + #, labeller = labeller(
-                       # Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),#)+
-                       # scales="free") +
-                      ylab("Total Trial Distance (m)") + 
-                      xlab("Nominal Bifenthrin Concentration (ng/L)") +
-                      scale_fill_viridis_d(name="") + 
+                      facet_grid(spp~temp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                        temp = c("12"="12C", "15"="15C", "18"="18C")),#)+
+                        scales="free") +
+                      ylab("Total Trial Distance (cm)") + 
+                      xlab("Exposure Hours") +
+                      scale_fill_manual(values=viridis(6)[1:4], 
+                              name="Nominal Bifenthrin\nConcentration (ng/L)") + 
                       theme_bw()
+    
+    totfishdistAll
 
-totfishdist96.biftemp22
+
+tiff("figures/Exposure_OutputFigs/TotalDistance_Bif_GSWS_allhrs.tiff", width=210, height=100, units="mm", compression="lzw", res=150)
+totfishdistAll
+dev.off()
+
+      
+totfishdistAll_Control = ggplot(DataSumAll.dist[DataSumAll.dist$nomconc_ngL==0,], 
+                                aes(y=TotalfishDist_m*100, 
+                               x=factor((ExposureHrs+72)/24),
+                               fill=spp) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_grid(spp~temp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                        temp = c("12"="12C", "15"="15C", "18"="18C"))) +
+                      ylab("Total Trial Distance (cm)") + 
+                      xlab("Age (days post hatch)") +
+                      scale_fill_manual(values=c("palegreen3","grey70"))+
+                      theme_bw()
+    
+    totfishdistAll_Control
+    
+tiff("figures/Exposure_OutputFigs/TotalDistance_BifControl.tiff", width=140, height=70, units="mm", compression="lzw", res=150)
+totfishdistAll_Control
+dev.off()
 ```
 
 
@@ -174,91 +397,410 @@ totfishdist96.biftemp22
 
 ### Sumarize time spent in center
 ```{r center zone data, echo=F} 
-DataSum2496.centC = DataSum2496 %>%
-  filter(!is.na(InZoneC)) %>%  ### will this bias the data if I remove those points where there isn't a detection? If the fish is more likely to be in the center when it's stationary, and it's more likely to be undetected when it's stationary, this may bias these values and under-represent the effect of the Fipronil (more stationary when strongly affected)
-  # also note, this line doesn't actually change the results because summing the InZoneC column drops all NA automatically; this line above just makes that explicit
-  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID) %>%
-  summarize(InZoneC = sum(InZoneC, na.rm=T),# InZoneB = sum(InZoneB, na.rm=T), 
-            npos = n()) %>%
-  mutate(PercZoneC.1 = InZoneC / npos) %>%
-  #mutate(PercZoneC.2 = InZoneC / (InZoneC+InZoneB)) %>%
-  # ran this comparison to see how much the NA can influence the data, and it seems to be minor
+
+DataSumAll.centC = DataSumAll.raw %>%
+  filter(!is.na(InZone_C)) %>%  
+  group_by(spp, ExposureHrs, Arena, tray, nomconc_ngL, temp) %>%
+  summarize(InZoneC = sum(InZone_C, na.rm=T), npos = n()) %>%
   ungroup()  %>%
+  mutate(PercZoneC.1 = InZoneC / npos) %>%
   data.frame()
 
-
-DataSumAll.centC = DataSumAll %>%
-  filter(!is.na(InZoneC)) %>%  
-  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, Spp, RepID) %>%
-  summarize(InZoneC = sum(InZoneC, na.rm=T), npos = n()) %>%
-  mutate(PercZoneC.1 = InZoneC / npos) %>%
+DataSumAll.centB = DataSumAll.raw %>%
+  filter(!is.na(InZone_B)) %>%  
+  group_by(spp, ExposureHrs, Arena, tray, nomconc_ngL, temp) %>%
+  summarize(InZoneB = sum(InZone_B, na.rm=T), npos = n()) %>%
   ungroup()  %>%
+  mutate(PercZoneB.1 = InZoneB / npos) %>%
   data.frame()
 
 ```
 
 ```{r center zone plots, echo=F}
+# only 2496hr
+DataSum2496.centC <- filter(DataSumAll.centC, ExposureHrs%in%c(24,96))
 
-CenterC.plot = ggplot(DataSum2496.centC, 
-                           aes(fill=factor(Treatment), y=(PercZoneC.1), 
+CenterC2496.plot = ggplot(DataSum2496.centC, 
+                           aes(fill=factor(nomconc_ngL), y=(PercZoneC.1), 
                                x=factor(ExposureHrs) ) ) + 
   geom_boxplot(outlier.size = .75) + 
-  #geom_violin()+
-  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
-  ylab("% of recorded positions in Central Zone") + 
+ # geom_violin()+
+  facet_grid(spp~temp, 
+             labeller = 
+               labeller(spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                        temp = c("12"="12C", "15"="15C", "18"="18C"))) +
+  ylab("% of recorded positions in Central Zone C") + 
   xlab ("Exposure Hours") + 
-  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
-  theme_bw()
-CenterC.plot
+   scale_fill_manual(values=viridis(6)[1:4], 
+                              name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+   theme_bw()
+CenterC2496.plot
 
+tiff("figures/Exposure_OutputFigs/PercZone_BifTemp_GSWS_2496hr.tiff", width=210, height=100, units="mm", compression="lzw", res=150)
+CenterC2496.plot
+dev.off()
 
 CenterCAll.plot = ggplot(DataSumAll.centC, 
-                           aes(fill=factor(Treatment), y=(PercZoneC.1), 
+                           aes(fill=factor(nomconc_ngL), y=(PercZoneC.1), 
                                x=factor(ExposureHrs) ) ) + 
   geom_boxplot(outlier.size = .75) + 
-  #geom_violin()+
-  facet_wrap(~Spp, labeller = labeller(Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
-  ylab("% of recorded positions in Central Zone") + 
+  geom_violin()+
+  facet_grid(spp~temp, labeller = labeller(spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("% of recorded positions in Central Zone C") + 
   xlab ("Exposure Hours") + 
-  scale_fill_viridis_d(name="Nominal Fipronil\nConcentration (ug/L)") + 
-  theme_bw()
+  scale_fill_manual(values=viridis(6)[1:4], 
+                              name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+    theme_bw()
 CenterCAll.plot
+
+tiff("figures/Exposure_OutputFigs/PercZone_BifTemp_GSWS_Allhr.tiff", width=210, height=100, units="mm", compression="lzw", res=150)
+CenterCAll.plot
+dev.off()
+
+# ZONE B INCLUDED MOST OF THE GS TRACKS; TOO WIDE OF A CENTER SPACE; STICK WITH ZONE C (15% OF TOTAL AREA)
+# only 2496hr
+DataSum2496.centB <- filter(DataSumAll.centB, ExposureHrs%in%c(24,96))
+
+CenterB2496.plot = ggplot(DataSum2496.centB,
+                           aes(fill=factor(nomconc_ngL), y=(PercZoneB.1),
+                               x=factor(ExposureHrs) ) ) +
+  geom_boxplot(outlier.size = .75) +
+  facet_grid(spp~temp,
+             labeller = labeller(spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+  ylab("% of recorded positions in Central Zone B") +
+  xlab ("Exposure Hours") +
+   scale_fill_manual(values=viridis(6)[1:4],
+                              name="Nominal Bifenthrin\nConcentration (ng/L)") +
+   theme_bw()
+
+CenterB2496.plot
+CenterC2496.plot
+
+# 
+# CenterBAll.plot = ggplot(DataSumAll.centB, 
+#                            aes(fill=factor(nomconc_ngL), y=(PercZoneB.1), 
+#                                x=factor(ExposureHrs) ) ) + 
+#   geom_boxplot(outlier.size = .75) + 
+#   #geom_violin()+
+#   facet_grid(spp~temp, labeller = labeller(spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"))) +
+#   ylab("% of recorded positions in Central Zone B") + 
+#   xlab ("Exposure Hours") + 
+#   scale_fill_manual(values=viridis(6)[1:4], 
+#                               name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+#     theme_bw()
+# CenterBAll.plot
 
 ```
 
-These are some pretty good plots for WS. I think I'll use the distance moved (most intuitive), the turn angle, and the centerC plots. 
 
+### Turn Angle / Meander  
+  
+```{r summarize turn angles and meander, echo=F}
+
+## Summarize to take total sum  of relative turn angles (-/+) for each fish 
+DataSumAll.ta = DataSumAll.raw %>%
+  group_by(spp, ExposureHrs, Arena, tray, nomconc_ngL, temp) %>%
+  summarize(SumAbsTurnAngleRel_perFish = sum(abs(SumTurnAngleRel), na.rm=T),
+            MnTurnAngleRel = deg(circ.mean.na(rad(abs(SumTurnAngleRel)))) ) %>%
+  ungroup()  %>%
+  data.frame()
+
+# Use this to identify any fish with problems
+check = DataSumAll.ta[DataSumAll.ta$SumTurnAngleRel_perFish<90,]
+
+## Summarize to take mean meander (relative turn angles/distance moved) for each fish 
+DataSumAll.meand = DataSumAll.raw %>%
+  group_by(spp, ExposureHrs, Arena, tray, nomconc_ngL, temp) %>%
+  summarize(MnMeander = abs(mean(Meander, na.rm=T))) %>%
+  ungroup()  %>%
+  data.frame()
+
+# Use this to identify any fish with problems
+check2 = DataSumAll.meand[DataSumAll.meand$MnMeander<.0001,]
+ check2 = check2[!is.na(check2$spp),]
+
+```
+
+```{r total turn angle boxplots}
+
+### with only 24hr and 96hr timepoints
+DataSumAll.ta$ExposureHrs = as.numeric(DataSumAll.ta$ExposureHrs )
+DataSum2496.ta = filter(DataSumAll.ta, ExposureHrs %in% c(24,96))
+
+DataSum2496.ta.hist = ggplot(DataSum2496.ta, aes(x=SumAbsTurnAngleRel_perFish) ) +
+                     geom_histogram(bins=15) +
+                     facet_wrap(nomconc_ngL~spp, labeller = labeller(
+                         spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
+                         #scales="free") +
+                     theme_bw()
+
+    DataSum2496.ta.hist
+
+TA2496 = ggplot(DataSum2496.ta, 
+                        aes(fill=factor(nomconc_ngL), y=SumAbsTurnAngleRel_perFish, 
+                               x=factor(ExposureHrs) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_grid(spp~temp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                        temp = c("12"="12C", "15"="15C", "18"="18C")),#)+
+                        scales="free") +
+                      ylab("Total Degrees Turned During Track") + 
+                      xlab("Exposure Hours") +
+                      scale_fill_manual(values=viridis(6)[1:4], 
+                              name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+                      theme_bw()
+    
+    TA2496
+
+
+tiff("figures/Exposure_OutputFigs/TurnAngle_Bif_GSWS_2496hrs.tiff", width=210, height=100, units="mm", compression="lzw", res=150)
+TA2496
+dev.off()
+
+ 
+
+### with all four timepoints
+
+TA.All = ggplot(DataSumAll.ta, 
+                        aes(fill=factor(nomconc_ngL), y=SumAbsTurnAngleRel_perFish, 
+                               x=factor(ExposureHrs) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_grid(spp~temp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                        temp = c("12"="12C", "15"="15C", "18"="18C")),#)+
+                        scales="free") +
+                      ylab("Total Degrees Turned During Track") + 
+                      xlab("Exposure Hours") +
+                      scale_fill_manual(values=viridis(6)[1:4], 
+                              name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+                      theme_bw()
+    
+    TA.All
+
+
+tiff("figures/Exposure_OutputFigs/TurnAngle_Bif_GSWS_allhrs.tiff", width=210, height=100, units="mm", compression="lzw", res=150)
+TA.All
+dev.off()
+
+      
+TA.All_Control = ggplot(DataSumAll.ta[DataSumAll.ta$nomconc_ngL==0,], 
+                                aes(y=SumAbsTurnAngleRel_perFish, 
+                               x=factor((ExposureHrs+72)/24),
+                               fill=spp) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_grid(spp~temp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                        temp = c("12"="12C", "15"="15C", "18"="18C"))) +
+                      ylab("Total Degrees Turned During Track") + 
+                      xlab("Age (days post hatch)") +
+                      scale_fill_manual(values=c("palegreen3","grey70"))+
+                      theme_bw()
+    
+    TA.All_Control
+    
+tiff("figures/Exposure_OutputFigs/TurnAngle_BifControl.tiff", width=140, height=70, units="mm", compression="lzw", res=150)
+TA.All_Control
+dev.off()
+
+```
+
+
+```{r circular mean turn angle boxplots}
+
+### with only 24hr and 96hr timepoints
+DataSumAll.ta$ExposureHrs = as.numeric(DataSumAll.ta$ExposureHrs )
+DataSum2496.ta = filter(DataSumAll.ta, ExposureHrs %in% c(24,96))
+
+DataSum2496.ta.hist = ggplot(DataSum2496.ta, aes(x=MnTurnAngleRel) ) +
+                     geom_histogram(bins=15) +
+                     facet_wrap(nomconc_ngL~spp, labeller = labeller(
+                         spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
+                         #scales="free") +
+                     theme_bw()
+
+    DataSum2496.ta.hist
+
+TAc2496 = ggplot(DataSum2496.ta, 
+                        aes(fill=factor(nomconc_ngL), y=MnTurnAngleRel, 
+                               x=factor(ExposureHrs) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_grid(spp~temp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                        temp = c("12"="12C", "15"="15C", "18"="18C")),#)+
+                        scales="free") +
+                      ylab("Circular Mean of Absolute Turning Angle of Fish") + 
+                      xlab("Exposure Hours") +
+                      scale_fill_manual(values=viridis(6)[1:4], 
+                              name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+                      theme_bw()
+    
+    TAc2496
+
+
+tiff("figures/Exposure_OutputFigs/TurnAngle_CircMn_Bif_GSWS_2496hrs.tiff", width=210, height=100, units="mm", compression="lzw", res=150)
+TAc2496
+dev.off()
+
+ 
+
+### with all four timepoints
+
+TAc.All = ggplot(DataSumAll.ta, 
+                        aes(fill=factor(nomconc_ngL), y=MnTurnAngleRel, 
+                               x=factor(ExposureHrs) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_grid(spp~temp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                        temp = c("12"="12C", "15"="15C", "18"="18C")),#)+
+                        scales="free") +
+                      ylab("Circular Mean of Absolute Turning Angle of Fish") + 
+                      xlab("Exposure Hours") +
+                      scale_fill_manual(values=viridis(6)[1:4], 
+                              name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+                      theme_bw()
+    
+    TAc.All
+
+
+tiff("figures/Exposure_OutputFigs/TurnAngle_CircMn_Bif_GSWS_allhrs.tiff", width=210, height=100, units="mm", compression="lzw", res=150)
+TAc.All
+dev.off()
+
+      
+TAc.All_Control = ggplot(DataSumAll.ta[DataSumAll.ta$nomconc_ngL==0,], 
+                                aes(y=MnTurnAngleRel, 
+                               x=factor((ExposureHrs+72)/24),
+                               fill=spp) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_grid(spp~temp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                        temp = c("12"="12C", "15"="15C", "18"="18C"))) +
+                      ylab("Circular Mean of Absolute Turning Angle of Fish") + 
+                      xlab("Age (days post hatch)") +
+                      scale_fill_manual(values=c("palegreen3","grey70"))+
+                      theme_bw()
+    
+    TAc.All_Control
+    
+tiff("figures/Exposure_OutputFigs/TurnAngle_CircMn_BifControl.tiff", width=140, height=70, units="mm", compression="lzw", res=150)
+TA.All_Control
+dev.off()
+
+```
+
+
+```{r meander boxplots}
+
+### with only 24hr and 96hr timepoints
+DataSumAll.meand$ExposureHrs = as.numeric(DataSumAll.meand$ExposureHrs )
+DataSum2496.meand = filter(DataSumAll.meand, ExposureHrs %in% c(24,96))
+
+Meand2496.hist = ggplot(DataSum2496.meand, aes(x=MnMeander) ) +
+                     geom_histogram(bins=15) +
+                     facet_wrap(nomconc_ngL~spp, labeller = labeller(
+                         spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")))+
+                         #scales="free") +
+                     theme_bw()
+Meand2496.hist
+    
+
+Meand2496 = ggplot(DataSum2496.meand, 
+                        aes(fill=factor(nomconc_ngL), y=MnMeander*10, 
+                               x=factor(ExposureHrs) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_grid(spp~temp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                        temp = c("12"="12C", "15"="15C", "18"="18C")),#)+
+                        scales="free") +
+                      ylab("Mean Track Meander (deg/cm)") + 
+                      xlab("Exposure Hours") +
+                      scale_fill_manual(values=viridis(6)[1:4], 
+                              name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+                      theme_bw()
+    
+    Meand2496
+
+
+tiff("figures/Exposure_OutputFigs/Meander_Bif_GSWS_2496hrs.tiff", width=210, height=100, units="mm", compression="lzw", res=150)
+Meand2496
+dev.off()
+
+ 
+
+### with all four timepoints
+MeandAll = ggplot(DataSumAll.meand, 
+                        aes(fill=factor(nomconc_ngL), y=MnMeander*10, 
+                               x=factor(ExposureHrs) ) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_grid(spp~temp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                        temp = c("12"="12C", "15"="15C", "18"="18C")),#)+
+                        scales="free") +
+                      ylab("Mean Track Meander (deg/cm)") + 
+                      xlab("Exposure Hours") +
+                      scale_fill_manual(values=viridis(6)[1:4], 
+                              name="Nominal Bifenthrin\nConcentration (ng/L)") + 
+                      theme_bw()
+    
+    MeandAll
+
+
+tiff("figures/Exposure_OutputFigs/Meander_Bif_GSWS_allhrs.tiff", width=210, height=100, units="mm", compression="lzw", res=150)
+MeandAll
+dev.off()
+
+      
+MeanderAll_Control = ggplot(DataSumAll.meand[DataSumAll.meand$nomconc_ngL==0,], 
+                                aes(y=MnMeander*10, 
+                               x=factor((ExposureHrs+72)/24),
+                               fill=spp) ) + 
+                      geom_boxplot(outlier.size = .75) + 
+                      facet_grid(spp~temp, labeller = labeller(
+                        spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
+                        temp = c("12"="12C", "15"="15C", "18"="18C"))) +
+                      ylab("Mean Track Meander (deg/cm)") + 
+                      xlab("Age (days post hatch)") +
+                      scale_fill_manual(values=c("palegreen3","grey70"))+
+                      theme_bw()
+    
+    MeanderAll_Control
+    
+tiff("figures/Exposure_OutputFigs/Meander_BifControl.tiff", width=140, height=70, units="mm", compression="lzw", res=150)
+MeanderAll_Control
+dev.off()
+
+```
+
+
+
+
+These are some pretty good plots for the report; sticking with 24 and 96hrs. 
 ```{r presentation plots}
-totfishdist
-sdMeander.plot
-activefish
-CenterC.plot
+totfishdist2496
+CenterC2496.plot
+Meand2496
+TAc2496
 ```
 
 
 ```{r final summarized datasets for opendata}
 
-DataSumAll$SumTurnAngleAbs = abs(DataSumAll$SumTurnAngleRel)
-DataSumAll$MeanderCircAbs = abs(DataSumAll$MeanderCirc)
-
-DataSum.summarized = DataSum2496 %>%
-  filter(!is.na(InZoneC)) %>%  
-  group_by(Spp, Contaminant, ExposureHrs, Treatment, calcConc, 
-           Tray, Replicate, RepID) %>%
+DataSumAll.summarized = DataSumAll.raw %>%
+  group_by(spp, ExposureHrs, nomconc_ngL, calcConc, tray, Arena, temp) %>%
   summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100),
-            MnVel = mean(MnVel, na.rm=T),
-            MnTurnAngle = deg(circ.mean.na(rad(SumTurnAngleAbs))), 
-            VarTurnAngle = deg(circ.disp.na(rad(SumTurnAngleAbs))$var), # circular variance
-            MnMeander = mean(MeanderCircAbs, na.rm=T),
-            SDMeander = sd(MeanderCircAbs, na.rm=T),
-            CVMeander = sd(MeanderCircAbs, na.rm=T)/abs(mean(MeanderCircAbs, na.rm=T)),
-            InZoneC = sum(InZoneC, na.rm=T), 
-            npos = n()) %>%
-  mutate(PercZoneC.1 = InZoneC / npos) %>%
+            MnTurnAngle = deg(circ.mean.na(rad(abs(SumTurnAngleRel)))), 
+            VarTurnAngle = deg(circ.disp.na(rad(abs(SumTurnAngleRel)))$var),
+            #MnTurnAngle = mean(abs(SumTurnAngleRel), na.rm=T),
+            #VarTurnAngle = var(abs(SumTurnAngleRel), na.rm=T),
+            MnMeander = mean(Meander, na.rm=T), 
+            SDMeander = sd(Meander, na.rm=T),
+            InZoneC = sum(InZone_C, na.rm=T), 
+            npos = n())  %>%
+  mutate(ExposureHrs = as.numeric(ExposureHrs), PropZoneC = InZoneC/npos) %>%
   ungroup()  %>%
   data.frame()
 
-write.csv(DataSum.summarized, "/Users/Anna/Documents/ResearchGit/SturgContam/outputData/Exposure_Outputdata/Bifenthrin_2020_Cleaned_Conc_Summarized.csv")
+write.csv(DataSumAll.summarized, "/Users/Anna/Documents/ResearchGit/SturgContam/outputData/Exposure_Outputdata/Bifenthrin_2022_23_Cleaned_Conc_Summarized.csv")
 
 
 ```

@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(readtext) # need this because the ethovision output .txt files have unusual encoding as UTF-16
 library(lme4)
-library(rethinking)
+#library(rethinking)
 library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
 library(patchwork)
 library(circular)
@@ -60,22 +60,30 @@ circ.disp.na = function(x) {
 
 ## Read in Cleaned Data ("Exposure_Analysis1.Rmd")
 ```{r read in clean data}
-DataSum96.raw = read.csv("outputData/Exposure_Outputdata/Fipronil_2021_Cleaned_NoConc_96hrs.csv")
+DataSumAll.raw = read.csv("outputData/Exposure_Outputdata/Fipronil_2021_Cleaned_Conc_Allhrs.csv")
 
+ DataSumAll.raw$calcConc[DataSumAll.raw$calcConc=="ND"] <- 0 
+ DataSumAll.raw$calcConc <- as.numeric(DataSumAll.raw$calcConc)
 # can repeat for more exposure timepoints later, if desired
 ```
 
 ## Add measured concentrations (versus nominal)
 ```{r chem analysis results}
-chemcsv.raw = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Fipronil_2021_Summary.csv")
-  chemcsv <- chemcsv.raw[chemcsv.raw$chemical=="fipronil" & chemcsv.raw$sample=="spike", c("spp", "nomconc", "calcConc")]
- 
-  
-DataSum96 <- merge(DataSum96.raw, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
- DataSum96$calcConc = as.numeric(DataSum96$calcConc)
- 
+# chemcsv.raw = read.csv("//Users/Anna/Documents/ResearchGit/SturgContam/rawData/ChemAnalysis_Fipronil_2021_Summary.csv")
+#   chemcsv <- chemcsv.raw[chemcsv.raw$chemical=="fipronil" & chemcsv.raw$sample=="spike", c("spp", "nomconc", "calcConc")]
+#  
+#   
+# DataSum96 <- merge(DataSum96.raw, chemcsv, by.x=c("Spp","Treatment"), by.y=c("spp","nomconc"), all.x=T)
+#  DataSum96$calcConc = as.numeric(DataSum96$calcConc)
+#  
 ```
 # this uses 'spike' water analysis, and will report final composite sample in the paper. I think. Remember these were the chemical analysis results that were odd...likely because we used two seperate stock solutions for <100 and >500, which had been mixed by someone else and which were 2-3 months old when I used them. Used the same ones for both GS and WS, and they likely were degrading in the refridgerator between exposures. The best explanation for the chem results we saw was that there were high levels of degredate in the stock solution prior to initiation of the trial, leading to high levels for many of the chemical constituants for the 500 and 1000 ug/L exposures. 
+
+### remove results for GS trial 8 until can review them in ethovision; all six concentrations had very high distances for this trial at 96 hrs, and not at any other timepoints. Look suspecious and likely an Ethovision error? Temps normal, but experiment notes say I set a box of glass bottles on the video cabinet bottom shelf during this trial, so perhaps moved camera 4 too much to get good tracks? 
+```{r remove trial 8-GS}
+DataSum2496.raw = DataSum2496.raw[!(DataSum2496.raw$Replicate==8 & DataSum2496.raw$Spp=="GS"),]
+
+```
 
 ## Add water temps at end of trial
 ```{r add indiv water temp increase}
@@ -101,17 +109,11 @@ tempdat$pred.endtemp[tempdat$species=="WS"] = 6.83281 + 21.94528*tempdat$time[te
 
 ggplot(tempdat, aes(x=endtemp, y=pred.endtemp, color=species)) + geom_point() + geom_line(data = data.frame(x=14:20, y=14:20), aes(x=x, y=y), color="black", lty=2)
 
-DataSum96.T = merge(DataSum96, tempdat, by.x=c("Spp","ExposureHrs","Tray","Replicate"), by.y=c("species","Exposure.Hr","Tray","rep"), all.x=T)
+DataSum2496.T = merge(DataSum2496, tempdat, by.x=c("Spp","ExposureHrs","Tray","Replicate"), by.y=c("species","Exposure.Hr","Tray","rep"), all.x=T)
  # this uses the control as a sample for all of the corresponding replicate numbers
 
 ```
 
-
-### remove results for GS trial 8 until can review them in ethovision; all six concentrations had very high distances for this trial at 96 hrs, and not at any other timepoints. Look suspecious and likely an Ethovision error? Temps normal, but experiment notes say I set a box of glass bottles on the video cabinet bottom shelf during this trial, so perhaps moved camera 4 too much to get good tracks? 
-```{r remove trial 8-GS}
-DataSum96 = DataSum96[!(DataSum96$Replicate==8 & DataSum96$Spp=="GS"),]
-
-```
 
 
 # plots and exploration are in Exposure_Analysis2, with select plots copied here
@@ -125,37 +127,40 @@ DataSum96 = DataSum96[!(DataSum96$Replicate==8 & DataSum96$Spp=="GS"),]
 ```{r distance data, echo=F}
 
 ## Summarize to take total distance (sum moved in a trial) for each fish replicates
-DataSum96.dist = DataSum96.T %>%
-  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, Tray, RepID, pred.endtemp) %>%
+DataSum2496.dist = DataSumAll.raw %>%
+  filter(ExposureHrs %in% c(24,96)) %>%
+  group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, Tray, RepID)%>%#, pred.endtemp) %>%
   summarize(TotalfishDist_m = sum(SumDistMoved, na.rm=T)/(10*100)) %>%
   ungroup()  %>%
-  
   mutate(lnCalcConc = log(calcConc+1)) %>%
   mutate(lnCalcConc2 = (log(calcConc+1))^2) %>%
   #mutate(lnCalcConcC= scale(lnCalcConc, scale=FALSE)) %>%
   #mutate(lnCalcConcC2 = lnCalcConcC^2 ) %>% 
    # order of transformations matters (log then scale then square)
-
   data.frame()
+
+
 
 
 ```
 
 ```{r distance rawdata plots}
 # classic veridis box plots
-totfishdist96 = ggplot(DataSum96.dist, aes(fill=factor(Treatment), y=TotalfishDist_m, 
-                               x=factor(ExposureHrs) ) ) + 
+totfishdist2496 = ggplot(DataSum2496.dist, aes(fill=factor(Treatment), y=TotalfishDist_m*100, x=factor(ExposureHrs) ) ) + 
                       geom_boxplot(outlier.size = .75) + 
                       facet_wrap(~Spp, labeller = labeller(
-                        Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")),#)+
-                        scales="free") +
-                      ylab("Total Trial Distance (m)") + 
+                        Spp = c("GS"="Green Sturgeon","WS"="White Sturgeon")) )+
+                        #scales="free") +
+                      ylab("Total Trial Distance (cm)") + 
                       xlab("Exposure Hours") +
                       scale_fill_viridis_d(name="Nominal Fpironil\nConcentration (ug/L)") + 
                       theme_bw()
 
-totfishdist96
+totfishdist2496
 
+tiff("figures/Exposure_OutputFigs/TotalDistance_Fip_GSWS_2496hrs.tiff", width=170, height=65, units="mm", compression="lzw", res=150)
+totfishdist2496
+dev.off()
 # change from paired control
   # 
   # DataSum96.dist.cont = DataSum96.dist[DataSum96.dist$Treatment==0, c("Spp","ExposureHrs","Replicate","Tray","TotalfishDist_m")]
@@ -222,49 +227,174 @@ totfishdist96
 
 ```{r distance frequentist models}
 
+## All data together - 96hrs ONLY
+DataSum96.dist = filter(DataSum2496.dist, ExposureHrs=="96")
+
+fullmod.dist = lmer(TotalfishDist_m ~ Spp*lnCalcConc + (1|Tray), DataSum96.dist, na.action="na.fail")
+ plot(fullmod.dist); qqnorm(resid(fullmod.dist)); qqline(resid(fullmod.dist)) # pretty good
+ summary(fullmod.dist)
+ ranef(fullmod.dist)
+ dredge(fullmod.dist)
+ 
+ # interaction with spp is significant, and causes problems for simple model interpretation, so I will model the two spp seperately
+
+ 
+ 
+ 
+## two spp seperately
 DataSum96.distGS = DataSum96.dist[DataSum96.dist$Spp=="GS",]
 DataSum96.distWS = DataSum96.dist[DataSum96.dist$Spp=="WS",]
 
-# basic linear models, no random effects nor polynomials
-dist.lmfactGS = lm(TotalfishDist_m ~ factor(Treatment),#lnCalcConc, # 
-               data=DataSum96.distGS)
-dist.aovGS = summary(aov(dist.lmfactGS))
-dist.aovGS
- TukeyHSD(aov(dist.lmfactGS)) # no significant effects
+fullmod.distGS = lmer(TotalfishDist_m ~ calcConc + (1|Tray), DataSum96.distGS, na.action="na.fail")
+ plot(fullmod.distGS); qqnorm(resid(fullmod.distGS)); qqline(resid(fullmod.distGS)) 
+   # okay qqnorm plots; long lower tail but no S-shape 
+ summary(fullmod.distGS)
+ ranef(fullmod.distGS)
+ dredge(fullmod.distGS)
+  # calcConc is not included in best model
  
-dist.lmfactWS = lm(TotalfishDist_m ~ factor(Treatment),#lnCalcConc, # 
-               data=DataSum96.distWS)
-dist.aovWS = summary(aov(dist.lmfactWS))
-dist.aovWS
- TukeyHSD(aov(dist.lmfactWS)) # 1000 is sig dif from all others, no other effects
+fullmod.distGS.quad = lmer (TotalfishDist_m ~ lnCalcConc +I(lnCalcConc^2) + (1|Tray), DataSum96.distGS, na.action="na.fail")
+ plot(fullmod.distGS.quad)
+ qqnorm(resid(fullmod.distGS.quad)); qqline(resid(fullmod.distGS.quad))
+   #  s-shaped qqnorm plots, regardless of log or not
+ summary(fullmod.distGS.quad)
+ ranef(fullmod.distGS.quad)
+ dredge(fullmod.distGS.quad)
+   # better AIC with calc conc and without quadratic when using non-log data
+   # better AIC with both when using log transformed data
+
+
+fullmod.distWS = lmer(TotalfishDist_m ~ calcConc + (1|Tray), DataSum96.distWS, na.action="na.fail")
+ plot(fullmod.distWS); qqnorm(resid(fullmod.distWS)); qqline(resid(fullmod.distWS)) 
+   # good qqnorm plots
+ summary(fullmod.distWS)
+ ranef(fullmod.distWS)
+ dredge(fullmod.distWS)
+   ## tried plots with ln and without, and with quad and without. 
+   ## (96hr GS) residual norm plots simliar and have a weird upper tail 
+   ## (96hr WS) residual norm plots look great
+   ## (96hr GS) residual vs fitted plots have greater variance at right when there is no log, and better variance distribution with both log and quad. 
+   ## (96hr WS) residual vs fitted plots have greater variance at right when there is no log, and a bit of a wave-feel when there is a log and quadratic. Best may be just log?
+ 
+  ### For the report (urgent need) I"ll use the most basic models below, but for the paper I should review these again. ###
+
+  ### Also, I prefer mixed models due to thier appropriateness for the data structure and the slightly smaller standard error for the effects; however, I can't get SE for the plot with these models, and so will use the lm for the report because it is much more straight foward to get SE and pull contrasts ###
  
  
-# add random effect for tray (stand in for testing time and location in water bath) and polynomial effect of conc. 
-dist.lmGS = lm(TotalfishDist_m ~ lnCalcConc + lnCalcConc2 + pred.endtemp,
-               data=DataSum96.distGS) 
- summary(dist.lmGS) # adding the temp only altered the intercept but not the effect of contaminant at all. That's nice. But then again, there was no effect of contaminant, so not really important afterall. 
-dist.lmmGS = lmer(TotalfishDist_m ~ lnCalcConc + lnCalcConc2 + pred.endtemp + (1|Tray), data=DataSum96.distGS)
- summary(dist.lmmGS) # same as the non-mixed model. Adding the temp only blows up the std.error and doesn't change the effect of concentration. 
-
-
-dist.lmWS = lm(TotalfishDist_m ~ lnCalcConc + lnCalcConc2 + pred.endtemp,
-               data=DataSum96.distWS, na.action=na.fail) 
- summary(dist.lmWS) # temp is more important here; makes sense because the fish moved more and there was generally more capacity to detect differences
-  # all the variables are significant. These are so much harder to interpret
- dredge(dist.lmWS)
-  # best mdoel includes all variable. Of course. Model without temp only has weight of 0.022 (second best model), delta AIC of 7.62
- ## emmeans for dist.lmWS??
  
-dist.lmmWS = lmer(TotalfishDist_m ~ lnCalcConc + lnCalcConc2 + pred.endtemp + (1|Tray), data=DataSum96.distWS, na.action=na.fail) 
- summary(dist.lmmWS) # adding the random effect makes the effect estimate for temp stronger, actually. That's interesting...I'd have thought it would take away explanatory value from the temp variable. 
- dredge(dist.lmmWS) # model without temp is second still, and has weight of 0.091, deltaAIC of 4.6
+ 
+lmmod.distGS = lm(TotalfishDist_m ~ calcConc, DataSum96.distGS, na.action="na.fail")
+ plot(lmmod.distGS) 
+   # okay qqnorm plots; long lower tail
+ summary(lmmod.distGS)
+ dredge(lmmod.distGS) # calc conc in best model, byut dAIC only 0.65
+ anova(lmmod.distGS)  # calc conc p=0.099 (continuous)
 
- ## emmeans for dist.lmWS??
+aov.distGS = lm(TotalfishDist_m ~ factor(calcConc), DataSum96.distGS, na.action="na.fail")
+anova(aov.distGS) # as factor, calc conc p=0.44
+  cC.emm <- emmeans(aov.distGS, "calcConc")
+     cC.emm # averaged over spp and temp
+     # calcConc emmean    SE df lower.CL upper.CL
+     #     0.01   7.06 0.759 78     5.55     8.57
+     #     0.86   6.56 0.759 78     5.05     8.07
+     #     8.95   6.13 0.759 78     4.62     7.65
+     #    99.50   5.45 0.759 78     3.94     6.96
+     #   565.80   5.82 0.759 78     4.31     7.33
+     #  1206.03   5.00 0.759 78     3.49     6.51
+     #  all confedence intervals overlap (GS 96hr)
+         
+     contrast(cC.emm, 'tukey') 
+     # contrast                        estimate   SE df t.ratio p.value
+     # calcConc0.01 - calcConc0.86        0.502 1.07 78   0.468  0.9971
+     # calcConc0.01 - calcConc8.95        0.928 1.07 78   0.865  0.9537
+     # calcConc0.01 - calcConc99.5        1.614 1.07 78   1.505  0.6624
+     # calcConc0.01 - calcConc565.8       1.240 1.07 78   1.156  0.8560
+     # calcConc0.01 - calcConc1206.03     2.061 1.07 78   1.921  0.3977
+     # calcConc0.86 - calcConc8.95        0.426 1.07 78   0.397  0.9987
+     # calcConc0.86 - calcConc99.5        1.112 1.07 78   1.037  0.9041
+     # calcConc0.86 - calcConc565.8       0.738 1.07 78   0.688  0.9828
+     # calcConc0.86 - calcConc1206.03     1.559 1.07 78   1.453  0.6949
+     # calcConc8.95 - calcConc99.5        0.686 1.07 78   0.640  0.9876
+     # calcConc8.95 - calcConc565.8       0.312 1.07 78   0.291  0.9997
+     # calcConc8.95 - calcConc1206.03     1.133 1.07 78   1.056  0.8971
+     # calcConc99.5 - calcConc565.8      -0.374 1.07 78  -0.349  0.9993
+     # calcConc99.5 - calcConc1206.03     0.446 1.07 78   0.416  0.9983
+     # calcConc565.8 - calcConc1206.03    0.820 1.07 78   0.765  0.9726
+     # none are statistically different (GS 96hr)
+    
+         contrast(cC.emm, 'poly') %>% head(3) 
+         # no support here for quadratic either
+ 
+         
+         
+         
+lmmod.distWS = lm(TotalfishDist_m ~ calcConc, DataSum96.distWS, na.action="na.fail")
+ plot(lmmod.distWS)
+   # okay resid plots; using non transformed for report for consistency, but review in paper
+ summary(lmmod.distWS)
+ dredge(lmmod.distWS) # calc conc included strongly
+ anova(lmmod.distWS) # effect of calcConc is very strong as continuous or discrete
 
-### I prefer mixed models due to thier appropriateness for the data structure and the slightly smaller standard error for the effects; however, I can't get SE for the plot with these models, and so will use the lm for the presentation graphs because it is much more straight foward to get SE ###
-
+aov.distWS = lm(TotalfishDist_m ~ factor(calcConc), DataSum96.distWS, na.action="na.fail")
+anova(aov.distWS)
+  cC.emm <- emmeans(aov.distWS, "calcConc")
+     cC.emm # averaged over spp and temp
+     # calcConc emmean   SE df lower.CL upper.CL
+     #     0.01   22.0 1.46 66    19.09     24.9
+     #     0.76   23.0 1.46 66    20.05     25.9
+     #     8.30   23.3 1.46 66    20.35     26.2
+     #    64.17   27.2 1.46 66    24.31     30.2
+     #   411.27   24.7 1.46 66    21.78     27.6
+     #   971.80   11.6 1.46 66     8.69     14.5
+     # non-overlapping confedence intervals for 1000 with all others; 100-500 close
+         
+     contrast(cC.emm, 'tukey') 
+     # contrast                       estimate   SE df t.ratio p.value
+     # calcConc0.01 - calcConc0.76       -0.96 2.07 66  -0.464  0.9972
+     # calcConc0.01 - calcConc8.3        -1.26 2.07 66  -0.609  0.9900
+     # calcConc0.01 - calcConc64.17      -5.22 2.07 66  -2.519  0.1334
+     # calcConc0.01 - calcConc411.27     -2.69 2.07 66  -1.301  0.7835
+     # calcConc0.01 - calcConc971.8      10.40 2.07 66   5.024  0.0001 *1000
+     # calcConc0.76 - calcConc8.3        -0.30 2.07 66  -0.145  1.0000
+     # calcConc0.76 - calcConc64.17      -4.26 2.07 66  -2.056  0.3232
+     # calcConc0.76 - calcConc411.27     -1.73 2.07 66  -0.837  0.9594
+     # calcConc0.76 - calcConc971.8      11.36 2.07 66   5.488  <.0001 *1000
+     # calcConc8.3 - calcConc64.17       -3.96 2.07 66  -1.911  0.4051
+     # calcConc8.3 - calcConc411.27      -1.43 2.07 66  -0.692  0.9822
+     # calcConc8.3 - calcConc971.8       11.66 2.07 66   5.633  <.0001 *1000
+     # calcConc64.17 - calcConc411.27     2.52 2.07 66   1.218  0.8264
+     # calcConc64.17 - calcConc971.8     15.62 2.07 66   7.543  <.0001 *1000
+     # calcConc411.27 - calcConc971.8    13.09 2.07 66   6.325  <.0001 *1000
+     # 1000 sig dif from all others, no other effect. Clean and tidy! 
+    
+         contrast(cC.emm, 'poly') %>% head(3) 
+         # There IS support for quadratic here; look into it more later
+ 
+         
+       
 ```
 
+
+```{r calc conc var exploration, to delete}
+m0 = lmer (TotalfishDist_m ~ calcConc  + (1|Tray), DataSum96.distWS, na.action="na.fail")
+ plot(m0)
+ qqnorm(resid(m0)); qqline(resid(m0))
+ 
+ m1 = lmer (TotalfishDist_m ~ calcConc +I(calcConc^2) + (1|Tray), DataSum96.distWS, na.action="na.fail")
+ plot(m1)
+ qqnorm(resid(m1)); qqline(resid(m1))
+ 
+ 
+m2 = lmer (TotalfishDist_m ~ lnCalcConc + (1|Tray), DataSum96.distWS, na.action="na.fail")
+ plot(m2)
+ qqnorm(resid(m2)); qqline(resid(m2))
+ 
+ 
+m3 = lmer (TotalfishDist_m ~ lnCalcConc +I(lnCalcConc^2) + (1|Tray), DataSum96.distWS, na.action="na.fail")
+ plot(m3)
+ qqnorm(resid(m3)); qqline(resid(m3))
+```
+ 
 ## plot frequentist model predictions
 ```{r model predictions}
 preddat.WS = data.frame(lnCalcConc= unique(DataSum96.distWS$lnCalcConc),
@@ -614,7 +744,7 @@ postdist = extract.samples(distspp.blm_int5.rise.2)  # maybe change to distspp.b
 
 
 # reference table to convert from treatment to centered, log-transformed measured concentrations
-TreatCalcTable = unique(DataSum2496.dist[order(DataSum2496.dist$Treatment)
+TreatCalcTable = unique(DataSum96.dist[order(DataSum96.dist$Treatment)
                                              ,c("Spp", "Treatment","lnCalcConc", "lnCalcConcC")])
 TreatCalcTable$lnCalcConcC2 = TreatCalcTable$lnCalcConcC ^ 2
 
@@ -1480,9 +1610,9 @@ post = extract.samples(meandspp.blm_96)
 #                lnCalcConc=log(rep(seq(0, 2250, 2),4)+1), 
 #                lnCalcConc2=log(rep(seq(0, 2250, 2),4)+1) ^2, 
 #                lnCalcConcC=   (log(rep(seq(0, 2250, 2),4)+1)) - 
-#                  mean(DataSum2496.dist$lnCalcConc) ,
+#                  mean(DataSum96.dist$lnCalcConc) ,
 #                lnCalcConcC2=( (log(rep(seq(0, 2250, 2),4)+1)) - 
-#                  mean(DataSum2496.dist$lnCalcConc) ) ^ 2 ,               
+#                  mean(DataSum96.dist$lnCalcConc) ) ^ 2 ,               
 #                ExposeDummy = rep(c(0,1), each=1126*2), 
 #                SppDummy = rep(rep(c(0,1),each=1126),2), 
 #                RepID = rep(16,4504))
@@ -1920,30 +2050,170 @@ WS0bif_96.24m.plot
 
 ########### 
      
-## Center Zone Models - good and complete! #####
+## Center Zone Models - good and complete! coverted this first chunk to 96hrs only, and removes some stuff to add the frequentist models. May have broken the bayseian ones, so correct this first chunk then should be good tehre too. #####
 ```{r center zone data, echo=F, eval=F} 
-DataSum2496.centC = DataSum2496.raw %>%
+DataSum96.centC = DataSumAll.raw %>%
+  filter(ExposureHrs==96) %>%
   filter(!is.na(InZoneC)) %>%  ### will this bias the data if I remove those points where there isn't a detection? If the fish is more likely to be in the center when it's stationary, and it's more likely to be undetected when it's stationary, this may bias these values and under-represent the effect of the bifenthrin (more stationary when strongly affected)
   # also note, this line doesn't actually change the results because summing the InZoneC column drops all NA automatically; this line above just makes that explicit
   group_by(index, Trial, Arena, Replicate, ExposureHrs, Treatment, calcConc, Spp, RepID) %>%
-  summarize(InZoneC = sum(InZoneC, na.rm=T), InZoneB = sum(InZoneB, na.rm=T), npos = n()) %>%
+  summarize(InZoneC = sum(InZoneC, na.rm=T), npos = n()) %>%
   mutate(PercZoneC1 = InZoneC / npos) %>%
-  mutate(PercZoneC2 = InZoneC / (InZoneC+InZoneB)) %>%
-  # ran this comparison to see how much the NA can influence the data, and it seems to be minor
   ungroup()  %>%
   data.frame()
 
- DataSum2496.centC$lnCalcConc = log(DataSum2496.centC$calcConc+1)
- DataSum2496.centC$lnCalcConcC= scale(DataSum2496.centC$lnCalcConc, scale=FALSE)
- DataSum2496.centC$lnCalcConcC2 = DataSum2496.centC$lnCalcConcC^2 
+ DataSum96.centC$lnCalcConc = log(DataSum96.centC$calcConc+1)
+ #DataSum2496.centC$lnCalcConcC= scale(DataSum2496.centC$lnCalcConc, scale=FALSE)
+ #DataSum2496.centC$lnCalcConcC2 = DataSum2496.centC$lnCalcConcC^2 
     # order of transformations matters (log then scale then square)
 
  # add a tiny amount to the perc to keep it above zero (issues for fitting because logit(0)=Inf
  # but don't add so much that the max will be =>1
- DataSum2496.centC$PercZoneC1 = DataSum2496.centC$PercZoneC1 +.001
- DataSum2496.centC$PercZoneC2 = DataSum2496.centC$PercZoneC2 +.001
+ DataSum96.centC$PercZoneC1 = DataSum96.centC$PercZoneC1 +.001
+ #DataSum2496.centC$PercZoneC2 = DataSum2496.centC$PercZoneC2 +.001
  
 ```
+
+
+```{r center zone frequentist models}
+
+## All data together - 96hrs ONLY
+# 
+# fullmod.cent = glmer( cbind(InZoneC, (npos-InZoneC)) ~ Spp*lnCalcConc + (1|Tray), DataSum96.centC, na.action="na.fail", family="binomial")
+#  plot(fullmod.cent); qqnorm(resid(fullmod.cent)); qqline(resid(fullmod.cent)) # pretty good
+#  summary(fullmod.cent)
+#  ranef(fullmod.cent)
+#  dredge(fullmod.cent)
+#  
+#  # interaction with spp is significant, and causes problems for simple model interpretation, so I will model the two spp seperately
+
+ 
+ 
+ 
+## two spp seperately
+DataSum96.centCGS = DataSum96.centC[DataSum96.centC$Spp=="GS",]
+DataSum96.centCWS = DataSum96.centC[DataSum96.centC$Spp=="WS",]
+
+# fullmod.centGS = glmer(cbind(InZoneC, (npos-InZoneC)) ~ calcConc + (1|Tray), DataSum96.centCGS, na.action="na.fail", family="binomial")
+#  plot(fullmod.centGS); qqnorm(resid(fullmod.centGS)); qqline(resid(fullmod.centGS)) 
+#    # okay qqnorm plots; long lower tail but no S-shape 
+#  summary(fullmod.centGS)
+#  ranef(fullmod.centGS)
+#  dredge(fullmod.centGS)
+#   # calcConc is not included in best model
+#  
+# fullmod.centGS.quad = glmer (cbind(InZoneC, (npos-InZoneC)) ~ lnCalcConc +I(lnCalcConc^2) + (1|Tray), DataSum96.centCGS, na.action="na.fail", family="binomial")
+#  plot(fullmod.centGS.quad)
+#  qqnorm(resid(fullmod.centGS.quad)); qqline(resid(fullmod.centGS.quad))
+#    #  s-shaped qqnorm plots, regardless of log or not
+#  summary(fullmod.centGS.quad)
+#  ranef(fullmod.centGS.quad)
+#  dredge(fullmod.centGS.quad)
+#    # better AIC with calc conc and without quadratic when using non-log data
+#    # better AIC with both when using log transformed data
+# 
+# 
+# fullmod.centWS = glmer(cbind(InZoneC, (npos-InZoneC)) ~ calcConc + (1|Tray), DataSum96.centCWS, na.action="na.fail", family="binomial")
+#  plot(fullmod.centWS); qqnorm(resid(fullmod.centWS)); qqline(resid(fullmod.centWS)) 
+#    # good qqnorm plots
+#  summary(fullmod.centWS)
+#  ranef(fullmod.centWS)
+#  dredge(fullmod.centWS)
+#    ## tried plots with ln and without, and with quad and without. 
+#    ## (96hr GS) residual norm plots simliar and have a weird upper tail 
+#    ## (96hr WS) residual norm plots look great
+#    ## (96hr GS) residual vs fitted plots have greater variance at right when there is no log, and better variance distribution with both log and quad. 
+#    ## (96hr WS) residual vs fitted plots have greater variance at right when there is no log, and a bit of a wave-feel when there is a log and quadratic. Best may be just log?
+#  
+#   ### For the report (urgent need) I"ll use the most basic models below, but for the paper I should review these again. ###
+# 
+#   ### Also, I prefer mixed models due to thier appropriateness for the data structure and the slightly smaller standard error for the effects; however, I can't get SE for the plot with these models, and so will use the lm for the report because it is much more straight foward to get SE and pull contrasts ###
+#  
+#  
+ 
+ 
+lmmod.centGS = glm(cbind(InZoneC, (npos-InZoneC)) ~ lnCalcConc, DataSum96.centCGS, na.action="na.fail", family="binomial")
+ plot(lmmod.centGS) 
+   # very bad residuals
+ summary(lmmod.centGS)
+ dredge(lmmod.centGS) # calc conc in best model
+
+aov.centGS = glm(cbind(InZoneC, (npos-InZoneC)) ~ factor(calcConc), DataSum96.centCGS, na.action="na.fail", family="binomial")
+anova(aov.centGS) # as factor, calc conc p=0.44
+  cC.emm <- emmeans(aov.centGS, "calcConc")
+     cC.emm # averaged over spp and temp
+  # calcConc emmean     SE  df asymp.LCL asymp.UCL
+  #    0.01  -3.14 0.0225 Inf     -3.18     -3.10
+  #    0.86  -2.78 0.0192 Inf     -2.82     -2.75
+  #    8.95  -2.86 0.0204 Inf     -2.90     -2.82
+  #   99.50  -2.60 0.0180 Inf     -2.64     -2.57
+  #  565.80  -2.07 0.0141 Inf     -2.09     -2.04
+  # 1206.03  -1.61 0.0121 Inf     -1.63     -1.58       
+     contrast(cC.emm, 'tukey') 
+   # contrast                        estimate     SE  df z.ratio p.value
+   # calcConc0.01 - calcConc0.86      -0.3571 0.0296 Inf -12.077  <.0001
+   # calcConc0.01 - calcConc8.95      -0.2768 0.0304 Inf  -9.106  <.0001
+   # calcConc0.01 - calcConc99.5      -0.5360 0.0288 Inf -18.588  <.0001
+   # calcConc0.01 - calcConc565.8     -1.0740 0.0266 Inf -40.427  <.0001
+   # calcConc0.01 - calcConc1206.03   -1.5350 0.0255 Inf -60.140  <.0001
+   # calcConc0.86 - calcConc8.95       0.0803 0.0280 Inf   2.864  0.0480 1 vs 10 same; others all different. weird? no just very precise estimates
+   # calcConc0.86 - calcConc99.5      -0.1790 0.0263 Inf  -6.797  <.0001
+   # calcConc0.86 - calcConc565.8     -0.7170 0.0238 Inf -30.096  <.0001
+   # calcConc0.86 - calcConc1206.03   -1.1779 0.0227 Inf -51.997  <.0001
+   # calcConc8.95 - calcConc99.5      -0.2592 0.0273 Inf  -9.510  <.0001
+   # calcConc8.95 - calcConc565.8     -0.7973 0.0248 Inf -32.090  <.0001
+   # calcConc8.95 - calcConc1206.03   -1.2582 0.0237 Inf -53.032  <.0001
+   # calcConc99.5 - calcConc565.8     -0.5380 0.0229 Inf -23.482  <.0001
+   # calcConc99.5 - calcConc1206.03   -0.9990 0.0217 Inf -46.050  <.0001
+   # calcConc565.8 - calcConc1206.03  -0.4609 0.0186 Inf -24.821  <.0001       c
+     contrast(cC.emm, 'poly') %>% head(3) 
+         #  support here for quadratic; evaluate later
+ 
+         
+         
+         
+lmmod.centWS = glm(cbind(InZoneC, (npos-InZoneC)) ~ lnCalcConc, DataSum96.centCWS, na.action="na.fail", family="binomial")
+ plot(lmmod.centWS)
+   # okay resid plots; lots of points outside the 'leverage' lines
+ summary(lmmod.centWS) # negative effect of calc conc
+ dredge(lmmod.centWS) # calc conc included strongly
+
+aov.centWS = glm(cbind(InZoneC, (npos-InZoneC)) ~ factor(calcConc), DataSum96.centCWS, na.action="na.fail", family="binomial")
+anova(aov.centWS)
+  cC.emm <- emmeans(aov.centWS, "calcConc")
+     cC.emm # averaged over spp and temp
+   # calcConc emmean     SE  df asymp.LCL asymp.UCL
+   #     0.01  -2.45 0.0181 Inf     -2.49     -2.42
+   #     0.76  -2.45 0.0181 Inf     -2.49     -2.42
+   #     8.30  -2.19 0.0162 Inf     -2.22     -2.15
+   #    64.17  -2.52 0.0186 Inf     -2.55     -2.48
+   #   411.27  -2.64 0.0193 Inf     -2.67     -2.60
+   #   971.80  -3.64 0.0305 Inf     -3.70     -3.58
+     contrast(cC.emm, 'tukey') 
+     # calcConc0.01 - calcConc0.76     0.00231 0.0256 Inf   0.090  1.0000
+     # calcConc0.01 - calcConc8.3     -0.26553 0.0243 Inf -10.921  <.0001  0-10
+     # calcConc0.01 - calcConc64.17    0.06629 0.0259 Inf   2.555  0.1086
+     # calcConc0.01 - calcConc411.27   0.18603 0.0265 Inf   7.022  <.0001  0-500
+     # calcConc0.01 - calcConc971.8    1.18980 0.0355 Inf  33.517  <.0001  0-1000 
+     # calcConc0.76 - calcConc8.3     -0.26784 0.0243 Inf -11.026  <.0001  1-10
+     # calcConc0.76 - calcConc64.17    0.06397 0.0259 Inf   2.468  0.1338
+     # calcConc0.76 - calcConc411.27   0.18371 0.0265 Inf   6.940  <.0001  1-500
+     # calcConc0.76 - calcConc971.8    1.18748 0.0355 Inf  33.466  <.0001  0-1000
+     # calcConc8.3 - calcConc64.17     0.33182 0.0246 Inf  13.475  <.0001  10-100
+     # calcConc8.3 - calcConc411.27    0.45155 0.0252 Inf  17.918  <.0001  10-500
+     # calcConc8.3 - calcConc971.8     1.45533 0.0345 Inf  42.128  <.0001  10-1000
+     # calcConc64.17 - calcConc411.27  0.11974 0.0268 Inf   4.472  0.0001  100-500
+     # calcConc64.17 - calcConc971.8   1.12351 0.0357 Inf  31.460  <.0001  100-1000
+     # calcConc411.27 - calcConc971.8  1.00377 0.0361 Inf  27.797  <.0001  500-1000
+         contrast(cC.emm, 'poly') %>% head(3) 
+          # evidence for quadratic; look into later
+         
+  #### don't like these models; the estimates are too precise and residuals are not great. 
+         
+```         
+
+
+
 
 ```{r center zone data 2, echo=F} 
 DataSum2496.centC = DataSum2496.raw %>%
@@ -1963,6 +2233,8 @@ DataSum2496.centC = DataSum2496.raw %>%
  
  
 ```
+
+
 
 
 ```{r centerzone multi-level Bayesmodels selection, echo=F, eval=F}
