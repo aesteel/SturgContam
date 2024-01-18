@@ -1,0 +1,55 @@
+---
+title: "Cardiac Report - Brief"
+author: "Anna Steel"
+date: "2023-12-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readtext) # need this because the ethovision output .txt files have unusual encoding as UTF-16
+library(lme4)
+library(circular)
+library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
+library(rstatix)
+library(chron)
+
+knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
+```
+
+## read in data (partial video analysis)
+```{r read in}
+hrd = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Cardiac WSBif2022 VideoAnalysis Partial 20230306.csv")
+
+
+```
+
+## clean data
+```{r clean}
+
+hrd = select(hrd, Date, Clock.Time.Hearts.In.View, Clock.Time.Temp, 
+             Trial.No., HR.Round, Dish.ID, fish, IDkey,
+             Treatment.Temp, temp, 
+             Heart.Rate.30sec, Arrhythmia)
+
+names(hrd) <- c("Date", "ClockHeartsInView", "ClockTemp", 
+             "TrialNo", "HRround", "DishID", "fishID", "IDkey",
+             "treattemp", "measuredtemp", 
+             "HR30s", "Arr")
+
+dim(hrd) # 1867 rows of data to collect
+
+hrd.comp = hrd[!(is.na(hrd$HR30s) | hrd$HR30s==""),]
+dim(hrd.comp)
+#532 rows with data
+
+hrd.comp.temp = hrd.comp[!is.na(hrd.comp$measuredtemp),]
+dim(hrd.comp.temp)
+#227 rows left
+
+```
+
+
+## add some of the metadata overview

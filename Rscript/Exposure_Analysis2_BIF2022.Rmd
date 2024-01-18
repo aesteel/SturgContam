@@ -305,7 +305,7 @@ check = DataSumAll.dist[DataSumAll.dist$TotalfishDist_m==0,]
 ```{r distance boxplots}
 
 ### with only 24hr and 96hr timepoints
-DataSum2496.dist = filter(DataSumAll.dist, ExposureHrs %in% c(24,96))
+DataSum2496.dist = filter(DataSumAll.dist, ExposureHrs %in% c(24, 96))
 
 # totfishdist2496_hist = ggplot(DataSum2496.dist, aes(x=TotalfishDist_m) ) + 
 #                      geom_histogram(bins=15) + 
@@ -322,8 +322,8 @@ totfishdist2496 = ggplot(DataSum2496.dist,
                       geom_boxplot(outlier.size = .75) + 
                       facet_grid(spp~temp, labeller = labeller(
                         spp = c("GS"="Green Sturgeon","WS"="White Sturgeon"),
-                        temp = c("12"="12C", "15"="15C", "18"="18C")),#)+
-                        scales="free") +
+                        temp = c("12"="12C", "15"="15C", "18"="18C")) )+
+                        #scales="free") +
                       ylab("Total Trial Distance (cm)") + 
                       xlab("Exposure Hours") +
                       scale_fill_manual(values=viridis(6)[1:4], 
@@ -436,7 +436,7 @@ CenterC2496.plot = ggplot(DataSum2496.centC,
    theme_bw()
 CenterC2496.plot
 
-tiff("figures/Exposure_OutputFigs/PercZone_BifTemp_GSWS_2496hr.tiff", width=210, height=100, units="mm", compression="lzw", res=150)
+tiff("figures/Exposure_OutputFigs/PercZone_BifTemp_GSWS_96hr.tiff", width=210, height=100, units="mm", compression="lzw", res=150)
 CenterC2496.plot
 dev.off()
 
