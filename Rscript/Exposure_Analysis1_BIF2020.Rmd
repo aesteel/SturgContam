@@ -13,6 +13,7 @@ library(readtext) # need this because the ethovision output .txt files have unus
 library(lme4)
 #library(rethinking)
 library(rprojroot) # only used for find_rstudio_root_file() to set project wd as root
+library(zoo) # for function na.locf (last observation carried forward)
 
 knitr::opts_knit$set(root.dir = find_rstudio_root_file()) # sets root directory to match project directory, not rmd file location
 ```
@@ -107,7 +108,7 @@ WStriallist = read.csv("/Users/Anna/Documents/ResearchGit/SturgContam/rawData/Et
     }
     
     
-# do.call function to use above function to read and then rbind all the trial datafiles into one df per species    
+# do.call function to use above function to read and then rbind all the trial datafiles into one df per species; these two commands take ~2.5min
   GSdata = do.call(rbind, lapply(GSfilelist, readTrialDat.func, datadir = GSdatadir, triallist= GStriallist, datcolNames = datcolNamesGS) )
     
   WSdata = do.call(rbind, lapply(WSfilelist, readTrialDat.func, datadir = WSdatadir, triallist= WStriallist, datcolNames = datcolNamesWS) )
@@ -142,13 +143,14 @@ summarize(group_by(WSdata, Trial, Replicate, ExposureHrs, Treatment), max(TrialT
 GSdatasub = GSdata[,c("index","Trial","Arena","Replicate","ExposureHrs","Treatment","Spp","Contaminant","TrialTime_s","Xcent_mm","Ycent_mm","DistMoved_mm","Vel_mms","Meander_degmmabs","TurnAngle_degabs","Meander_degmmrel","TurnAngle_degrel","InZoneB","InZoneC"),]
 
 ## original turn angle code: converted negative turns to to 360deg scale 
-GSdatasub$TurnAngle_degrel2 = GSdatasub$TurnAngle_degrel
-GSdatasub$TurnAngle_degrel2[GSdatasub$TurnAngle_degrel<0 &
-                              !is.na(GSdatasub$TurnAngle_degrel)] <-
-  GSdatasub$TurnAngle_degrel[GSdatasub$TurnAngle_degrel<0 &
-                               !is.na(GSdatasub$TurnAngle_degrel)] +360
+# GSdatasub$TurnAngle_degrel2 = GSdatasub$TurnAngle_degrel
+# GSdatasub$TurnAngle_degrel2[GSdatasub$TurnAngle_degrel<0 &
+#                               !is.na(GSdatasub$TurnAngle_degrel)] <-
+#   GSdatasub$TurnAngle_degrel[GSdatasub$TurnAngle_degrel<0 &
+#                                !is.na(GSdatasub$TurnAngle_degrel)] +360
 
-## Nov 2023, I realized that because I'm summarizing to one metric per 6 positions, I should add the relative angles to get the overall turn angle for the 6-pos summary. Then I can convert to absolute scale if I want to remove directionality, and use the abs scale to calculate meander (degrees turned per distance moved). 
+## Nov 2023, I realized that because I'm summarizing to one metric per 6 positions, I should add the relative angles to get the overall turn angle for the 6-pos summary. Then I can convert to absolute scale if I want to remove directionality, and use the abs scale to calculate meander (degrees turned per distance moved). I will do this in the next section where I summarize the data
+
 
 GSdatasub$DistMoved_mm.NA0 = GSdatasub$DistMoved_mm
  GSdatasub$DistMoved_mm.NA0[is.na(GSdatasub$DistMoved_mm)] <- 0
@@ -166,15 +168,15 @@ GSdatasum = GSdatasub %>%
             SumDistMoved = sum(DistMoved_mm, na.rm=T),
             MnVel = mean(Vel_mms, na.rm=T),
             #Meander = mean(Meander_degmm, na.rm=T),
-            CircMnTurnAngleAbs = deg(circ.mean.na(rad(TurnAngle_degrel2))),
+            CircMnTurnAngleAbs = deg(circ.mean.na(rad(TurnAngle_degabs))), # this is the heading, I think
             SumTurnAngleRel = sum(TurnAngle_degrel, na.rm=T),
             InZoneB = max(InZoneB), 
             InZoneC = max(InZoneC) ) %>%
   ungroup() %>%
   data.frame()
 
-# rather than summarize the meander at each step, recalculate it at these summaruzed steps by taking the mean heading (turn angle over the 0.2 secs) and divide it by the total distance moved in that same period, following the calculations made by Ethovision to calculate meander. 
-GSdatasum$MeanderCirc = GSdatasum$SumTurnAngleRel/GSdatasum$SumDistMoved
+# rather than summarize the meander at each step, recalculate it at these summaruzed steps by taking the mean turn angle (sum of relative turn angles over the 0.2 secs) and divide it by the total distance moved in that same period, following the calculations made by Ethovision to calculate meander. 
+GSdatasum$Meander = GSdatasum$SumTurnAngleRel/GSdatasum$SumDistMoved
 
 
 WSdatasub = WSdata[,c("index","Trial","Arena","Replicate","ExposureHrs","Treatment","Spp","Contaminant","TrialTime_s","Xcent_mm","Ycent_mm","DistMoved_mm","Vel_mms","Meander_degmmabs","TurnAngle_degabs","Meander_degmmrel","TurnAngle_degrel","InZoneB","InZoneC"),]#,"ActivPerc","ActivState"),] # active removed because it's defined as the % of pixels moving in a dish at each time step. But with GS most of the movement was refletions not fish,so this isn't a useful netric this year.
@@ -203,7 +205,7 @@ WSdatasum = WSdatasub %>%
             SumDistMoved = sum(DistMoved_mm, na.rm=T),
             MnVel = mean(Vel_mms, na.rm=T),
             #Meander = mean(Meander_degmm, na.rm=T),
-            CircMnTurnAngleAbs = deg(circ.mean.na(rad(TurnAngle_degrel2))),
+            CircMnTurnAngleAbs = deg(circ.mean.na(rad(TurnAngle_degabs))), # this is the heading, I think
             SumTurnAngleRel = sum(TurnAngle_degrel, na.rm=T),
             InZoneB = max(InZoneB), 
             InZoneC = max(InZoneC) ) %>%
@@ -211,7 +213,7 @@ WSdatasum = WSdatasub %>%
   data.frame()
 
 # rather than summarize the meander at each step, recalculate it at these summaruzed steps by taking the mean heading (turn angle over the 0.2 secs) and divide it by the total distance moved in that same period, following the calculations made by Ethovision to calculate meander. 
-WSdatasum$MeanderCirc = WSdatasum$SumTurnAngleRel/WSdatasum$SumDistMoved
+WSdatasum$Meander = WSdatasum$SumTurnAngleRel/WSdatasum$SumDistMoved
 ```
 
 #### combine WS and GS data
@@ -224,14 +226,37 @@ DataSum = rbind(GSdatasum, WSdatasum)
  DataSum$uniqueID = paste(DataSum$Spp, DataSum$Treatment, DataSum$ExposureHrs, DataSum$Replicate, sep="-") 
 ```
 
+#### add in new col with missing zone data
+```{r fill in missing InZoneC and InZoneB}
+# assume the zone is the same as the one prior; reasonable since the fish is often un-detected when it is not moving
+
+# I tried lots of dead-ends with loops to fix this, then found the function na.locf. Whoot! 
+# https://www.rdocumentation.org/packages/zoo/versions/1.8-12/topics/na.locf
+
+DataSum2 = DataSum%>%
+  group_by(index, ExposureHrs, Spp) %>%
+  mutate(InZoneC_cor = na.locf(InZoneC, fromLast=FALSE, na.rm=FALSE)) %>%
+  mutate(InZoneB_cor = na.locf(InZoneB, fromLast=FALSE, na.rm=FALSE)) %>%
+  data.frame()
+
+# there are about 4-5% of the positions where the fish was detected in BOTH zone B and C (or at least the summarized data include a 1 in both columns). Adjust this so if C==1 then B==0
+
+# this takes a long time to run (1-2min) but faster to write then to figure out a vectorized way to do it...likely something with apply but don't have time to figure it out now
+for(i in 1:nrow(DataSum2)) {
+  if(is.na(DataSum2$InZoneC_cor[i])) {next}
+  if(DataSum2$InZoneC_cor[i]==1) {DataSum2$InZoneB_cor[i]<-0}
+  }
+
+```
+
 ```{r reduce dataset further} 
 # remove WS trial #5 (only 300 sec of data)
  
-DataSum = DataSum[!(DataSum$Spp=="WS" & DataSum$Trial==5),] 
+DataSum2 = DataSum2[!(DataSum2$Spp=="WS" & DataSum2$Trial==5),] 
  
 # reduce range of data to analyze; 3min of acclimation, 12 min of trial (180 - 900 s, should have 3600 data points per fish per trial)
  
-DataSumcut15 = DataSum[DataSum$TrialTime<(15*60),]
+DataSumcut15 = DataSum2[DataSum2$TrialTime<(15*60),]
 
 # even smaller dataset to plot only the exposure hours that are comparable among the two species
 DataSum2496nom = DataSumcut15[DataSumcut15$ExposureHrs %in% c(24,96),]
